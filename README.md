@@ -81,3 +81,5 @@ That's it! The URL will be printed at the end.
 - The service role key is **never** exposed to the browser
 - Supabase RLS is enabled on all tables
 - All authenticated users can read/write call center data (no anonymous access)
+
+<!-- Deployed: 2026-06-25T11:54:26Z -->
