@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC = ['/login', '/api/health', '/favicon.ico', '/_next']
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   if (PUBLIC.some(p => pathname.startsWith(p))) return NextResponse.next()
