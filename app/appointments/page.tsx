@@ -60,7 +60,7 @@ export default function AppointmentsPage() {
     }).eq("id", id);
     // Auto create callback for no-show
     if (status === "No Show") {
-      await supabase.rpc("create_noshow_callback", { p_log_id: id }).catch(() => {});
+      try { await supabase.rpc("create_noshow_callback", { p_log_id: id }) } catch (_) {};
     }
     await load();
     setUpdating(null);
