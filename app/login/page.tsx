@@ -13,16 +13,23 @@ function LoginForm() {
 
   const handleLogin = async () => {
     setError("");
-    if (!email || !password) return setError("Email and password required");
+    if (!email || !password) { setError("Email and password required"); return; }
     setLoading(true);
     try {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-      if (err) throw err;
-      const next = params.get("next") || "/dashboard";
-      router.push(next);
-      router.refresh();
-    } catch (e: any) {
-      setError(e.message || "Login failed");
+      const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) {
+        // Surface the real message from AuthApiError
+        setError(err.message || "Invalid email or password");
+        return;
+      }
+      if (data?.session) {
+        const next = params.get("next") || "/dashboard";
+        router.push(next);
+        router.refresh();
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Login failed — please try again";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -31,13 +38,15 @@ function LoginForm() {
   return (
     <div className="bg-white rounded-2xl shadow-2xl p-6 space-y-4">
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+          {error}
+        </div>
       )}
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
         <input type="email" value={email} onChange={e => setEmail(e.target.value)}
           onKeyDown={e => e.key === "Enter" && handleLogin()}
-          placeholder="your@email.com" autoComplete="email"
+          placeholder="your@ekagrahospital.com" autoComplete="email"
           className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none" />
       </div>
       <div>
