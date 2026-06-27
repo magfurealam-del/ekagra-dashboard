@@ -1,149 +1,213 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { formatDate, formatPhone } from "@/lib/utils";
-import type { CallbackTask } from "@/types";
+import type { DailyCallbackQueueItem } from "@/types";
 
-const OUTCOMES = [
-  { value: "spoke", label: "✅ Called / Spoke" },
-  { value: "no_answer", label: "📵 No Answer" },
-  { value: "unreachable", label: "🚫 Unreachable" },
-  { value: "appointment_booked", label: "📅 Appointment Booked" },
-  { value: "rescheduled", label: "🔄 Rescheduled" },
-  { value: "doctor_callback", label: "👨‍⚕️ Doctor Callback Needed" },
-  { value: "not_interested", label: "❌ Not Interested" },
-  { value: "wrong_number", label: "📞 Wrong Number" },
-  { value: "already_visited", label: "🏥 Already Visited" },
+const QUICK = [
+  { value: "no_answer", label: "📵 No Answer", cls: "border-gray-200 text-gray-700 hover:bg-gray-50" },
+  { value: "spoke", label: "✅ Spoke", cls: "border-green-200 text-green-700 bg-green-50 hover:bg-green-100" },
+  { value: "unreachable", label: "❌ Unreachable", cls: "border-red-200 text-red-700 hover:bg-red-50" },
+  { value: "appointment_booked", label: "🗓️ Booked", cls: "border-teal-500 bg-teal-600 text-white hover:bg-teal-700" },
+  { value: "not_interested", label: "🚫 Not Interested", cls: "border-gray-200 text-gray-600 hover:bg-gray-50" },
+  { value: "wrong_number", label: "📞 Wrong #", cls: "border-gray-200 text-gray-600 hover:bg-gray-50" },
 ];
 
-const TASK_PRIORITY_LABELS: Record<number, string> = { 1: "🔴 No Show", 2: "🟠 Wound — No Appt", 3: "🟡 Screening — No Appt", 4: "🔵 General Follow-up" };
-
 export default function OutboundCallsPage() {
-  const [tasks, setTasks] = useState<CallbackTask[]>([]);
+  const [tasks, setTasks] = useState<DailyCallbackQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTask, setActiveTask] = useState<CallbackTask | null>(null);
-  const [outcome, setOutcome] = useState("");
+  const [current, setCurrent] = useState<DailyCallbackQueueItem | null>(null);
   const [notes, setNotes] = useState("");
-  const [nextDate, setNextDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sessionDone, setSessionDone] = useState(0);
 
-  const fetchTasks = useCallback(async () => {
-    const { data } = await supabase
-      .from("callback_tasks")
-      .select("*")
-      .eq("status", "pending")
-      .order("priority_rank", { ascending: true })
-      .order("due_at", { ascending: true })
-      .limit(30);
-    setTasks(data || []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch("/api/callbacks?limit=50");
+    const data = await res.json();
+    const list: DailyCallbackQueueItem[] = Array.isArray(data) ? data : [];
+    setTasks(list);
+    if (!current && list.length > 0) setCurrent(list[0]);
     setLoading(false);
-  }, []);
+  }, [current]);
 
-  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+  useEffect(() => { load(); }, []); // eslint-disable-line
 
-  const handleAction = async () => {
-    if (!activeTask || !outcome) return;
+  useEffect(() => {
+    const ch = supabase.channel("outbound")
+      .on("postgres_changes", { event: "*", schema: "public", table: "callback_tasks" }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [load]);
+
+  const submit = async (outcome: string) => {
+    if (!current) return;
     setSubmitting(true);
-    await fetch("/api/callbacks/complete", {
+    await fetch("/api/callbacks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId: activeTask.id, outcome, notes, nextFollowupAt: nextDate || null }),
+      body: JSON.stringify({ taskId: current.id, outcome, notes }),
     });
-    setActiveTask(null); setOutcome(""); setNotes(""); setNextDate("");
-    await fetchTasks();
+    setNotes("");
+    setSessionDone(n => n + 1);
+    // Move to next
+    const idx = tasks.findIndex(t => t.id === current.id);
+    const next = tasks[idx + 1] || null;
+    setCurrent(next);
+    await load();
     setSubmitting(false);
   };
 
-  const closingOutcomes = ["not_interested", "wrong_number", "already_visited", "appointment_booked"];
-  const isClosing = closingOutcomes.includes(outcome);
+  const skip = () => {
+    if (!current) return;
+    const idx = tasks.findIndex(t => t.id === current.id);
+    setCurrent(tasks[idx + 1] || null);
+  };
+
+  const task = current;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 max-w-xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Outbound Call Queue</h1>
-        <div className="text-sm text-gray-500">{tasks.length} pending tasks</div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Outbound Calls</h1>
+          <p className="text-sm text-gray-500">
+            {tasks.length} remaining · {sessionDone} done this session
+          </p>
+        </div>
+        <button onClick={load} className="p-2 bg-white border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 shadow-sm">🔄</button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Task List */}
-        <div className="md:col-span-2 space-y-2">
-          {loading ? (
-            Array(5).fill(0).map((_, i) => <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />)
-          ) : tasks.length === 0 ? (
-            <div className="bg-white rounded-xl border p-8 text-center text-gray-400">
-              <div className="text-3xl mb-2">🎉</div>
-              No pending outbound calls!
-            </div>
-          ) : tasks.map(task => (
-            <div
-              key={task.id}
-              onClick={() => { setActiveTask(task); setOutcome(""); setNotes(""); setNextDate(""); }}
-              className={`bg-white rounded-xl border p-4 cursor-pointer hover:border-blue-300 transition-colors ${activeTask?.id === task.id ? "border-blue-500 bg-blue-50" : ""}`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-gray-500">{TASK_PRIORITY_LABELS[task.priority_rank] || "Follow-up"}</span>
-                    <span className="text-xs text-gray-400">#{task.followup_number} of {task.max_followups}</span>
-                  </div>
-                  <div className="font-semibold text-gray-900">{task.patient_name || "Unknown"}</div>
-                  <div className="text-sm text-blue-600">{formatPhone(task.phone)}</div>
-                </div>
-                <div className="text-right text-xs text-gray-500">
-                  <div>Due: {formatDate(task.due_at?.split("T")[0] || null)}</div>
-                  {task.lead_category && <div className="mt-1 px-1.5 py-0.5 bg-gray-100 rounded">{task.lead_category}</div>}
-                </div>
-              </div>
-              {task.reason && <div className="text-xs text-gray-500 mt-2 border-t pt-2">{task.reason}</div>}
-              {task.last_outcome && <div className="text-xs text-gray-400 mt-1">Last: {task.last_outcome}</div>}
-            </div>
-          ))}
+      {sessionDone > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-teal-50 border border-teal-200 rounded-xl">
+          <span className="text-2xl">✅</span>
+          <div>
+            <div className="font-semibold text-teal-800">{sessionDone} calls completed</div>
+            <div className="text-sm text-teal-600">{tasks.length} left in queue</div>
+          </div>
         </div>
+      )}
 
-        {/* Action Panel */}
-        <div className="bg-white rounded-xl border p-5 h-fit sticky top-20">
-          {!activeTask ? (
-            <div className="text-center text-gray-400 py-8">
-              <div className="text-3xl mb-2">☎️</div>
-              Select a task to log a call
-            </div>
-          ) : (
-            <div className="space-y-4">
+      {loading ? (
+        <div className="h-64 bg-gray-100 rounded-2xl animate-pulse" />
+      ) : !task ? (
+        <div className="text-center py-20 bg-white rounded-2xl border border-gray-200 shadow-sm">
+          <div className="text-5xl mb-4">🎉</div>
+          <div className="text-xl font-bold text-gray-800">Queue complete!</div>
+          <div className="text-gray-500 mt-1 text-sm">All callbacks are done for today.</div>
+          <button onClick={load} className="mt-5 px-5 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-medium hover:bg-teal-700">
+            Check for new tasks
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Patient info */}
+          <div className="p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="font-semibold text-gray-900">{activeTask.patient_name}</div>
-                <div className="text-blue-600 text-sm">{formatPhone(activeTask.phone)}</div>
-                <div className="text-xs text-gray-500 mt-1">{activeTask.reason}</div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Call Outcome *</label>
-                <div className="space-y-1">
-                  {OUTCOMES.map(o => (
-                    <label key={o.value} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border text-sm ${outcome === o.value ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50 border-transparent"}`}>
-                      <input type="radio" name="outcome" value={o.value} checked={outcome === o.value} onChange={() => setOutcome(o.value)} className="text-blue-600" />
-                      {o.label}
-                    </label>
-                  ))}
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    task.task_type === "no_show" ? "bg-red-100 text-red-700"
+                    : task.task_type === "wound_no_appointment" ? "bg-orange-100 text-orange-700"
+                    : task.task_type === "screening_no_appointment" ? "bg-amber-100 text-amber-700"
+                    : "bg-blue-100 text-blue-700"
+                  }`}>{task.priority_label || task.task_type}</span>
+                  {task.is_overdue && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">⚠️ Overdue</span>}
                 </div>
+                <h2 className="text-xl font-bold text-gray-900">{task.patient_name || "Unknown"}</h2>
+                {task.lead_category && <p className="text-sm text-gray-500">{task.lead_category}</p>}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-                <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="What happened on the call…" />
-              </div>
-              {!isClosing && outcome && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Next Follow-Up Date</label>
-                  <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={nextDate} onChange={e => setNextDate(e.target.value)} />
+              {task.completed_followups > 0 && (
+                <div className="text-right shrink-0">
+                  <div className="text-xs text-gray-400">Follow-up</div>
+                  <div className="text-xl font-bold text-gray-700">{task.completed_followups + 1}/{task.max_followups}</div>
                 </div>
               )}
-              {isClosing && <div className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded">This task will be closed after logging.</div>}
-              <button onClick={handleAction} disabled={!outcome || submitting} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                {submitting ? "Logging…" : "Log Call"}
-              </button>
-              <button onClick={() => setActiveTask(null)} className="w-full text-gray-500 text-sm hover:underline">Cancel</button>
             </div>
-          )}
+
+            {/* Tap-to-call */}
+            <a href={`tel:${task.normalized_phone || task.phone}`}
+              className="flex items-center gap-3 p-4 bg-teal-600 text-white rounded-2xl hover:bg-teal-700 transition-colors">
+              <span className="text-2xl">📞</span>
+              <div>
+                <div className="font-bold text-lg">{task.phone || task.normalized_phone || "—"}</div>
+                <div className="text-teal-100 text-sm">Tap to call</div>
+              </div>
+            </a>
+
+            {/* Context grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {task.doctor_name && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-gray-400 mb-0.5">Doctor</div>
+                  <div className="font-medium text-gray-700">{task.doctor_name}</div>
+                </div>
+              )}
+              {task.relevant_date && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-gray-400 mb-0.5">Date</div>
+                  <div className="font-medium text-gray-700">{task.relevant_date}</div>
+                </div>
+              )}
+              {task.source_of_appointment && (
+                <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="text-gray-400 mb-0.5">Source</div>
+                  <div className="font-medium text-gray-700">{task.source_of_appointment}</div>
+                </div>
+              )}
+              {task.reason && (
+                <div className="bg-gray-50 rounded-xl p-3 col-span-2">
+                  <div className="text-gray-400 mb-0.5">Reason</div>
+                  <div className="font-medium text-gray-700">{task.reason}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Outcomes */}
+          <div className="border-t border-gray-100 p-5 space-y-3">
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Call Outcome</div>
+            <div className="grid grid-cols-2 gap-2">
+              {QUICK.map(o => (
+                <button key={o.value} onClick={() => submit(o.value)} disabled={submitting}
+                  className={`py-3 rounded-xl text-sm font-medium border transition-all disabled:opacity-50 ${o.cls}`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              placeholder="Notes (optional)…"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none" />
+            <button onClick={skip}
+              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors">
+              Skip → Next
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Up next */}
+      {tasks.length > 1 && (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Up Next</div>
+          {tasks.filter(t => t.id !== task?.id).slice(0, 5).map(t => (
+            <button key={t.id} onClick={() => setCurrent(t)}
+              className="w-full text-left bg-white rounded-xl border border-gray-200 p-3 hover:border-teal-300 shadow-sm transition-colors">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-gray-800 text-sm">{t.patient_name}</div>
+                  <div className="text-xs text-gray-500">{t.phone}</div>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  t.task_type === "no_show" ? "bg-red-100 text-red-700"
+                  : t.task_type === "wound_no_appointment" ? "bg-orange-100 text-orange-700"
+                  : "bg-blue-100 text-blue-700"}`}>
+                  {t.priority_label || t.task_type}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

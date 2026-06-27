@@ -1,0 +1,16 @@
+-- All migrations already applied to Supabase (youqgrwovfyqqsnbtcnm)
+-- This file is for documentation/PR reference only. DO NOT re-run against production.
+--
+-- Applied:
+--  1. create_user_profiles_rbac             - user_profiles table + 5 roles + RLS
+--  2. auto_create_user_profile_trigger_v1   - auto-create profile on first signup
+--  3. enhance_callback_tasks_v2             - added priority_label, normalized_phone, appointment_id, source_of_appointment
+--  4. enhance_call_interactions_v2          - added appointment_id, expanded outcome constraint
+--  5. create_generate_daily_callback_tasks_v1 - 4-bucket priority function (no_show→wound→screening→followup)
+--  6. create_daily_callback_queue_view_v1   - ordered view with is_overdue + days_overdue
+--  7. create_executive_metrics_views_v1     - get_executive_metrics(start_date, end_date) function
+--
+-- Verified results (2026-06-27):
+--  total_callback_tasks   = 77  (40 wound + 37 screening seeded on deploy)
+--  get_executive_metrics  = 260 leads, 158 appointments, 44 no-shows for June 2026
+--  user_profiles table    = exists (0 rows, auto-populated on first user login)

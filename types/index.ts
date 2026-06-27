@@ -103,3 +103,77 @@ export interface DashboardStats {
   totalRevenue: number
   facebookLeads: number
 }
+
+// ── Added for dashboard-executive-callback-rbac-v1 ──
+
+export type UserRole = 'admin' | 'manager' | 'executive' | 'call_center_agent' | 'finance_viewer'
+
+export interface UserProfile {
+  id: string
+  full_name: string | null
+  email: string | null
+  role: UserRole
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyCallbackQueueItem {
+  id: string
+  created_at: string
+  updated_at: string
+  lead_id: number | null
+  patient_id: number | null
+  task_type: string
+  priority_rank: number
+  priority_label: string | null
+  reason: string | null
+  patient_name: string | null
+  phone: string | null
+  normalized_phone: string | null
+  lead_category: string | null
+  source_of_appointment: string | null
+  relevant_date: string | null
+  due_at: string | null
+  assigned_to: string | null
+  status: string
+  followup_number: number
+  max_followups: number
+  completed_followups: number
+  last_outcome: string | null
+  last_called_at: string | null
+  next_followup_at: string | null
+  // From join
+  log_date: string | null
+  call_source: string | null
+  appointment_final_status: string | null
+  appointment_date: string | null
+  appointment_time: string | null
+  doctor_name: string | null
+  internal_lead_category: string | null
+  is_overdue: boolean
+  days_overdue: number
+}
+
+export interface ExecMetrics {
+  period_start: string
+  period_end: string
+  total_leads: number
+  leads_from_facebook: number
+  wound_leads: number
+  screening_leads: number
+  appointments_booked: number
+  no_shows: number
+  not_interested: number
+  appointment_conversion_rate: number
+  no_show_rate: number
+  total_revenue: number
+  facebook_revenue: number
+  pending_callbacks: number
+  followups_due_today: number
+  by_source: Array<{ source: string; count: number }>
+  by_doctor: Array<{ doctor: string; count: number }>
+  by_final_status: Array<{ status: string; count: number }>
+  by_agent: Array<{ agent: string; count: number }>
+  daily_trend: Array<{ date: string; leads: number; appointments: number; no_shows: number }>
+}
