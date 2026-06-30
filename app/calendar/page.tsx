@@ -8,6 +8,7 @@ import PersonSearch from '@/components/calendar/PersonSearch'
 import CalendarGrid, { DayCellData, DayPill } from '@/components/calendar/CalendarGrid'
 import DayDrawer from '@/components/calendar/DayDrawer'
 import PatientSummaryBar from '@/components/calendar/PatientSummaryBar'
+import DayOutcomeList from '@/components/calendar/DayOutcomeList'
 
 const AGGREGATE_KEYS = [
   'booked_count',
@@ -255,6 +256,15 @@ export default function CalendarPage() {
 
       {selectedDate && (
         <DayDrawer date={selectedDate} filter={drawerFilter} onClose={() => setSelectedDate(null)} />
+      )}
+
+      {selectedDate && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-slate-600">
+            Completed / No-show — {selectedDate}
+          </h2>
+          <DayOutcomeList date={selectedDate} />
+        </div>
       )}
     </div>
   )

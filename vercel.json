@@ -1,0 +1,13 @@
+{
+  "name": "ekagra-dashboard",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "crons": [
+    {
+      "path": "/api/cron/populate-outgoing-calls",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}
