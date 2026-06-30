@@ -1,7 +1,7 @@
 'use client'
 
 export type DayPill = { key: string; label: string; className: string; count?: number }
-export type DayCellData = { pills: DayPill[]; total: number }
+export type DayCellData = { pills: DayPill[]; total: number; doctors?: string[] }
 
 function monthMatrix(year: number, month: number) {
   const first = new Date(year, month, 1)
@@ -13,14 +13,13 @@ function monthMatrix(year: number, month: number) {
   return cells
 }
 
+function isToday(year: number, month: number, d: number) {
+  const t = new Date()
+  return t.getFullYear() === year && t.getMonth() === month && t.getDate() === d
+}
+
 export default function CalendarGrid({
-  year,
-  month,
-  dayData,
-  selectedDate,
-  onDayClick,
-  onPrev,
-  onNext,
+  year, month, dayData, selectedDate, onDayClick, onPrev, onNext,
 }: {
   year: number
   month: number
@@ -31,59 +30,67 @@ export default function CalendarGrid({
   onNext: () => void
 }) {
   const cells = monthMatrix(year, month)
-  const monthLabel = new Date(year, month, 1).toLocaleString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const monthLabel = new Date(year, month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
       <div className="flex items-center justify-between mb-4">
-        <button onClick={onPrev} className="px-3 py-1 border rounded-md text-sm">
-          ← Prev
-        </button>
-        <h2 className="font-medium">{monthLabel}</h2>
-        <button onClick={onNext} className="px-3 py-1 border rounded-md text-sm">
-          Next →
-        </button>
+        <button onClick={onPrev} className="px-3 py-1 border rounded-md text-sm hover:bg-slate-50">← Prev</button>
+        <h2 className="font-semibold text-slate-800">{monthLabel}</h2>
+        <button onClick={onNext} className="px-3 py-1 border rounded-md text-sm hover:bg-slate-50">Next →</button>
       </div>
-      <div className="grid grid-cols-7 gap-2 text-xs text-slate-400 mb-1">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div key={d} className="text-center">
-            {d}
-          </div>
+      <div className="grid grid-cols-7 gap-1 text-xs text-slate-400 mb-1">
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} className="text-center py-1">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1">
         {cells.map((d, i) => {
           if (d === null) return <div key={i} />
-          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+          const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
           const cell = dayData[dateStr]
+          const today = isToday(year, month, d)
+          const selected = selectedDate === dateStr
           const clickable = !!cell && cell.total > 0
+
           return (
             <button
               key={i}
               onClick={() => clickable && onDayClick(dateStr)}
               disabled={!clickable}
-              className={`border rounded-md p-2 text-left min-h-[80px] transition-colors ${
-                selectedDate === dateStr
-                  ? 'border-teal-500 ring-1 ring-teal-400'
-                  : 'border-slate-200'
-              } ${clickable ? 'hover:border-teal-400 cursor-pointer' : 'cursor-default'}`}
+              className={`border rounded-lg p-1.5 text-left min-h-[90px] transition-all text-xs ${
+                selected ? 'border-teal-500 ring-2 ring-teal-300 bg-teal-50'
+                : today ? 'border-teal-400 bg-teal-50'
+                : 'border-slate-200 hover:border-slate-300'
+              } ${clickable ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
             >
-              <div className="text-xs font-medium">{d}</div>
-              {cell && cell.pills.length > 0 && (
-                <div className="mt-1 space-y-0.5">
-                  {cell.pills.map((p) => (
-                    <div key={p.key} className={`text-[10px] rounded px-1 ${p.className}`}>
-                      {p.count != null ? `${p.label}: ${p.count}` : p.label}
+              <div className={`font-semibold text-sm ${today ? 'text-teal-700' : 'text-slate-700'}`}>{d}</div>
+              {cell && (
+                <>
+                  <div className="font-bold text-slate-800 text-sm leading-none mt-0.5">{cell.total}</div>
+                  <div className="mt-1 space-y-0.5">
+                    {cell.pills.map(p => (
+                      <div key={p.key} className={`text-[9px] rounded px-1 ${p.className} leading-tight`}>
+                        {p.count != null ? `${p.label}: ${p.count}` : p.label}
+                      </div>
+                    ))}
+                  </div>
+                  {cell.doctors && cell.doctors.length > 0 && (
+                    <div className="mt-1 text-[9px] text-slate-400 leading-tight truncate">
+                      {cell.doctors.slice(0,2).map((d:string) => d.replace('Dr. ','')).join(', ')}
+                      {cell.doctors.length > 2 ? ` +${cell.doctors.length-2}` : ''}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </button>
           )
         })}
+      </div>
+      <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-200"/>Confirmed</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-200"/>Pending</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-200"/>No-show Risk</span>
       </div>
     </div>
   )
