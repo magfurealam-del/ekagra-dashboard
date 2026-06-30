@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase'
 import ViewModeTabs, { ViewMode } from '@/components/calendar/ViewModeTabs'
 import PersonSearch from '@/components/calendar/PersonSearch'
 import CalendarGrid, { DayCellData, DayPill } from '@/components/calendar/CalendarGrid'
-import DayDrawer from '@/components/calendar/DayDrawer'
 import PatientSummaryBar from '@/components/calendar/PatientSummaryBar'
 import DayOutcomeList from '@/components/calendar/DayOutcomeList'
 
@@ -218,13 +217,6 @@ export default function CalendarPage() {
     return map
   }, [viewMode, selectedPersonId, aggregateRows, patientRows, doctorRows])
 
-  const drawerFilter =
-    viewMode === 'patient' && selectedPersonId != null
-      ? { patientId: selectedPersonId }
-      : viewMode === 'doctor' && selectedPersonId != null
-      ? { doctorService: String(selectedPersonId) }
-      : undefined
-
   return (
     <div className="space-y-4 pb-20">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -253,10 +245,6 @@ export default function CalendarPage() {
         onPrev={() => changeMonth(-1)}
         onNext={() => changeMonth(1)}
       />
-
-      {selectedDate && (
-        <DayDrawer date={selectedDate} filter={drawerFilter} onClose={() => setSelectedDate(null)} />
-      )}
 
       {selectedDate && (
         <div className="space-y-2">
