@@ -42,18 +42,9 @@ export default function PersonSearch({
     }
   }, [viewMode])
 
+  // Patient mode — debounced name search, min 2 chars.
   useEffect(() => {
-    if (viewMode === 'aggregate') return
-
-    if (viewMode === 'doctor') {
-      const q = query.toLowerCase()
-      setOptions(
-        q ? allDoctors.filter((o) => o.label.toLowerCase().includes(q)) : allDoctors
-      )
-      return
-    }
-
-    // patient mode — debounced search, min 2 chars
+    if (viewMode !== 'patient') return
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (query.trim().length < 2) {
       setOptions([])
@@ -76,15 +67,38 @@ export default function PersonSearch({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [query, viewMode, allDoctors])
+  }, [query, viewMode])
 
   if (viewMode === 'aggregate') return null
 
+  // Doctor mode — plain dropdown listing every doctor.
+  if (viewMode === 'doctor') {
+    return (
+      <select
+        className="w-64 border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+        value={selectedLabel ?? ''}
+        onChange={(e) => {
+          const v = e.target.value
+          if (!v) onClear()
+          else onSelect(v, v)
+        }}
+      >
+        <option value="">All doctors</option>
+        {allDoctors.map((d) => (
+          <option key={d.id} value={String(d.id)}>
+            {d.label}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  // Patient mode — name search autocomplete.
   return (
     <div className="relative w-64">
       <input
         className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-        placeholder={viewMode === 'patient' ? 'Search patient…' : 'Search doctor…'}
+        placeholder="Search patient by name…"
         value={open ? query : selectedLabel || ''}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => {
@@ -121,7 +135,7 @@ export default function PersonSearch({
           ))}
         </ul>
       )}
-      {open && viewMode === 'patient' && query.trim().length >= 2 && options.length === 0 && (
+      {open && query.trim().length >= 2 && options.length === 0 && (
         <div className="absolute z-30 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg text-sm px-3 py-2 text-slate-400">
           No matches
         </div>
