@@ -64,6 +64,8 @@ export default function DayOutcomeList({ date }: Props) {
       relevant_date: row.appointment_date,
       source_table: 'validated_appointments',
       source_id: String(row.appointment_id),
+      final_location: row.patient_area ?? null,
+      lead_type: 'Follow-up (No-show)',
     })
     setBusyId(null)
     if (error) {
