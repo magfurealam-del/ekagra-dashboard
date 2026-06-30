@@ -1,15 +1,6 @@
 'use client'
 
-import { priorityBadges, priorityLabel } from './types'
-
-const QUICK_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'no_show', label: 'No-show' },
-  { key: 'wound', label: 'Wound' },
-  { key: 'screening', label: 'Screening' },
-  { key: 'followup', label: 'Follow-up' },
-  { key: 'high_priority', label: 'High Priority' },
-]
+import { priorityBadges, priorityLabel, QUICK_FILTERS } from './types'
 
 export default function QueueList({
   rows,
@@ -31,10 +22,11 @@ export default function QueueList({
   onSelect: (row: any) => void
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 flex flex-col h-full">
-      <div className="p-3 border-b border-slate-100 space-y-2">
+    <div className="bg-white rounded-xl border border-slate-200 flex flex-col h-full min-h-0">
+      <div className="p-3 border-b border-slate-100 space-y-2 flex-shrink-0">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">Priority Queue</h2>
+          <span className="text-xs text-slate-400">{rows.length}</span>
         </div>
         <input
           className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -59,7 +51,7 @@ export default function QueueList({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
         {loading ? (
           <p className="p-4 text-sm text-slate-400">Loading…</p>
         ) : rows.length === 0 ? (
@@ -90,9 +82,6 @@ export default function QueueList({
                       <span className="text-[10px] rounded px-1.5 py-0.5 bg-red-100 text-red-700">overdue</span>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                    Attempt {r.followup_number}/{r.max_followups}
-                  </span>
                 </div>
                 <div className="mt-1 font-medium text-sm text-slate-800">{r.patient_name || 'Unknown'}</div>
                 <div className="text-xs text-slate-500">

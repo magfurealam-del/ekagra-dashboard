@@ -7,7 +7,7 @@ import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
 import PatientDetailPanel from '@/components/outgoing-calls/PatientDetailPanel'
 import OutcomePanel from '@/components/outgoing-calls/OutcomePanel'
-import { CATEGORY_LABEL } from '@/components/outgoing-calls/types'
+import { CATEGORY_LABEL, QUICK_FILTERS } from '@/components/outgoing-calls/types'
 
 function todayDhaka() {
   const now = new Date()
@@ -67,17 +67,14 @@ export default function OutgoingCallsPage() {
   }, [rows])
 
   const filteredRows = useMemo(() => {
+    const qf = QUICK_FILTERS.find((f) => f.key === quickFilter)
     return rows.filter((r) => {
       if (search) {
         const s = search.toLowerCase()
         const hay = `${r.patient_name ?? ''} ${r.phone ?? ''} ${r.patient_id ?? ''}`.toLowerCase()
         if (!hay.includes(s)) return false
       }
-      if (quickFilter === 'no_show' && r.category !== 'no_show') return false
-      if (quickFilter === 'wound' && !(r.category === 'wound_screening_no_appt' && (r.reason || '').toLowerCase().includes('wound'))) return false
-      if (quickFilter === 'screening' && !(r.category === 'wound_screening_no_appt' && (r.reason || '').toLowerCase().includes('screening'))) return false
-      if (quickFilter === 'followup' && r.category !== 'healing_overdue') return false
-      if (quickFilter === 'high_priority' && r.category_rank > 2) return false
+      if (qf?.categories && !qf.categories.includes(r.category)) return false
       if (leadTypeFilter !== 'all' && r.category !== leadTypeFilter) return false
       if (agentFilter !== 'all' && r.assigned_agent !== agentFilter) return false
       return true
@@ -90,80 +87,89 @@ export default function OutgoingCallsPage() {
   }
 
   return (
-    <div className="space-y-4 pb-20">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Outgoing Calls</h1>
-          <p className="text-sm text-slate-500">
-            Agent-first outbound follow-up workflow · {date} · On duty: <span className="font-medium text-slate-700">{agent || '—'}</span>
-          </p>
+    <div className="flex flex-col gap-4 h-[calc(100vh-110px)] min-h-[560px]">
+      <div className="flex-shrink-0 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Outgoing Calls</h1>
+            <p className="text-sm text-slate-500">
+              Agent-first outbound follow-up workflow · {date} · On duty:{' '}
+              <span className="font-medium text-slate-700">{agent || '—'}</span>
+            </p>
+          </div>
+          <button
+            onClick={runPopulateNow}
+            className="px-3 py-1.5 border border-slate-300 rounded-md text-sm text-slate-600 hover:bg-slate-50"
+          >
+            Refresh queue
+          </button>
         </div>
-        <button
-          onClick={runPopulateNow}
-          className="px-3 py-1.5 border border-slate-300 rounded-md text-sm text-slate-600 hover:bg-slate-50"
-        >
-          Refresh queue
-        </button>
+
+        <SummaryBar metrics={metrics} />
+
+        <div className="flex flex-wrap gap-2 items-center text-sm">
+          <select
+            className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
+            value={leadTypeFilter}
+            onChange={(e) => setLeadTypeFilter(e.target.value)}
+          >
+            <option value="all">All lead types</option>
+            {Object.entries(CATEGORY_LABEL).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <select
+            className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
+            value={agentFilter}
+            onChange={(e) => setAgentFilter(e.target.value)}
+          >
+            <option value="all">All agents</option>
+            {agentOptions.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          <select
+            className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="pending">Pending</option>
+            <option value="all">All statuses</option>
+            <option value="reached">Reached</option>
+            <option value="booked_appointment">Booked</option>
+            <option value="not_interested">Not interested</option>
+            <option value="call_later">Call later</option>
+            <option value="do_not_call">Do not call</option>
+          </select>
+        </div>
       </div>
 
-      <SummaryBar metrics={metrics} />
-
-      <div className="flex flex-wrap gap-2 items-center text-sm">
-        <select
-          className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
-          value={leadTypeFilter}
-          onChange={(e) => setLeadTypeFilter(e.target.value)}
-        >
-          <option value="all">All lead types</option>
-          {Object.entries(CATEGORY_LABEL).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
-          value={agentFilter}
-          onChange={(e) => setAgentFilter(e.target.value)}
-        >
-          <option value="all">All agents</option>
-          {agentOptions.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-        <select
-          className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="pending">Pending</option>
-          <option value="all">All statuses</option>
-          <option value="reached">Reached</option>
-          <option value="booked_appointment">Booked</option>
-          <option value="not_interested">Not interested</option>
-          <option value="call_later">Call later</option>
-          <option value="do_not_call">Do not call</option>
-        </select>
+      <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.3fr_1fr] gap-4 flex-1 min-h-0">
+        <div className="min-h-0">
+          <QueueList
+            rows={filteredRows}
+            loading={loading}
+            search={search}
+            onSearch={setSearch}
+            quickFilter={quickFilter}
+            onQuickFilter={setQuickFilter}
+            selectedId={selected?.attempt_id ?? null}
+            onSelect={setSelected}
+          />
+        </div>
+        <div className="min-h-0">
+          <PatientDetailPanel row={selected} />
+        </div>
+        <div className="min-h-0">
+          <OutcomePanel row={selected} agentName={agent || 'Unknown agent'} onSaved={handleSaved} />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.3fr_1fr] gap-4 h-[70vh]">
-        <QueueList
-          rows={filteredRows}
-          loading={loading}
-          search={search}
-          onSearch={setSearch}
-          quickFilter={quickFilter}
-          onQuickFilter={setQuickFilter}
-          selectedId={selected?.attempt_id ?? null}
-          onSelect={setSelected}
-        />
-        <PatientDetailPanel row={selected} />
-        <OutcomePanel row={selected} agentName={agent || 'Unknown agent'} onSaved={handleSaved} />
-      </div>
-
-      <p className="text-xs text-slate-400">Every call attempt is logged for executive reporting.</p>
+      <p className="text-xs text-slate-400 flex-shrink-0">Every call attempt is logged for executive reporting.</p>
     </div>
   )
 }

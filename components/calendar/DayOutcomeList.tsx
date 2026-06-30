@@ -33,7 +33,7 @@ export default function DayOutcomeList({ date }: Props) {
       const { data: q } = await supabase
         .from('outgoing_call_queue')
         .select('source_id, status, followups_done, max_followups')
-        .eq('category', 'no_show')
+        .in('category', ['no_show_7', 'no_show_14', 'no_show_28'])
         .eq('source_table', 'validated_appointments')
         .in('source_id', apptIds)
       const map: Record<string, any> = {}
@@ -54,12 +54,17 @@ export default function DayOutcomeList({ date }: Props) {
 
   async function addToQueue(row: any) {
     setBusyId(row.appointment_id)
+    const daysAgo = Math.floor(
+      (Date.now() - new Date(row.appointment_date + 'T00:00:00').getTime()) / 86400000
+    )
+    const category = daysAgo <= 7 ? 'no_show_7' : daysAgo <= 14 ? 'no_show_14' : 'no_show_28'
+    const categoryRank = daysAgo <= 7 ? 1 : daysAgo <= 14 ? 2 : 3
     const { error } = await supabase.from('outgoing_call_queue').insert({
       patient_id: row.patient_id,
       patient_name: row.patient_name,
       phone: row.phone,
-      category: 'no_show',
-      category_rank: 1,
+      category,
+      category_rank: categoryRank,
       reason: `No-show on ${row.appointment_date} with ${row.doctor_service ?? 'doctor'}`,
       relevant_date: row.appointment_date,
       source_table: 'validated_appointments',

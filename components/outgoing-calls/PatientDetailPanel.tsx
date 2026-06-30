@@ -6,39 +6,41 @@ import { CATEGORY_LABEL } from './types'
 
 function recommendedAction(row: any) {
   switch (row.category) {
-    case 'no_show':
+    case 'no_show_7':
+    case 'no_show_14':
+    case 'no_show_28':
       return 'Rebook appointment within 48 hours — timely follow-up increases conversion and patient satisfaction.'
     case 'surgery_no_show':
       return 'Confirm surgery intent and reschedule urgently — this patient was tagged for a scheduled procedure.'
-    case 'healing_overdue':
+    case 'healing_overdue_4w':
+    case 'healing_overdue_8w':
+    case 'healing_overdue_old':
       return 'Check on wound healing progress and bring the patient back in for a re-assessment.'
-    case 'wound_screening_no_appt':
+    case 'wound_no_appt':
+    case 'screening_no_appt':
       return 'Convert this lead — offer to book a wound care / screening appointment.'
     default:
       return 'Follow up with the patient.'
   }
 }
 
-function suggestedScript(row: any) {
-  const name = row.patient_name || 'the patient'
-  if (row.category === 'no_show') {
-    return `Assalamu Alaikum, ami Ekagra Hospital theke bolchi.\nApnar appointment miss hoye gechilo.\nApni ki notun appointment nite chan?`
-  }
-  if (row.category === 'healing_overdue') {
-    return `Assalamu Alaikum, ami Ekagra Hospital theke bolchi.\nApnar khoto/wound koto din holo dekhi nai.\nApni ki ekta follow-up visit korte parben?`
-  }
-  return `Assalamu Alaikum, ami Ekagra Hospital theke bolchi.\nApnar shathe ${name} er appointment niye kotha bolte chai.`
+function ageFromDob(dob: string | null) {
+  if (!dob) return null
+  return Math.floor((Date.now() - new Date(dob).getTime()) / 3.15576e10)
 }
 
 export default function PatientDetailPanel({ row }: { row: any | null }) {
   const [patient, setPatient] = useState<any | null>(null)
+  const [visitSummary, setVisitSummary] = useState<any | null>(null)
+  const [lead, setLead] = useState<any | null>(null)
   const [lastAppt, setLastAppt] = useState<any | null>(null)
   const [history, setHistory] = useState<any[]>([])
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!row) {
       setPatient(null)
+      setVisitSummary(null)
+      setLead(null)
       setLastAppt(null)
       setHistory([])
       return
@@ -49,6 +51,13 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         const { data: p } = await supabase.from('patients').select('*').eq('id', row.patient_id).single()
         if (!cancelled) setPatient(p)
 
+        const { data: vs } = await supabase
+          .from('patient_visit_summary')
+          .select('*')
+          .eq('patient_id', row.patient_id)
+          .maybeSingle()
+        if (!cancelled) setVisitSummary(vs)
+
         const { data: va } = await supabase
           .from('validated_appointments')
           .select('appointment_date, appointment_time, doctor_service, validated_status')
@@ -58,7 +67,19 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         if (!cancelled) setLastAppt((va && va[0]) || null)
       } else {
         setPatient(null)
+        setVisitSummary(null)
         setLastAppt(null)
+      }
+
+      if (row.source_table === 'crm_leads' && row.source_id) {
+        const { data: l } = await supabase
+          .from('crm_leads')
+          .select('source, campaign_name, lead_status, main_problem, agent_name')
+          .eq('id', row.source_id)
+          .maybeSingle()
+        if (!cancelled) setLead(l)
+      } else {
+        setLead(null)
       }
 
       const { data: h } = await supabase
@@ -66,35 +87,31 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         .select('*')
         .eq('queue_id', row.queue_id)
         .order('followup_number', { ascending: false })
-        .limit(3)
+        .limit(5)
       if (!cancelled) setHistory(h || [])
     }
     load()
     return () => {
       cancelled = true
     }
-  }, [row?.queue_id, row?.patient_id])
+  }, [row?.queue_id, row?.patient_id, row?.source_table, row?.source_id])
 
   if (!row) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 h-full flex items-center justify-center text-sm text-slate-400 p-6">
+      <div className="bg-white rounded-xl border border-slate-200 h-full overflow-y-auto flex items-center justify-center text-sm text-slate-400 p-6">
         Select a patient from the queue to see their details.
       </div>
     )
   }
 
-  function copyScript() {
-    navigator.clipboard?.writeText(suggestedScript(row))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
+  const age = ageFromDob(patient?.dob)
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 h-full overflow-y-auto p-4 space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-slate-800">{row.patient_name || 'Unknown patient'}</h3>
-          {row.category_rank <= 2 && (
+          {row.category_rank <= 4 && (
             <span className="text-[10px] rounded px-1.5 py-0.5 bg-red-100 text-red-700">High Priority</span>
           )}
         </div>
@@ -104,10 +121,43 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
           <div>Phone: {row.phone}</div>
           <div>Location: {row.final_location || patient?.area || '—'}</div>
           <div>
-            Age / Sex: {patient?.dob ? Math.floor((Date.now() - new Date(patient.dob).getTime()) / 3.15576e10) : '—'} /{' '}
-            {patient?.gender || '—'}
+            Age / Sex: {age ?? '—'} / {patient?.gender || '—'}
           </div>
+          <div>Patient type: {patient?.patient_type || '—'}</div>
+          <div>Diabetes status: {patient?.diabetes_status || '—'}</div>
+          <div>Healing status: {patient?.healing_status || 'Not marked'}</div>
+          {patient?.address && <div className="col-span-2">Address: {patient.address}</div>}
+          {patient?.created_at && (
+            <div className="col-span-2">
+              Registered since: {new Date(patient.created_at).toLocaleDateString()}
+            </div>
+          )}
+          {(lead?.source || lead?.campaign_name) && (
+            <div className="col-span-2">
+              Lead source: {[lead?.source, lead?.campaign_name].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          {visitSummary && (
+            <>
+              <div>Total visits: {visitSummary.total_visits ?? 0}</div>
+              <div>Last visit: {visitSummary.last_visit_date || '—'}</div>
+              {visitSummary.next_appointment_date && (
+                <div className="col-span-2 text-teal-700">
+                  Next appointment: {visitSummary.next_appointment_date}
+                  {visitSummary.next_appointment_doctor ? ` with ${visitSummary.next_appointment_doctor}` : ''}
+                </div>
+              )}
+            </>
+          )}
+          {row.category.startsWith('surgery') && patient?.surgery_flagged_at && (
+            <div className="col-span-2 text-rose-700">
+              Tagged for surgery on {patient.surgery_flagged_at}, no admission since
+            </div>
+          )}
         </div>
+        {patient?.crm_notes && (
+          <div className="mt-2 text-xs text-slate-500 bg-slate-50 rounded-md p-2">{patient.crm_notes}</div>
+        )}
       </div>
 
       <div>
@@ -138,7 +188,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       </div>
 
       <div>
-        <h4 className="text-xs font-semibold text-slate-600 mb-1.5">② Call History (last 3 attempts)</h4>
+        <h4 className="text-xs font-semibold text-slate-600 mb-1.5">② Call History (last 5 attempts)</h4>
         {history.length === 0 ? (
           <p className="text-xs text-slate-400">No previous attempts yet.</p>
         ) : (
@@ -162,18 +212,6 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         <h4 className="text-xs font-semibold text-slate-600 mb-1.5">③ Recommended Next Action</h4>
         <div className="bg-emerald-50 border border-emerald-100 rounded-md p-2.5 text-xs text-emerald-800">
           {recommendedAction(row)}
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <h4 className="text-xs font-semibold text-slate-600">Suggested Script</h4>
-          <button onClick={copyScript} className="text-[11px] text-teal-700 hover:text-teal-800">
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-        <div className="bg-sky-50 border border-sky-100 rounded-md p-2.5 text-xs text-sky-900 whitespace-pre-line">
-          {suggestedScript(row)}
         </div>
       </div>
     </div>
