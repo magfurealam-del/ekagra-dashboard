@@ -9,7 +9,7 @@ import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import {
   SOURCE_CHANNEL_OPTIONS, CAMPAIGN_BUCKET_OPTIONS, LEAD_BUCKET_OPTIONS,
   MAIN_CONCERN_OPTIONS, URGENCY_OPTIONS, NEW_OLD_STATUS_OPTIONS,
-  INTAKE_OUTCOME_OPTIONS, FOLLOW_UP_PRIORITY_OPTIONS,
+  INTAKE_OUTCOME_OPTIONS,
   FOLLOWUP_QUEUE_OUTCOMES, CALLBACK_OUTCOMES, SUPPRESSED_OUTCOMES,
   defaultPriority,
 } from '@/lib/leadIntakeOptions'
@@ -41,10 +41,36 @@ const blankForm = {
   branch: 'Dhanmondi',
   appointment_date: '',
   appointment_time: '',
-  follow_up_due_date: '',
-  follow_up_due_time: '',
-  follow_up_priority: 'P3',
+  call_status_note: '',
   internal_note: '',
+}
+
+const CALL_STATUS_DEFAULTS: Record<string, string> = {
+  appointment_booked: 'উনি কল দিয়েছেন',
+  no_appointment_yet: 'কল রিসিভ হয়েছে, এপয়েন্টমেন্ট এখনো হয়নি',
+  call_later: 'পরে কল করতে বলেছেন',
+  not_reached: 'কল রিসিভ হয়নি',
+  busy: 'লাইন ব্যস্ত ছিল',
+  switched_off: 'ফোন বন্ধ ছিল',
+  wrong_number: 'ভুল নম্বর',
+  not_interested: 'আগ্রহী নন',
+  general_inquiry: 'সাধারণ জিজ্ঞাসা',
+}
+
+function formatDateDMY(iso: string): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-')
+  return `${parseInt(d, 10)}/${parseInt(m, 10)}/${y.slice(2)}`
+}
+
+function formatTime12h(t: string): string {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  let h = parseInt(hStr, 10)
+  const ampm = h >= 12 ? 'pm' : 'am'
+  h = h % 12
+  if (h === 0) h = 12
+  return `${h}.${mStr} ${ampm}`
 }
 
 export default function LeadIntakePage() {
@@ -54,9 +80,9 @@ export default function LeadIntakePage() {
   const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'found' | 'multiple' | 'new'>('idle')
   const [matches, setMatches] = useState<any[]>([])
   const [patientCard, setPatientCard] = useState<any | null>(null)
-  const [priorityTouched, setPriorityTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
+  const [copyLabel, setCopyLabel] = useState('Copy Message')
   const [form, setForm] = useState<any>(blankForm)
 
   const doctorOpts = useDoctors()
@@ -73,12 +99,16 @@ export default function LeadIntakePage() {
     setForm((f: any) => ({ ...f, [key]: value }))
   }
 
-  // Auto-suggest follow-up priority unless the agent has manually changed it
-  useEffect(() => {
-    if (priorityTouched) return
-    set('follow_up_priority', defaultPriority(form.lead_bucket, form.urgency, form.intake_outcome))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.lead_bucket, form.urgency, form.intake_outcome])
+  // Suggest a call-status note whenever intake outcome changes, unless the agent already typed one
+  function handleOutcomeChange(outcome: string) {
+    setForm((f: any) => ({
+      ...f,
+      intake_outcome: outcome,
+      call_status_note: f.call_status_note && f.call_status_note !== CALL_STATUS_DEFAULTS[f.intake_outcome]
+        ? f.call_status_note
+        : CALL_STATUS_DEFAULTS[outcome] || '',
+    }))
+  }
 
   async function runPhoneSearch() {
     if (phone.replace(/\D/g, '').length < 7) return
@@ -150,8 +180,6 @@ export default function LeadIntakePage() {
   }
 
   const requiresAppointmentFields = form.intake_outcome === 'appointment_booked'
-  const requiresFollowUpPriority = FOLLOWUP_QUEUE_OUTCOMES.includes(form.intake_outcome)
-  const requiresCallbackDue = CALLBACK_OUTCOMES.includes(form.intake_outcome)
   const isSuppressed = SUPPRESSED_OUTCOMES.includes(form.intake_outcome)
 
   function validate(effectiveOutcome: string): string | null {
@@ -162,12 +190,6 @@ export default function LeadIntakePage() {
         return 'Doctor, service type, branch, date, and time are required to book an appointment.'
       }
     }
-    if (CALLBACK_OUTCOMES.includes(effectiveOutcome) && !form.follow_up_due_date) {
-      return 'Follow-up due date is required for Call Later.'
-    }
-    if (FOLLOWUP_QUEUE_OUTCOMES.includes(effectiveOutcome) && !form.follow_up_priority) {
-      return 'Follow-up priority is required.'
-    }
     return null
   }
 
@@ -177,9 +199,7 @@ export default function LeadIntakePage() {
     if (err) { showToast(err); return }
 
     setSaving(true)
-    const dueAt = form.follow_up_due_date
-      ? `${form.follow_up_due_date}T${form.follow_up_due_time || '10:00'}:00`
-      : null
+    const autoPriority = defaultPriority(form.lead_bucket, form.urgency, effectiveOutcome)
 
     const { data, error } = await supabase.rpc('save_lead_intake', {
       payload: {
@@ -201,9 +221,9 @@ export default function LeadIntakePage() {
         branch: form.branch,
         appointment_date: form.appointment_date || null,
         appointment_time: form.appointment_time || null,
-        follow_up_due_at: dueAt,
-        follow_up_priority: form.follow_up_priority,
-        internal_note: form.internal_note,
+        follow_up_due_at: null,
+        follow_up_priority: autoPriority,
+        internal_note: form.internal_note || form.call_status_note,
       },
     })
     setSaving(false)
@@ -223,7 +243,7 @@ export default function LeadIntakePage() {
       setPatientCard(null)
       setMatches([])
       setLookupState('idle')
-      setPriorityTouched(false)
+      setCopyLabel('Copy Message')
     }
   }
 
@@ -310,7 +330,7 @@ export default function LeadIntakePage() {
       </section>
 
       {/* Left / Right columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_320px] gap-4 items-start">
         <div className="space-y-4">
           {/* Section 2: Lead Details */}
           <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
@@ -390,7 +410,7 @@ export default function LeadIntakePage() {
           <Field label="Intake outcome *">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {INTAKE_OUTCOME_OPTIONS.map((o) => (
-                <Chip key={o.value} active={form.intake_outcome === o.value} onClick={() => set('intake_outcome', o.value)}>
+                <Chip key={o.value} active={form.intake_outcome === o.value} onClick={() => handleOutcomeChange(o.value)}>
                   {o.label}
                 </Chip>
               ))}
@@ -420,24 +440,16 @@ export default function LeadIntakePage() {
             </div>
           )}
 
-          {(requiresFollowUpPriority || requiresCallbackDue) && (
-            <div className="border-t border-slate-100 pt-3 space-y-3">
-              <p className="text-xs font-medium text-slate-500 uppercase">Follow-up</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label={`Follow-up due date${requiresCallbackDue ? ' *' : ''}`}>
-                  <input type="date" className="input" value={form.follow_up_due_date} onChange={(e) => set('follow_up_due_date', e.target.value)} />
-                </Field>
-                <Field label="Follow-up due time">
-                  <input type="time" className="input" value={form.follow_up_due_time} onChange={(e) => set('follow_up_due_time', e.target.value)} />
-                </Field>
-                <Field label="Follow-up priority *">
-                  <SearchableSelect
-                    options={FOLLOW_UP_PRIORITY_OPTIONS}
-                    value={form.follow_up_priority}
-                    onChange={(v) => { setPriorityTouched(true); set('follow_up_priority', v) }}
-                  />
-                </Field>
-              </div>
+          {(form.intake_outcome !== 'appointment_booked') && (
+            <div className="border-t border-slate-100 pt-3">
+              <Field label="Call status">
+                <input
+                  className="input"
+                  value={form.call_status_note}
+                  onChange={(e) => set('call_status_note', e.target.value)}
+                  placeholder="e.g. উনি কল দিয়েছেন"
+                />
+              </Field>
             </div>
           )}
 
@@ -452,6 +464,9 @@ export default function LeadIntakePage() {
             <span className="text-xs text-slate-400">{form.internal_note.length}/250</span>
           </Field>
         </section>
+
+        {/* WhatsApp-ready message panel */}
+        <WhatsAppPanel form={form} copyLabel={copyLabel} setCopyLabel={setCopyLabel} showToast={showToast} />
       </div>
 
       {/* Sticky bottom action bar */}
@@ -476,6 +491,61 @@ export default function LeadIntakePage() {
         </div>
       )}
     </div>
+  )
+}
+
+function buildWhatsAppMessage(form: any): string {
+  const lines: string[] = []
+  lines.push(`Entry Type: ${form.new_old_status === 'New' ? 'New Call' : 'Follow-up Call'}`)
+  lines.push(`Patient Name: ${form.patient_name || '—'}`)
+  lines.push(`Contact Number: ${form.phone || '—'}`)
+  if (form.call_status_note) lines.push(`Call Status: ${form.call_status_note}`)
+  if (form.appointment_date) lines.push(`Appointment Date: ${formatDateDMY(form.appointment_date)}`)
+  if (form.appointment_time) lines.push(`Appointment Time: ${formatTime12h(form.appointment_time)}`)
+  if (form.service_type) lines.push(`Appointment For: ${form.service_type}`)
+  if (form.doctor) lines.push(`Doctor/Service: ${form.doctor}`)
+  if (form.location) lines.push(`Coming From: ${form.location}`)
+  const concern = [form.main_concern, form.notes].filter(Boolean).join(', ')
+  if (concern) lines.push(`Patient Concern: ${concern}`)
+  return lines.join('\n')
+}
+
+function WhatsAppPanel({
+  form, copyLabel, setCopyLabel, showToast,
+}: {
+  form: any
+  copyLabel: string
+  setCopyLabel: (v: string) => void
+  showToast: (msg: string) => void
+}) {
+  const message = useMemo(() => buildWhatsAppMessage(form), [form])
+
+  async function copyMessage() {
+    try {
+      await navigator.clipboard.writeText(message)
+      setCopyLabel('Copied!')
+      setTimeout(() => setCopyLabel('Copy Message'), 2000)
+    } catch {
+      showToast('Could not copy — select and copy the text manually.')
+    }
+  }
+
+  return (
+    <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 lg:sticky lg:top-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-medium text-slate-700 text-sm">WhatsApp Message</h2>
+        <button
+          onClick={copyMessage}
+          className="bg-emerald-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-emerald-700"
+        >
+          {copyLabel}
+        </button>
+      </div>
+      <pre className="whitespace-pre-wrap break-words text-xs bg-slate-50 border border-slate-200 rounded-md p-3 font-sans text-slate-700 min-h-[220px]">
+        {message}
+      </pre>
+      <p className="text-xs text-slate-400">Updates live as you fill in the form. Tap Copy, then paste into WhatsApp.</p>
+    </section>
   )
 }
 
