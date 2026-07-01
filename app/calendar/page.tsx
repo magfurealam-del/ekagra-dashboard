@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import CalendarGrid, { DayCellData, DayPill } from '@/components/calendar/CalendarGrid'
-import CalendarKPIs from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
 
 export default function CalendarPage() {
@@ -14,7 +13,6 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const [daySummaryRows, setDaySummaryRows] = useState<any[]>([])
-  const [kpi, setKpi] = useState<any | null>(null)
   const [loadingGrid, setLoadingGrid] = useState(true)
 
   // Doctor/patient filter
@@ -44,11 +42,6 @@ export default function CalendarPage() {
       })
     return () => { cancelled = true }
   }, [start, end])
-
-  // Load tomorrow's KPIs
-  useEffect(() => {
-    supabase.from('calendar_tomorrow_kpi').select('*').single().then(({ data }) => setKpi(data))
-  }, [])
 
   function changeMonth(delta: number) {
     let m = month + delta, y = year
@@ -101,25 +94,24 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* KPI bar — always visible */}
-      <CalendarKPIs kpi={kpi} />
-
       {/* Main content — calendar left, call sheet right when a date is selected */}
       <div className={`grid gap-4 ${sheetOpen ? 'grid-cols-1 xl:grid-cols-[1fr_2.2fr]' : 'grid-cols-1'}`}>
         {/* Calendar grid */}
-        <CalendarGrid
-          year={year}
-          month={month}
-          dayData={dayData}
-          selectedDate={selectedDate}
-          onDayClick={setSelectedDate}
-          onPrev={() => changeMonth(-1)}
-          onNext={() => changeMonth(1)}
-        />
+        <div className="lg:h-[calc(100vh-160px)] min-h-[600px]">
+          <CalendarGrid
+            year={year}
+            month={month}
+            dayData={dayData}
+            selectedDate={selectedDate}
+            onDayClick={setSelectedDate}
+            onPrev={() => changeMonth(-1)}
+            onNext={() => changeMonth(1)}
+          />
+        </div>
 
         {/* Confirmation call sheet — opens inline on the right */}
         {sheetOpen && (
-          <div className="lg:h-[calc(100vh-280px)] min-h-[500px]">
+          <div className="lg:h-[calc(100vh-160px)] min-h-[600px]">
             <ConfirmationCallSheet
               date={selectedDate!}
               onClose={() => setSelectedDate(null)}

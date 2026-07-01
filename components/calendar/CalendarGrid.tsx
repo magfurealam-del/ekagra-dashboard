@@ -33,7 +33,7 @@ export default function CalendarGrid({
   const monthLabel = new Date(year, month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <button onClick={onPrev} className="px-3 py-1 border rounded-md text-sm hover:bg-slate-50">← Prev</button>
         <h2 className="font-semibold text-slate-800">{monthLabel}</h2>
@@ -44,7 +44,7 @@ export default function CalendarGrid({
           <div key={d} className="text-center py-1">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1.5 flex-1">
         {cells.map((d, i) => {
           if (d === null) return <div key={i} />
           const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
@@ -58,7 +58,7 @@ export default function CalendarGrid({
               key={i}
               onClick={() => clickable && onDayClick(dateStr)}
               disabled={!clickable}
-              className={`border rounded-lg p-1.5 text-left min-h-[90px] transition-all text-xs ${
+              className={`border rounded-lg p-2 text-left min-h-[120px] transition-all text-xs ${
                 selected ? 'border-teal-500 ring-2 ring-teal-300 bg-teal-50'
                 : today ? 'border-teal-400 bg-teal-50'
                 : 'border-slate-200 hover:border-slate-300'
