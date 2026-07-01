@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import AddToQueueModal from './AddToQueueModal'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -60,7 +59,6 @@ export default function ConfirmationCallSheet({
   const [tab, setTab] = useState<Tab>('All Patients')
   const [agentName, setAgentName] = useState('Yakub')
   const [saving, setSaving] = useState<string | null>(null)  // "nb-{id}" | "mo-{id}" | "undo-nb-{id}" | "undo-mo-{id}"
-  const [queueModal, setQueueModal] = useState<any | null>(null)
   const [toast, setToast] = useState('')
   const [page, setPage] = useState(1)
   const PER_PAGE = 10
@@ -152,16 +150,16 @@ export default function ConfirmationCallSheet({
 
     if (outcome) {
       return (
-        <div className="space-y-1">
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className={`text-[10px] rounded px-1.5 py-0.5 ${STATUS_BADGE[outcome] ?? 'bg-slate-100'}`}>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`text-xs rounded px-2 py-1 ${STATUS_BADGE[outcome] ?? 'bg-slate-100'}`}>
               {outcomeLabel(outcome)}
             </span>
             <button
               onClick={() => reverseCall(row, callType)}
               disabled={isUndoing}
               title="Undo this call — recorded by mistake"
-              className="text-[10px] px-1.5 py-0.5 rounded border border-slate-300 text-slate-500
+              className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-500
                          hover:bg-rose-50 hover:border-rose-300 hover:text-rose-600
                          transition-colors disabled:opacity-40"
             >
@@ -169,7 +167,7 @@ export default function ConfirmationCallSheet({
             </button>
           </div>
           {agentVal && (
-            <div className="text-[10px] text-slate-400">
+            <div className="text-xs text-slate-400">
               {agentVal}{calledAt ? ' ' + new Date(calledAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}
             </div>
           )}
@@ -178,13 +176,13 @@ export default function ConfirmationCallSheet({
     }
 
     return (
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1.5">
         {OUTCOME_BUTTONS.slice(0, 4).map(b => (
           <button
             key={b.outcome}
             disabled={isSetting}
             onClick={() => recordCall(row, callType, b.outcome)}
-            className={`text-[10px] px-1.5 py-0.5 rounded transition-all ${b.tone} disabled:opacity-50`}
+            className={`text-xs px-2 py-1 rounded transition-all ${b.tone} disabled:opacity-50`}
           >
             {b.label}
           </button>
@@ -233,9 +231,9 @@ export default function ConfirmationCallSheet({
             { l: 'Pending',   v: rows.filter(r=>r.confirmation_status!=='Confirmed').length, tone: 'text-amber-600' },
             { l: 'Risk',      v: rows.filter(r=>r.no_show_risk==='high').length,             tone: 'text-rose-600' },
           ].map(m => (
-            <div key={m.l} className="bg-slate-50 rounded-md p-1.5 text-center">
+            <div key={m.l} className="bg-slate-50 rounded-md p-2 text-center">
               <div className={`text-lg font-bold ${m.tone}`}>{m.v}</div>
-              <div className="text-[10px] text-slate-400">{m.l}</div>
+              <div className="text-xs text-slate-400">{m.l}</div>
             </div>
           ))}
         </div>
@@ -248,16 +246,17 @@ export default function ConfirmationCallSheet({
         ) : paginated.length === 0 ? (
           <p className="p-4 text-sm text-slate-400">No appointments match this tab.</p>
         ) : (
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr className="text-left text-slate-500 border-b border-slate-200">
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Time</th>
-                <th className="px-2 py-2 font-medium">Patient & Contact</th>
-                <th className="px-2 py-2 font-medium">Doctor</th>
-                <th className="px-2 py-2 font-medium">Status</th>
-                <th className="px-2 py-2 font-medium">Night Before</th>
-                <th className="px-2 py-2 font-medium">Morning Of</th>
-                <th className="px-2 py-2 font-medium">Actions</th>
+                <th className="px-3 py-2.5 font-medium whitespace-nowrap">Time</th>
+                <th className="px-3 py-2.5 font-medium">Patient</th>
+                <th className="px-3 py-2.5 font-medium">Phone</th>
+                <th className="px-3 py-2.5 font-medium">Doctor</th>
+                <th className="px-3 py-2.5 font-medium">Reason for Visit</th>
+                <th className="px-3 py-2.5 font-medium">Status</th>
+                <th className="px-3 py-2.5 font-medium">Night Before</th>
+                <th className="px-3 py-2.5 font-medium">Morning Of</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -272,34 +271,34 @@ export default function ConfirmationCallSheet({
 
                 return (
                   <tr key={r.appointment_id} className="hover:bg-slate-50">
-                    <td className="px-2 py-2 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
-                    <td className="px-2 py-2 align-top">
-                      <div className="font-medium text-slate-800 truncate max-w-[140px]">{displayName}</div>
-                      {displayPhone && <div className="text-slate-400 text-[11px]">{displayPhone}</div>}
-                      {r.hn && <div className="text-slate-400 text-[11px]">HN: {r.hn}</div>}
-                      {displayReason && (
-                        <div className="text-slate-400 text-[10px] max-w-[140px] truncate" title={displayReason}>
-                          {displayReason}
-                        </div>
-                      )}
+                    <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="font-medium text-slate-800">{displayName}</div>
+                      {r.hn && <div className="text-slate-400 text-xs mt-0.5">HN: {r.hn}</div>}
                     </td>
-                    <td className="px-2 py-2 text-slate-600 align-top max-w-[100px]">
-                      <div className="truncate">{(r.doctor_service || '—').replace('Dr. Chowdhury Rashedul','Dr. C.R.').replace('Dr. Muhammad Nazmul','Dr. Nazmul')}</div>
-                      {r.service_type && <div className="text-[10px] text-slate-400 truncate">{r.service_type}</div>}
+                    <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap">
+                      {displayPhone || '—'}
                     </td>
-                    <td className="px-2 py-2 align-top">
-                      <span className={`text-[10px] rounded px-1.5 py-0.5 ${STATUS_BADGE[r.appointment_status] ?? 'bg-slate-100 text-slate-500'}`}>
+                    <td className="px-3 py-3 text-slate-600 align-top">
+                      <div>{(r.doctor_service || '—')}</div>
+                      {r.service_type && <div className="text-xs text-slate-400 mt-0.5">{r.service_type}</div>}
+                    </td>
+                    <td className="px-3 py-3 align-top text-slate-600 max-w-[280px]">
+                      {displayReason || '—'}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <span className={`text-xs rounded px-1.5 py-0.5 ${STATUS_BADGE[r.appointment_status] ?? 'bg-slate-100 text-slate-500'}`}>
                         {r.appointment_status}
                       </span>
                       {r.no_show_risk && (
-                        <div className="mt-0.5">
-                          <span className={`text-[10px] rounded px-1.5 py-0.5 ${RISK_BADGE[r.no_show_risk]}`}>
+                        <div className="mt-1">
+                          <span className={`text-xs rounded px-1.5 py-0.5 ${RISK_BADGE[r.no_show_risk]}`}>
                             {r.no_show_risk} risk
                           </span>
                         </div>
                       )}
                     </td>
-                    <td className="px-2 py-2 align-top min-w-[130px]">
+                    <td className="px-3 py-3 align-top min-w-[150px]">
                       <CallOutcomeCell
                         row={r}
                         callType="night_before"
@@ -308,7 +307,7 @@ export default function ConfirmationCallSheet({
                         calledAt={r.nb_called_at}
                       />
                     </td>
-                    <td className="px-2 py-2 align-top min-w-[130px]">
+                    <td className="px-3 py-3 align-top min-w-[150px]">
                       <CallOutcomeCell
                         row={r}
                         callType="morning_of"
@@ -316,20 +315,6 @@ export default function ConfirmationCallSheet({
                         agentVal={r.mo_agent}
                         calledAt={r.mo_called_at}
                       />
-                    </td>
-                    <td className="px-2 py-2 align-top">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {(displayPhone || r.phone) && (
-                          <a href={`tel:${displayPhone || r.phone}`}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 hover:bg-teal-200 transition-colors">
-                            Call
-                          </a>
-                        )}
-                        <button onClick={() => setQueueModal({ ...r, phone: displayPhone || r.phone })}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
-                          + Queue
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 )
@@ -354,14 +339,6 @@ export default function ConfirmationCallSheet({
               className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-slate-50">→</button>
           </div>
         </div>
-      )}
-
-      {queueModal && (
-        <AddToQueueModal
-          appointment={queueModal}
-          onClose={() => setQueueModal(null)}
-          onSaved={() => { setQueueModal(null); showToast('Added to outgoing call queue') }}
-        />
       )}
 
       {toast && (

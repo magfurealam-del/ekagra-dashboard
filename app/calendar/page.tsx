@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase'
 import CalendarGrid, { DayCellData, DayPill } from '@/components/calendar/CalendarGrid'
 import CalendarKPIs from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
-import MonitoringPanels from '@/components/calendar/MonitoringPanels'
 
 export default function CalendarPage() {
   const today = new Date()
@@ -106,7 +105,7 @@ export default function CalendarPage() {
       <CalendarKPIs kpi={kpi} />
 
       {/* Main content — calendar left, call sheet right when a date is selected */}
-      <div className={`grid gap-4 ${sheetOpen ? 'grid-cols-1 lg:grid-cols-[1fr_1.1fr]' : 'grid-cols-1'}`}>
+      <div className={`grid gap-4 ${sheetOpen ? 'grid-cols-1 xl:grid-cols-[1fr_2.2fr]' : 'grid-cols-1'}`}>
         {/* Calendar grid */}
         <CalendarGrid
           year={year}
@@ -128,9 +127,6 @@ export default function CalendarPage() {
           </div>
         )}
       </div>
-
-      {/* Executive monitoring panels */}
-      <MonitoringPanels />
     </div>
   )
 }
