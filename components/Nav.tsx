@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const links = [
-  { href: '/', label: 'Add Lead / Book Appointment' },
+  { href: '/', label: 'Lead Intake & Appointment' },
   { href: '/today', label: "Today's Appointments" },
   { href: '/patients', label: 'Patient List' },
   { href: '/calendar', label: 'Calendar' },

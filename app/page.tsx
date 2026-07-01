@@ -1,320 +1,499 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
+import {
+  SOURCE_CHANNEL_OPTIONS, CAMPAIGN_BUCKET_OPTIONS, LEAD_BUCKET_OPTIONS,
+  MAIN_CONCERN_OPTIONS, URGENCY_OPTIONS, NEW_OLD_STATUS_OPTIONS,
+  INTAKE_OUTCOME_OPTIONS, FOLLOW_UP_PRIORITY_OPTIONS,
+  FOLLOWUP_QUEUE_OUTCOMES, CALLBACK_OUTCOMES, SUPPRESSED_OUTCOMES,
+  defaultPriority,
+} from '@/lib/leadIntakeOptions'
 
-type SearchState = 'idle' | 'searching' | 'new' | 'existing_patient' | 'old_lead' | 'multiple_matches'
+function opts(list: string[]) {
+  return list.map((v) => ({ label: v, value: v }))
+}
 
-export default function AddLeadPage() {
+const blankForm = {
+  lead_date: new Date().toISOString().slice(0, 10),
+  patient_name: '',
+  phone: '',
+  age: '',
+  gender: '',
+  location: '',
+  new_old_status: 'New',
+  source_channel: '',
+  campaign_bucket: '',
+  agent_name: '',
+
+  lead_bucket: '',
+  main_concern: '',
+  urgency: 'Routine',
+  notes: '',
+
+  intake_outcome: 'no_appointment_yet',
+  doctor: '',
+  service_type: '',
+  branch: 'Dhanmondi',
+  appointment_date: '',
+  appointment_time: '',
+  follow_up_due_date: '',
+  follow_up_due_time: '',
+  follow_up_priority: 'P3',
+  internal_note: '',
+}
+
+export default function LeadIntakePage() {
   const [phone, setPhone] = useState('')
-  const [state, setState] = useState<SearchState>('idle')
-  const [patients, setPatients] = useState<any[]>([])
-  const [leads, setLeads] = useState<any[]>([])
-  const [selectedPatient, setSelectedPatient] = useState<any | null>(null)
-  const [showForm, setShowForm] = useState(false)
+  const [patientIdQuery, setPatientIdQuery] = useState('')
+  const [nameQuery, setNameQuery] = useState('')
+  const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'found' | 'multiple' | 'new'>('idle')
+  const [matches, setMatches] = useState<any[]>([])
+  const [patientCard, setPatientCard] = useState<any | null>(null)
+  const [priorityTouched, setPriorityTouched] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
-
-  const leadSourceOpts = useDropdownOptions('lead_source')
-  const patientTypeOpts = useDropdownOptions('patient_type')
-  const leadStatusOpts = useDropdownOptions('lead_status')
-  const diabetesOpts = useDropdownOptions('diabetes_status')
-  const genderOpts = useDropdownOptions('gender')
-  const apptStatusOpts = useDropdownOptions('appointment_status')
-  const confirmStatusOpts = useDropdownOptions('confirmation_status')
-
-  const blankForm = {
-    patient_name: '', phone: '', secondary_phone: '', age: '', gender: '', area: '',
-    diabetes_status: '', hospital_patient_id: '', patient_type: '', notes: '',
-    source: '', main_problem: '', lead_status: 'No Appointment Booked', agent_name: '', campaign_name: '', internal_notes: '',
-    appointment_date: '', appointment_time: '', doctor_service: '', appointment_type: '',
-    appointment_status: 'Booked', confirmation_status: 'Not Confirmed', visit_notes: '',
-  }
   const [form, setForm] = useState<any>(blankForm)
+
+  const doctorOpts = useDoctors()
+  const serviceTypeOpts = useDropdownOptions('service_type')
+  const branchOpts = useDropdownOptions('branch')
+  const genderOpts = useDropdownOptions('gender')
 
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(''), 3500)
   }
 
-  async function runSearch() {
+  function set<K extends keyof typeof blankForm>(key: K, value: any) {
+    setForm((f: any) => ({ ...f, [key]: value }))
+  }
+
+  // Auto-suggest follow-up priority unless the agent has manually changed it
+  useEffect(() => {
+    if (priorityTouched) return
+    set('follow_up_priority', defaultPriority(form.lead_bucket, form.urgency, form.intake_outcome))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.lead_bucket, form.urgency, form.intake_outcome])
+
+  async function runPhoneSearch() {
     if (phone.replace(/\D/g, '').length < 7) return
-    setState('searching')
+    setLookupState('searching')
     const { data, error } = await supabase.rpc('search_patient_by_phone', { phone_input: phone })
-    if (error) {
-      showToast('Search failed: ' + error.message)
-      setState('idle')
-      return
-    }
+    if (error) { showToast('Search failed: ' + error.message); setLookupState('idle'); return }
     const result = data as any
-    setPatients(result.patients || [])
-    setLeads(result.leads || [])
-    setState(result.state)
-    if (result.state === 'new') setForm((f: any) => ({ ...f, phone }))
+    const foundPatients = result.patients || []
+    if (foundPatients.length > 1) {
+      setMatches(foundPatients)
+      setLookupState('multiple')
+    } else if (foundPatients.length === 1) {
+      await loadPatientCard(foundPatients[0].patient_id)
+      setLookupState('found')
+    } else {
+      setLookupState('new')
+      set('phone', normalizeBdPhone(phone))
+      set('new_old_status', 'New')
+    }
   }
 
-  function startIntakeFromPatient(p: any) {
-    setSelectedPatient(p)
-    setForm((f: any) => ({
-      ...f,
-      patient_name: p.patient_name || '',
-      phone: p.phone || phone,
-      hospital_patient_id: p.hospital_patient_id || '',
-      patient_type: p.patient_type || '',
-      notes: p.last_note || '',
-    }))
-    setShowForm(true)
-  }
-
-  function startIntakeFromLead(l: any) {
-    setSelectedPatient(null)
-    setForm((f: any) => ({
-      ...f,
-      patient_name: l.lead_name || '',
-      phone: l.phone || phone,
-      patient_type: l.patient_type || '',
-      source: l.source || '',
-      main_problem: l.main_problem || '',
-      agent_name: l.agent_name || '',
-      internal_notes: l.notes || '',
-    }))
-    setShowForm(true)
-  }
-
-  function startNewIntake() {
-    setSelectedPatient(null)
-    setForm((f: any) => ({ ...f, phone }))
-    setShowForm(true)
-  }
-
-  async function refetchSearch() {
-    const { data } = await supabase.rpc('search_patient_by_phone', { phone_input: phone })
+  async function loadPatientCard(patientId: number) {
+    const { data } = await supabase.from('patient_master_view').select('*').eq('patient_id', patientId).single()
     if (data) {
-      setPatients(data.patients || [])
-      setLeads(data.leads || [])
+      setPatientCard(data)
+      setForm((f: any) => ({
+        ...f,
+        patient_name: data.patient_name || '',
+        phone: data.phone_e164 || data.phone || phone,
+        location: data.area || '',
+        new_old_status: 'Old',
+      }))
+      setLookupState('found')
+      setMatches([])
     }
   }
 
-  async function handleSave(bookAppointment: boolean) {
-    if (!form.patient_name || !form.phone) {
-      showToast('Patient name and phone are required.')
-      return
-    }
-    const patientId = await supabase.rpc('upsert_patient_from_intake', {
-      payload: {
-        patient_name: form.patient_name, phone: form.phone, secondary_phone: form.secondary_phone,
-        gender: form.gender, address: form.area, area: form.area, diabetes_status: form.diabetes_status,
-        hospital_patient_id: form.hospital_patient_id, patient_type: form.patient_type, notes: form.notes,
-        updated_by: form.agent_name || 'agent',
-      },
-    })
-    if (patientId.error) { showToast('Error saving patient: ' + patientId.error.message); return }
-    const pid = patientId.data as number
-    showToast(selectedPatient ? 'Existing patient updated.' : 'New patient created.')
-
-    const leadId = await supabase.rpc('create_lead_for_patient', {
-      payload: {
-        patient_id: pid, lead_name: form.patient_name, phone: form.phone, source: form.source,
-        campaign_name: form.campaign_name, patient_type: form.patient_type, main_problem: form.main_problem,
-        lead_status: bookAppointment ? 'Appointment Booked' : form.lead_status,
-        agent_name: form.agent_name, notes: form.internal_notes,
-      },
-    })
-    if (leadId.error) { showToast('Error saving lead: ' + leadId.error.message); return }
-    showToast('Lead saved.')
-
-    if (bookAppointment && form.appointment_date) {
-      const apptId = await supabase.rpc('book_appointment', {
-        payload: {
-          patient_id: pid, lead_id: leadId.data, appointment_date: form.appointment_date,
-          appointment_time: form.appointment_time, doctor_service: form.doctor_service,
-          appointment_type: form.appointment_type, appointment_status: form.appointment_status,
-          confirmation_status: form.confirmation_status, notes: form.visit_notes, created_by: form.agent_name || 'agent',
-        },
-      })
-      if (apptId.error) { showToast('Error booking appointment: ' + apptId.error.message); return }
-      showToast('Appointment booked.')
-    }
-
-    showToast('Latest Supabase data loaded.')
-    await refetchSearch()
-    setShowForm(false)
+  async function searchByPatientId() {
+    if (!patientIdQuery) return
+    setLookupState('searching')
+    const { data } = await supabase
+      .from('patient_master_view')
+      .select('*')
+      .or(`hospital_id.ilike.%${patientIdQuery}%`)
+      .limit(5)
+    if (data && data.length === 1) { await loadPatientCard(data[0].patient_id) }
+    else if (data && data.length > 1) { setMatches(data.map((d: any) => ({ ...d, patient_id: d.patient_id }))); setLookupState('multiple') }
+    else { setLookupState('new'); showToast('No patient found with that ID.') }
   }
 
-  function clearAll() {
-    setPhone('')
-    setState('idle')
-    setPatients([])
-    setLeads([])
-    setSelectedPatient(null)
-    setShowForm(false)
-    setForm(blankForm)
+  async function searchByName() {
+    if (!nameQuery) return
+    setLookupState('searching')
+    const { data } = await supabase
+      .from('patient_master_view')
+      .select('*')
+      .ilike('patient_name', `%${nameQuery}%`)
+      .limit(5)
+    if (data && data.length === 1) { await loadPatientCard(data[0].patient_id) }
+    else if (data && data.length > 1) { setMatches(data); setLookupState('multiple') }
+    else { setLookupState('new'); showToast('No patient found with that name.') }
+  }
+
+  function markNewPatient() {
+    setPatientCard(null)
+    setMatches([])
+    setLookupState('new')
+    set('new_old_status', 'New')
+  }
+
+  const requiresAppointmentFields = form.intake_outcome === 'appointment_booked'
+  const requiresFollowUpPriority = FOLLOWUP_QUEUE_OUTCOMES.includes(form.intake_outcome)
+  const requiresCallbackDue = CALLBACK_OUTCOMES.includes(form.intake_outcome)
+  const isSuppressed = SUPPRESSED_OUTCOMES.includes(form.intake_outcome)
+
+  function validate(effectiveOutcome: string): string | null {
+    if (!form.patient_name) return 'Patient name is required.'
+    if (!form.phone) return 'Phone number is required.'
+    if (effectiveOutcome === 'appointment_booked') {
+      if (!form.doctor || !form.service_type || !form.branch || !form.appointment_date || !form.appointment_time) {
+        return 'Doctor, service type, branch, date, and time are required to book an appointment.'
+      }
+    }
+    if (CALLBACK_OUTCOMES.includes(effectiveOutcome) && !form.follow_up_due_date) {
+      return 'Follow-up due date is required for Call Later.'
+    }
+    if (FOLLOWUP_QUEUE_OUTCOMES.includes(effectiveOutcome) && !form.follow_up_priority) {
+      return 'Follow-up priority is required.'
+    }
+    return null
+  }
+
+  async function save(overrideOutcome?: string, andNext?: boolean) {
+    const effectiveOutcome = overrideOutcome || form.intake_outcome
+    const err = validate(effectiveOutcome)
+    if (err) { showToast(err); return }
+
+    setSaving(true)
+    const dueAt = form.follow_up_due_date
+      ? `${form.follow_up_due_date}T${form.follow_up_due_time || '10:00'}:00`
+      : null
+
+    const { data, error } = await supabase.rpc('save_lead_intake', {
+      payload: {
+        patient_name: form.patient_name,
+        phone: form.phone,
+        gender: form.gender,
+        location: form.location,
+        new_old_status: form.new_old_status,
+        source_channel: form.source_channel,
+        campaign_bucket: form.campaign_bucket,
+        agent_name: form.agent_name,
+        lead_bucket: form.lead_bucket,
+        main_concern: form.main_concern,
+        urgency: form.urgency,
+        notes: form.notes,
+        intake_outcome: effectiveOutcome,
+        doctor: form.doctor,
+        service_type: form.service_type,
+        branch: form.branch,
+        appointment_date: form.appointment_date || null,
+        appointment_time: form.appointment_time || null,
+        follow_up_due_at: dueAt,
+        follow_up_priority: form.follow_up_priority,
+        internal_note: form.internal_note,
+      },
+    })
+    setSaving(false)
+    if (error) { showToast('Save failed: ' + error.message); return }
+
+    const result = data as any
+    if (effectiveOutcome === 'appointment_booked') showToast('Lead saved and appointment booked.')
+    else if (FOLLOWUP_QUEUE_OUTCOMES.includes(effectiveOutcome) || CALLBACK_OUTCOMES.includes(effectiveOutcome)) showToast('Lead saved and added to follow-up queue.')
+    else showToast('Lead saved.')
+
+    if (andNext) {
+      const keepAgent = form.agent_name
+      setForm({ ...blankForm, agent_name: keepAgent })
+      setPhone('')
+      setPatientIdQuery('')
+      setNameQuery('')
+      setPatientCard(null)
+      setMatches([])
+      setLookupState('idle')
+      setPriorityTouched(false)
+    }
   }
 
   return (
-    <div className="space-y-6 pb-20">
-      <h1 className="text-2xl font-semibold">Add Lead / Book Appointment</h1>
-
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-        <h2 className="font-medium text-slate-700">Step 1: Search Patient by Phone Number</h2>
-        <div className="flex gap-2">
-          <input
-            className="input flex-1"
-            placeholder="e.g. 017XXXXXXXX"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          />
-          <button onClick={runSearch} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-teal-700">
-            Search
-          </button>
-        </div>
-        {phone && <p className="text-xs text-slate-400">Normalized: {normalizeBdPhone(phone)}</p>}
+    <div className="space-y-4 pb-28">
+      <div>
+        <h1 className="text-2xl font-semibold">Lead Intake & Appointment</h1>
+        <p className="text-sm text-slate-500">Fast patient intake, booking, and follow-up</p>
       </div>
 
-      {state === 'searching' && <p className="text-sm text-slate-500">Searching Supabase…</p>}
-
-      {state === 'new' && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-          <p className="font-medium text-amber-700">New patient / new lead</p>
-          <button onClick={startNewIntake} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">
-            Create New Patient
-          </button>
+      {/* Section 1: Patient Lookup */}
+      <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <SectionTitle n={1} title="Patient Lookup" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Field label="Phone number (primary lookup)">
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="e.g. 017XXXXXXXX"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runPhoneSearch()}
+              />
+              <button onClick={runPhoneSearch} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-teal-700">
+                Search
+              </button>
+            </div>
+          </Field>
+          <Field label="Patient ID">
+            <div className="flex gap-2">
+              <input className="input flex-1" placeholder="e.g. H12606000913" value={patientIdQuery}
+                onChange={(e) => setPatientIdQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && searchByPatientId()} />
+              <button onClick={searchByPatientId} className="border border-slate-300 px-3 py-2 rounded-md text-sm">Search</button>
+            </div>
+          </Field>
+          <Field label="Patient name">
+            <div className="flex gap-2">
+              <input className="input flex-1" placeholder="e.g. Ramesh Mehta" value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && searchByName()} />
+              <button onClick={searchByName} className="border border-slate-300 px-3 py-2 rounded-md text-sm">Search</button>
+            </div>
+          </Field>
         </div>
-      )}
 
-      {state === 'existing_patient' && patients[0] && (
-        <PatientCard p={patients[0]} onUse={() => startIntakeFromPatient(patients[0])} />
-      )}
-
-      {state === 'old_lead' && leads[0] && (
-        <LeadCard l={leads[0]} onUse={() => startIntakeFromLead(leads[0])} />
-      )}
-
-      {state === 'multiple_matches' && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-          <p className="font-medium text-amber-700">Multiple possible matches</p>
-          <div className="space-y-2">
-            {patients.map((p) => (
-              <div key={p.patient_id} className="flex items-center justify-between border border-slate-200 rounded-md px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium">{p.patient_name}</span> · {p.phone} · {p.hospital_patient_id || 'no ID'} · {p.last_appointment_status || 'no appt'}
-                </div>
-                <button onClick={() => startIntakeFromPatient(p)} className="text-teal-700 text-xs font-medium">Select</button>
+        {lookupState === 'multiple' && (
+          <div className="border border-amber-200 bg-amber-50 rounded-md p-3 space-y-2">
+            <p className="text-sm text-amber-800">Multiple matches found — select the right patient:</p>
+            {matches.map((p: any) => (
+              <div key={p.patient_id} className="flex items-center justify-between text-sm bg-white rounded px-3 py-2 border border-amber-100">
+                <span>{p.patient_name} · {p.phone || p.phone_e164} · {p.hospital_id || 'no ID'}</span>
+                <button onClick={() => loadPatientCard(p.patient_id)} className="text-teal-700 text-xs font-medium">Select</button>
               </div>
             ))}
+            <button onClick={markNewPatient} className="text-xs text-amber-700 underline">None of these — create new patient</button>
           </div>
-          <button onClick={startNewIntake} className="text-xs text-amber-700 underline">
-            Create new patient anyway (possible duplicate)
-          </button>
-        </div>
-      )}
+        )}
 
-      {showForm && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-6">
-          <section className="space-y-3">
-            <h2 className="font-medium text-slate-700">Patient Information</h2>
+        {lookupState === 'found' && patientCard && (
+          <div className="border border-teal-200 bg-teal-50 rounded-lg p-4 flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-teal-600 text-white flex items-center justify-center text-sm font-semibold">
+                {(patientCard.patient_name || '?').slice(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">{patientCard.patient_name}</p>
+                <span className="inline-flex items-center gap-1 text-xs text-teal-700 font-medium">● Existing Patient</span>
+              </div>
+            </div>
+            <MiniInfo label="Patient ID" v={patientCard.hospital_id} />
+            <MiniInfo label="Phone" v={patientCard.phone_e164 || patientCard.phone} />
+            <MiniInfo label="Location" v={patientCard.area} />
+            <MiniInfo label="Last appointment" v={patientCard.last_appointment_date} />
+            <MiniInfo label="No-show count" v={patientCard.no_show_count} />
+            <MiniInfo label="Last call status" v={patientCard.last_call_status || patientCard.last_call_outcome} />
+            <button onClick={markNewPatient} className="ml-auto text-xs text-slate-500 underline">Not this patient</button>
+          </div>
+        )}
+
+        {lookupState === 'new' && (
+          <div className="border border-slate-200 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
+            No existing record found — this will be created as a <span className="font-medium">New Patient</span>.
+          </div>
+        )}
+      </section>
+
+      {/* Left / Right columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          {/* Section 2: Lead Details */}
+          <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+            <SectionTitle n={2} title="Lead Details" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Lead date *">
+                <input type="date" className="input" value={form.lead_date} onChange={(e) => set('lead_date', e.target.value)} />
+              </Field>
               <Field label="Patient name *">
-                <input className="input" value={form.patient_name} onChange={(e) => setForm({ ...form, patient_name: e.target.value })} />
+                <input className="input" value={form.patient_name} onChange={(e) => set('patient_name', e.target.value)} />
               </Field>
               <Field label="Phone number *">
-                <input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              </Field>
-              <Field label="Secondary phone">
-                <input className="input" value={form.secondary_phone} onChange={(e) => setForm({ ...form, secondary_phone: e.target.value })} />
+                <input className="input" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
               </Field>
               <Field label="Age">
-                <input className="input" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} />
+                <input className="input" value={form.age} onChange={(e) => set('age', e.target.value)} />
               </Field>
               <Field label="Gender">
-                <SearchableSelect options={genderOpts.options} value={form.gender} onChange={(v) => setForm({ ...form, gender: v })} />
+                <SearchableSelect options={genderOpts.options} value={form.gender} onChange={(v) => set('gender', v)} />
               </Field>
-              <Field label="Area / address">
-                <input className="input" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} />
+              <Field label="Location">
+                <input className="input" value={form.location} onChange={(e) => set('location', e.target.value)} />
               </Field>
-              <Field label="Diabetes status">
-                <SearchableSelect options={diabetesOpts.options} value={form.diabetes_status} onChange={(v) => setForm({ ...form, diabetes_status: v })} />
+              <Field label="New / Old / Unknown *">
+                <SearchableSelect options={opts(NEW_OLD_STATUS_OPTIONS)} value={form.new_old_status} onChange={(v) => set('new_old_status', v)} />
               </Field>
-              <Field label="Hospital patient ID (often added later)">
-                <input className="input" value={form.hospital_patient_id} onChange={(e) => setForm({ ...form, hospital_patient_id: e.target.value })} />
+              <Field label="Source channel *">
+                <SearchableSelect options={opts(SOURCE_CHANNEL_OPTIONS)} value={form.source_channel} onChange={(v) => set('source_channel', v)} />
               </Field>
-              <Field label="Patient type">
-                <SearchableSelect options={patientTypeOpts.options} value={form.patient_type} onChange={(v) => setForm({ ...form, patient_type: v })} />
+              <Field label="Campaign bucket">
+                <SearchableSelect options={opts(CAMPAIGN_BUCKET_OPTIONS)} value={form.campaign_bucket} onChange={(v) => set('campaign_bucket', v)} />
               </Field>
-              <Field label="Notes">
-                <input className="input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              <Field label="Call center agent *">
+                <input className="input" placeholder="Yakub / Fatema" value={form.agent_name} onChange={(e) => set('agent_name', e.target.value)} />
               </Field>
             </div>
           </section>
 
-          <section className="space-y-3">
-            <h2 className="font-medium text-slate-700">Lead Information</h2>
+          {/* Section 3: Clinical / Reason */}
+          <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+            <SectionTitle n={3} title="Clinical / Reason" />
+            <Field label="Lead bucket *">
+              <div className="flex flex-wrap gap-2">
+                {LEAD_BUCKET_OPTIONS.map((b) => (
+                  <Chip key={b} active={form.lead_bucket === b} onClick={() => set('lead_bucket', b)}>{b}</Chip>
+                ))}
+              </div>
+            </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Lead source">
-                <SearchableSelect options={leadSourceOpts.options} value={form.source} onChange={(v) => setForm({ ...form, source: v })} />
+              <Field label="Main concern *">
+                <SearchableSelect options={opts(MAIN_CONCERN_OPTIONS)} value={form.main_concern} onChange={(v) => set('main_concern', v)} />
               </Field>
-              <Field label="Main problem / reason for visit">
-                <input className="input" value={form.main_problem} onChange={(e) => setForm({ ...form, main_problem: e.target.value })} />
-              </Field>
-              <Field label="Lead status">
-                <SearchableSelect options={leadStatusOpts.options} value={form.lead_status} onChange={(v) => setForm({ ...form, lead_status: v })} />
-              </Field>
-              <Field label="Agent name">
-                <input className="input" value={form.agent_name} onChange={(e) => setForm({ ...form, agent_name: e.target.value })} placeholder="Yakub / Fatema" />
-              </Field>
-              <Field label="Campaign name">
-                <input className="input" value={form.campaign_name} onChange={(e) => setForm({ ...form, campaign_name: e.target.value })} />
-              </Field>
-              <Field label="Internal notes">
-                <input className="input" value={form.internal_notes} onChange={(e) => setForm({ ...form, internal_notes: e.target.value })} />
+              <Field label="Urgency *">
+                <div className="flex gap-2">
+                  {URGENCY_OPTIONS.map((u) => (
+                    <Chip key={u} active={form.urgency === u} onClick={() => set('urgency', u)}>{u}</Chip>
+                  ))}
+                </div>
               </Field>
             </div>
+            <Field label="Short notes">
+              <textarea
+                className="input min-h-[70px]"
+                maxLength={300}
+                placeholder="Short reason for call or patient concern."
+                value={form.notes}
+                onChange={(e) => set('notes', e.target.value)}
+              />
+              <span className="text-xs text-slate-400">{form.notes.length}/300</span>
+            </Field>
           </section>
-
-          <section className="space-y-3">
-            <h2 className="font-medium text-slate-700">Appointment Booking</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="Appointment date">
-                <input type="date" className="input" value={form.appointment_date} onChange={(e) => setForm({ ...form, appointment_date: e.target.value })} />
-              </Field>
-              <Field label="Appointment time">
-                <input type="time" className="input" value={form.appointment_time} onChange={(e) => setForm({ ...form, appointment_time: e.target.value })} />
-              </Field>
-              <Field label="Doctor / service">
-                <input className="input" value={form.doctor_service} onChange={(e) => setForm({ ...form, doctor_service: e.target.value })} />
-              </Field>
-              <Field label="Appointment type">
-                <input className="input" value={form.appointment_type} onChange={(e) => setForm({ ...form, appointment_type: e.target.value })} />
-              </Field>
-              <Field label="Appointment status">
-                <SearchableSelect options={apptStatusOpts.options} value={form.appointment_status} onChange={(v) => setForm({ ...form, appointment_status: v })} />
-              </Field>
-              <Field label="Confirmation status">
-                <SearchableSelect options={confirmStatusOpts.options} value={form.confirmation_status} onChange={(v) => setForm({ ...form, confirmation_status: v })} />
-              </Field>
-              <Field label="Visit notes">
-                <input className="input" value={form.visit_notes} onChange={(e) => setForm({ ...form, visit_notes: e.target.value })} />
-              </Field>
-            </div>
-          </section>
-
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-            <button onClick={() => handleSave(false)} className="bg-slate-700 text-white px-4 py-2 rounded-md text-sm font-medium">Save lead only</button>
-            <button onClick={() => handleSave(true)} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Save lead and book appointment</button>
-            <button onClick={clearAll} className="border border-slate-300 px-4 py-2 rounded-md text-sm font-medium">Clear form</button>
-          </div>
         </div>
-      )}
+
+        {/* Section 4: Appointment / Follow-up Decision */}
+        <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 lg:h-fit">
+          <SectionTitle n={4} title="Appointment / Follow-up Decision" />
+          <Field label="Intake outcome *">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {INTAKE_OUTCOME_OPTIONS.map((o) => (
+                <Chip key={o.value} active={form.intake_outcome === o.value} onClick={() => set('intake_outcome', o.value)}>
+                  {o.label}
+                </Chip>
+              ))}
+            </div>
+          </Field>
+
+          {requiresAppointmentFields && (
+            <div className="border-t border-slate-100 pt-3 space-y-3">
+              <p className="text-xs font-medium text-slate-500 uppercase">Appointment details</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Doctor *">
+                  <SearchableSelect options={doctorOpts} value={form.doctor} onChange={(v) => set('doctor', v)} />
+                </Field>
+                <Field label="Service type *">
+                  <SearchableSelect options={serviceTypeOpts.options} value={form.service_type} onChange={(v) => set('service_type', v)} />
+                </Field>
+                <Field label="Branch *">
+                  <SearchableSelect options={branchOpts.options} value={form.branch} onChange={(v) => set('branch', v)} />
+                </Field>
+                <Field label="Appointment date *">
+                  <input type="date" className="input" value={form.appointment_date} onChange={(e) => set('appointment_date', e.target.value)} />
+                </Field>
+                <Field label="Appointment time *">
+                  <input type="time" className="input" value={form.appointment_time} onChange={(e) => set('appointment_time', e.target.value)} />
+                </Field>
+              </div>
+            </div>
+          )}
+
+          {(requiresFollowUpPriority || requiresCallbackDue) && (
+            <div className="border-t border-slate-100 pt-3 space-y-3">
+              <p className="text-xs font-medium text-slate-500 uppercase">Follow-up</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label={`Follow-up due date${requiresCallbackDue ? ' *' : ''}`}>
+                  <input type="date" className="input" value={form.follow_up_due_date} onChange={(e) => set('follow_up_due_date', e.target.value)} />
+                </Field>
+                <Field label="Follow-up due time">
+                  <input type="time" className="input" value={form.follow_up_due_time} onChange={(e) => set('follow_up_due_time', e.target.value)} />
+                </Field>
+                <Field label="Follow-up priority *">
+                  <SearchableSelect
+                    options={FOLLOW_UP_PRIORITY_OPTIONS}
+                    value={form.follow_up_priority}
+                    onChange={(v) => { setPriorityTouched(true); set('follow_up_priority', v) }}
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
+
+          {isSuppressed && (
+            <div className="border-t border-slate-100 pt-3">
+              <p className="text-xs text-slate-500">This lead will be marked inactive / suppressed and will not enter the active follow-up queue.</p>
+            </div>
+          )}
+
+          <Field label="Internal note">
+            <textarea className="input min-h-[70px]" maxLength={250} value={form.internal_note} onChange={(e) => set('internal_note', e.target.value)} />
+            <span className="text-xs text-slate-400">{form.internal_note.length}/250</span>
+          </Field>
+        </section>
+      </div>
+
+      {/* Sticky bottom action bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex flex-wrap gap-2 z-30">
+        <button disabled={saving} onClick={() => save()} className="border border-slate-300 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50">
+          Save Lead
+        </button>
+        <button disabled={saving} onClick={() => save('appointment_booked')} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50">
+          Save & Book Appointment
+        </button>
+        <button disabled={saving} onClick={() => save('no_appointment_yet')} className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50">
+          Save & Add to Follow-up Queue
+        </button>
+        <button disabled={saving} onClick={() => save(undefined, true)} className="border border-slate-300 px-4 py-2 rounded-md text-sm font-medium ml-auto disabled:opacity-50">
+          Save & Next Lead
+        </button>
+      </div>
 
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-slate-900 text-white text-sm px-4 py-3 rounded-md shadow-lg">
+        <div className="fixed bottom-20 right-6 bg-slate-900 text-white text-sm px-4 py-3 rounded-md shadow-lg z-40">
           {toast}
         </div>
       )}
+    </div>
+  )
+}
+
+function useDoctors() {
+  const [options, setOptions] = useState<{ label: string; value: string }[]>([])
+  useEffect(() => {
+    supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
+      if (data) setOptions(data.map((d: any) => ({ label: d.name, value: d.name })))
+    })
+  }, [])
+  return options
+}
+
+function SectionTitle({ n, title }: { n: number; title: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-5 h-5 rounded bg-teal-600 text-white text-xs font-semibold flex items-center justify-center">{n}</span>
+      <h2 className="font-medium text-slate-700">{title}</h2>
     </div>
   )
 }
@@ -328,48 +507,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function PatientCard({ p, onUse }: { p: any; onUse: () => void }) {
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-      <p className="font-medium text-teal-700">Existing patient found</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-        <Info label="Name" v={p.patient_name} />
-        <Info label="Phone" v={p.phone} />
-        <Info label="Hospital ID" v={p.hospital_patient_id} />
-        <Info label="Patient type" v={p.patient_type} />
-        <Info label="Last appointment" v={p.last_appointment_date} />
-        <Info label="Last status" v={p.last_appointment_status} />
-        <Info label="Total appointments" v={p.total_appointments} />
-        <Info label="No-show count" v={p.no_show_count} />
-        <Info label="Last note" v={p.last_note} />
-      </div>
-      <button onClick={onUse} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Use this patient</button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+        active ? 'bg-teal-50 border-teal-500 text-teal-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 
-function LeadCard({ l, onUse }: { l: any; onUse: () => void }) {
+function MiniInfo({ label, v }: { label: string; v: any }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-      <p className="font-medium text-sky-700">Old lead found, but no patient record</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-        <Info label="Name" v={l.lead_name} />
-        <Info label="Phone" v={l.phone} />
-        <Info label="Source" v={l.source} />
-        <Info label="Status" v={l.lead_status} />
-        <Info label="Main problem" v={l.main_problem} />
-        <Info label="Agent" v={l.agent_name} />
-      </div>
-      <button onClick={onUse} className="bg-sky-600 text-white px-4 py-2 rounded-md text-sm font-medium">Convert to patient</button>
-    </div>
-  )
-}
-
-function Info({ label, v }: { label: string; v: any }) {
-  return (
-    <div>
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className="text-slate-800">{v ?? '—'}</div>
+    <div className="text-sm">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="text-slate-800 font-medium">{v ?? '—'}</div>
     </div>
   )
 }
