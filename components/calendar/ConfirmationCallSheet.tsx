@@ -161,6 +161,17 @@ export default function ConfirmationCallSheet({
     load()
   }
 
+  // For appointments with no linked patient yet ("Unknown"): editing name/phone/hn
+  // here creates-or-matches a real patient and links it back to the appointment.
+  async function linkPatient(appointmentId: number, fullName: string, phone: string, hn?: string) {
+    const { error } = await supabase.rpc('link_or_update_appointment_patient', {
+      p_appointment_id: appointmentId, p_full_name: fullName, p_phone: phone, p_hn: hn || null,
+    })
+    if (error) { showToast('Error: ' + error.message); return }
+    showToast('Patient linked and saved.')
+    load()
+  }
+
   const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
@@ -305,6 +316,7 @@ export default function ConfirmationCallSheet({
                   onUpdateStatus={updateAppointmentStatus}
                   onUpdatePatientHn={updatePatientHn}
                   onUpdatePatientInfo={updatePatientInfo}
+                  onLinkPatient={linkPatient}
                   onReschedule={() => setRescheduling(r)}
                   CallOutcomeCell={CallOutcomeCell}
                 />
@@ -349,7 +361,7 @@ export default function ConfirmationCallSheet({
 }
 
 function AppointmentRow({
-  r, statusOpts, onUpdateStatus, onUpdatePatientHn, onUpdatePatientInfo, onReschedule, CallOutcomeCell,
+  r, statusOpts, onUpdateStatus, onUpdatePatientHn, onUpdatePatientInfo, onLinkPatient, onReschedule, CallOutcomeCell,
 }: any) {
   // Safety net: strip a lingering "Name · Location · +Phone — reason" prefix
   // if any notes weren't cleaned server-side, so only the actual reason shows.
@@ -358,37 +370,47 @@ function AppointmentRow({
   const displayReason = legacyMatch ? legacyMatch[1].trim() : rawNotes
 
   const [status, setStatus] = useState(r.appointment_status || 'Booked')
-  const [name, setName] = useState(r.patient_name || 'Unknown')
+  const [name, setName] = useState(r.patient_name || '')
   const [phone, setPhone] = useState(r.phone || '')
   const hasRealHn = !!r.hn && !r.hn.startsWith('APP-')
   const [hnInput, setHnInput] = useState(hasRealHn ? r.hn : '')
+
+  function saveNamePhone(nextName: string, nextPhone: string) {
+    if (r.patient_id) {
+      onUpdatePatientInfo(r.patient_id, nextName, nextPhone)
+    } else {
+      onLinkPatient(r.appointment_id, nextName, nextPhone, hasRealHn ? r.hn : hnInput)
+    }
+  }
+
+  function saveHn(nextHn: string) {
+    if (r.patient_id) {
+      onUpdatePatientHn(r.patient_id, nextHn)
+    } else {
+      onLinkPatient(r.appointment_id, name, phone, nextHn)
+    }
+  }
 
   return (
     <tr className="hover:bg-slate-50">
       <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
       <td className="px-3 py-3 align-top">
-        {r.patient_id ? (
-          <input
-            className="input w-36 text-sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => name !== r.patient_name && onUpdatePatientInfo(r.patient_id, name, phone)}
-          />
-        ) : (
-          <div className="font-medium text-slate-800">{name}</div>
-        )}
+        <input
+          className="input w-36 text-sm"
+          value={name}
+          placeholder="Patient name"
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => name !== (r.patient_name || '') && saveNamePhone(name, phone)}
+        />
       </td>
       <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap">
-        {r.patient_id ? (
-          <input
-            className="input w-32 text-sm"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            onBlur={() => phone !== r.phone && onUpdatePatientInfo(r.patient_id, name, phone)}
-          />
-        ) : (
-          phone || '—'
-        )}
+        <input
+          className="input w-32 text-sm"
+          value={phone}
+          placeholder="Phone"
+          onChange={(e) => setPhone(e.target.value)}
+          onBlur={() => phone !== (r.phone || '') && saveNamePhone(name, phone)}
+        />
       </td>
       <td className="px-3 py-3 align-top">
         {hasRealHn ? (
@@ -399,7 +421,7 @@ function AppointmentRow({
             placeholder="Enter ID"
             value={hnInput}
             onChange={(e) => setHnInput(e.target.value)}
-            onBlur={() => r.patient_id && hnInput && hnInput !== r.hn && onUpdatePatientHn(r.patient_id, hnInput)}
+            onBlur={() => hnInput && hnInput !== r.hn && saveHn(hnInput)}
           />
         )}
       </td>
