@@ -7,16 +7,9 @@ import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import {
-  SOURCE_CHANNEL_OPTIONS, CAMPAIGN_BUCKET_OPTIONS, LEAD_BUCKET_OPTIONS,
-  MAIN_CONCERN_OPTIONS, URGENCY_OPTIONS, NEW_OLD_STATUS_OPTIONS,
-  INTAKE_OUTCOME_OPTIONS,
   FOLLOWUP_QUEUE_OUTCOMES, CALLBACK_OUTCOMES, SUPPRESSED_OUTCOMES,
   defaultPriority,
 } from '@/lib/leadIntakeOptions'
-
-function opts(list: string[]) {
-  return list.map((v) => ({ label: v, value: v }))
-}
 
 const blankForm = {
   lead_date: new Date().toISOString().slice(0, 10),
@@ -33,6 +26,7 @@ const blankForm = {
   lead_bucket: '',
   main_concern: '',
   urgency: 'Routine',
+  diabetes_status: '',
   notes: '',
 
   intake_outcome: 'no_appointment_yet',
@@ -89,6 +83,14 @@ export default function LeadIntakePage() {
   const serviceTypeOpts = useDropdownOptions('service_type')
   const branchOpts = useDropdownOptions('branch')
   const genderOpts = useDropdownOptions('gender')
+  const sourceChannelOpts = useDropdownOptions('intake_source_channel')
+  const campaignBucketOpts = useDropdownOptions('intake_campaign_bucket')
+  const leadBucketOpts = useDropdownOptions('intake_lead_bucket')
+  const mainConcernOpts = useDropdownOptions('intake_main_concern')
+  const urgencyOpts = useDropdownOptions('intake_urgency')
+  const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
+  const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
+  const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -193,8 +195,8 @@ export default function LeadIntakePage() {
     return null
   }
 
-  async function save(overrideOutcome?: string, andNext?: boolean) {
-    const effectiveOutcome = overrideOutcome || form.intake_outcome
+  async function save() {
+    const effectiveOutcome = form.intake_outcome
     const err = validate(effectiveOutcome)
     if (err) { showToast(err); return }
 
@@ -214,6 +216,7 @@ export default function LeadIntakePage() {
         lead_bucket: form.lead_bucket,
         main_concern: form.main_concern,
         urgency: form.urgency,
+        diabetes_status: form.diabetes_status,
         notes: form.notes,
         intake_outcome: effectiveOutcome,
         doctor: form.doctor,
@@ -229,22 +232,19 @@ export default function LeadIntakePage() {
     setSaving(false)
     if (error) { showToast('Save failed: ' + error.message); return }
 
-    const result = data as any
     if (effectiveOutcome === 'appointment_booked') showToast('Lead saved and appointment booked.')
     else if (FOLLOWUP_QUEUE_OUTCOMES.includes(effectiveOutcome) || CALLBACK_OUTCOMES.includes(effectiveOutcome)) showToast('Lead saved and added to follow-up queue.')
     else showToast('Lead saved.')
 
-    if (andNext) {
-      const keepAgent = form.agent_name
-      setForm({ ...blankForm, agent_name: keepAgent })
-      setPhone('')
-      setPatientIdQuery('')
-      setNameQuery('')
-      setPatientCard(null)
-      setMatches([])
-      setLookupState('idle')
-      setCopyLabel('Copy Message')
-    }
+    const keepAgent = form.agent_name
+    setForm({ ...blankForm, agent_name: keepAgent })
+    setPhone('')
+    setPatientIdQuery('')
+    setNameQuery('')
+    setPatientCard(null)
+    setMatches([])
+    setLookupState('idle')
+    setCopyLabel('Copy Message')
   }
 
   return (
@@ -355,13 +355,13 @@ export default function LeadIntakePage() {
                 <input className="input" value={form.location} onChange={(e) => set('location', e.target.value)} />
               </Field>
               <Field label="New / Old / Unknown *">
-                <SearchableSelect options={opts(NEW_OLD_STATUS_OPTIONS)} value={form.new_old_status} onChange={(v) => set('new_old_status', v)} />
+                <SearchableSelect options={newOldStatusOpts.options} value={form.new_old_status} onChange={(v) => set('new_old_status', v)} />
               </Field>
               <Field label="Source channel *">
-                <SearchableSelect options={opts(SOURCE_CHANNEL_OPTIONS)} value={form.source_channel} onChange={(v) => set('source_channel', v)} />
+                <SearchableSelect options={sourceChannelOpts.options} value={form.source_channel} onChange={(v) => set('source_channel', v)} />
               </Field>
               <Field label="Campaign bucket">
-                <SearchableSelect options={opts(CAMPAIGN_BUCKET_OPTIONS)} value={form.campaign_bucket} onChange={(v) => set('campaign_bucket', v)} />
+                <SearchableSelect options={campaignBucketOpts.options} value={form.campaign_bucket} onChange={(v) => set('campaign_bucket', v)} />
               </Field>
               <Field label="Call center agent *">
                 <input className="input" placeholder="Yakub / Fatema" value={form.agent_name} onChange={(e) => set('agent_name', e.target.value)} />
@@ -374,20 +374,26 @@ export default function LeadIntakePage() {
             <SectionTitle n={3} title="Clinical / Reason" />
             <Field label="Lead bucket *">
               <div className="flex flex-wrap gap-2">
-                {LEAD_BUCKET_OPTIONS.map((b) => (
-                  <Chip key={b} active={form.lead_bucket === b} onClick={() => set('lead_bucket', b)}>{b}</Chip>
+                {leadBucketOpts.options.map((b) => (
+                  <Chip key={b.value} active={form.lead_bucket === b.value} onClick={() => set('lead_bucket', b.value)}>{b.label}</Chip>
                 ))}
               </div>
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Main concern *">
-                <SearchableSelect options={opts(MAIN_CONCERN_OPTIONS)} value={form.main_concern} onChange={(v) => set('main_concern', v)} />
+                <SearchableSelect options={mainConcernOpts.options} value={form.main_concern} onChange={(v) => set('main_concern', v)} />
               </Field>
               <Field label="Urgency *">
                 <div className="flex gap-2">
-                  {URGENCY_OPTIONS.map((u) => (
-                    <Chip key={u} active={form.urgency === u} onClick={() => set('urgency', u)}>{u}</Chip>
+                  {urgencyOpts.options.map((u) => (
+                    <Chip key={u.value} active={form.urgency === u.value} onClick={() => set('urgency', u.value)}>{u.label}</Chip>
                   ))}
+                </div>
+              </Field>
+              <Field label="Diabetes">
+                <div className="flex gap-2">
+                  <Chip active={form.diabetes_status === 'Yes'} onClick={() => set('diabetes_status', 'Yes')}>Yes</Chip>
+                  <Chip active={form.diabetes_status === 'No'} onClick={() => set('diabetes_status', 'No')}>No</Chip>
                 </div>
               </Field>
             </div>
@@ -409,7 +415,7 @@ export default function LeadIntakePage() {
           <SectionTitle n={4} title="Appointment / Follow-up Decision" />
           <Field label="Intake outcome *">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {INTAKE_OUTCOME_OPTIONS.map((o) => (
+              {intakeOutcomeOpts.options.map((o) => (
                 <Chip key={o.value} active={form.intake_outcome === o.value} onClick={() => handleOutcomeChange(o.value)}>
                   {o.label}
                 </Chip>
@@ -434,7 +440,14 @@ export default function LeadIntakePage() {
                   <input type="date" className="input" value={form.appointment_date} onChange={(e) => set('appointment_date', e.target.value)} />
                 </Field>
                 <Field label="Appointment time *">
-                  <input type="time" className="input" value={form.appointment_time} onChange={(e) => set('appointment_time', e.target.value)} />
+                  <SearchableSelect
+                    options={timeSlots}
+                    value={form.appointment_time}
+                    onChange={(v) => set('appointment_time', v)}
+                  />
+                  {form.doctor && form.appointment_date && timeSlots.length === 0 && (
+                    <span className="text-xs text-rose-600">No slots configured for this doctor on this day — check Settings.</span>
+                  )}
                 </Field>
               </div>
             </div>
@@ -470,18 +483,9 @@ export default function LeadIntakePage() {
       </div>
 
       {/* Sticky bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex flex-wrap gap-2 z-30">
-        <button disabled={saving} onClick={() => save()} className="border border-slate-300 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50">
-          Save Lead
-        </button>
-        <button disabled={saving} onClick={() => save('appointment_booked')} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50">
-          Save & Book Appointment
-        </button>
-        <button disabled={saving} onClick={() => save('no_appointment_yet')} className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50">
-          Save & Add to Follow-up Queue
-        </button>
-        <button disabled={saving} onClick={() => save(undefined, true)} className="border border-slate-300 px-4 py-2 rounded-md text-sm font-medium ml-auto disabled:opacity-50">
-          Save & Next Lead
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex z-30">
+        <button disabled={saving} onClick={() => save()} className="bg-teal-600 text-white px-6 py-2.5 rounded-md text-sm font-medium disabled:opacity-50 ml-auto">
+          {saving ? 'Saving…' : 'Save Lead'}
         </button>
       </div>
 
@@ -547,6 +551,41 @@ function WhatsAppPanel({
       <p className="text-xs text-slate-400">Updates live as you fill in the form. Tap Copy, then paste into WhatsApp.</p>
     </section>
   )
+}
+
+function useDoctorSlots(doctorName: string, dateStr: string): { label: string; value: string }[] {
+  const [schedule, setSchedule] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!doctorName) { setSchedule([]); return }
+    supabase.from('doctor_schedules').select('*').eq('doctor_name', doctorName).eq('is_active', true).then(({ data }) => {
+      setSchedule(data || [])
+    })
+  }, [doctorName])
+
+  return useMemo(() => {
+    if (!dateStr || schedule.length === 0) return []
+    const dow = new Date(dateStr + 'T00:00:00').getDay()
+    const day = schedule.find((s) => s.day_of_week === dow)
+    if (!day) return []
+    const [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
+    const [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
+    const step = day.slot_minutes || 15
+    const slots: { label: string; value: string }[] = []
+    let mins = sh * 60 + sm
+    const endMins = eh * 60 + em
+    while (mins < endMins) {
+      const h24 = Math.floor(mins / 60)
+      const m = mins % 60
+      const value = `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+      const ampm = h24 >= 12 ? 'pm' : 'am'
+      let h12 = h24 % 12
+      if (h12 === 0) h12 = 12
+      slots.push({ label: `${h12}:${String(m).padStart(2, '0')} ${ampm}`, value })
+      mins += step
+    }
+    return slots
+  }, [dateStr, schedule])
 }
 
 function useDoctors() {
