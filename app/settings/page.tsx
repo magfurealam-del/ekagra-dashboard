@@ -105,6 +105,8 @@ export default function SettingsPage() {
     if (selection.kind === 'dropdown') load(selection.category)
   }
 
+  const [csvUploading, setCsvUploading] = useState(false)
+
   // --- Doctor schedules ---
   async function loadDoctors() {
     const { data } = await supabase.from('doctors').select('name').eq('is_active', true).order('name')
@@ -146,6 +148,99 @@ export default function SettingsPage() {
       })
     }
     loadSchedules(selectedDoctor)
+  }
+
+  // --- CSV weekly schedule upload/download ---
+  // Format: Doctor, Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday
+  // Each day cell is either blank/"off" (day off) or "HH:MM-HH:MM" (open hours).
+  // Re-uploading each month corrects the schedule to match the new file —
+  // every day cell present in the file overwrites whatever was there before.
+  function splitCsvLine(line: string): string[] {
+    // Minimal CSV split: handles simple quoted fields with commas inside.
+    const cells: string[] = []
+    let cur = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') { inQuotes = !inQuotes; continue }
+      if (ch === ',' && !inQuotes) { cells.push(cur.trim()); cur = ''; continue }
+      cur += ch
+    }
+    cells.push(cur.trim())
+    return cells
+  }
+
+  function parseDayCell(cell: string): { start_time: string; end_time: string; is_active: boolean } {
+    const v = cell.trim()
+    if (!v || /^(off|closed|-|n\/a)$/i.test(v)) {
+      return { start_time: '09:00', end_time: '21:00', is_active: false }
+    }
+    const m = v.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/)
+    if (!m) return { start_time: '09:00', end_time: '21:00', is_active: false }
+    return { start_time: m[1], end_time: m[2], is_active: true }
+  }
+
+  async function downloadScheduleTemplate() {
+    const { data: docs } = await supabase.from('doctors').select('name').eq('is_active', true).order('name')
+    const { data: allSchedules } = await supabase.from('doctor_schedules').select('*')
+    const header = ['Doctor', ...DAYS]
+    const lines = [header.join(',')]
+    ;(docs || []).forEach((d: any) => {
+      const cells = [d.name]
+      for (let dow = 0; dow < 7; dow++) {
+        const s = (allSchedules || []).find((x: any) => x.doctor_name === d.name && x.day_of_week === dow)
+        if (s && s.is_active) cells.push(`${s.start_time.slice(0, 5)}-${s.end_time.slice(0, 5)}`)
+        else cells.push('OFF')
+      }
+      lines.push(cells.map((c) => `"${c}"`).join(','))
+    })
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'doctor-weekly-schedule.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleScheduleCsvUpload(file: File) {
+    setCsvUploading(true)
+    try {
+      const text = await file.text()
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0)
+      if (lines.length < 2) { showToast('CSV has no data rows.'); return }
+
+      const header = splitCsvLine(lines[0]).map((h) => h.toLowerCase())
+      const dayCols = DAYS.map((d) => header.indexOf(d.toLowerCase()))
+      if (dayCols.some((i) => i === -1)) {
+        showToast('CSV header must include Doctor, Sunday, Monday, ... Saturday.')
+        return
+      }
+
+      const rows: any[] = []
+      for (const line of lines.slice(1)) {
+        const cells = splitCsvLine(line)
+        const doctorName = cells[0]
+        if (!doctorName) continue
+        DAYS.forEach((_, dow) => {
+          const cell = cells[dayCols[dow]] || ''
+          const parsed = parseDayCell(cell)
+          rows.push({ doctor_name: doctorName, day_of_week: dow, ...parsed })
+        })
+      }
+
+      if (rows.length === 0) { showToast('No valid rows found in CSV.'); return }
+
+      const { data, error } = await supabase.rpc('bulk_upsert_doctor_schedules', { p_rows: rows })
+      if (error) { showToast('Upload failed: ' + error.message); return }
+      showToast(`Schedule updated — ${(data as any)?.rows_upserted ?? rows.length} day-entries applied.`)
+      loadDoctors()
+      if (selectedDoctor) loadSchedules(selectedDoctor)
+    } catch (err: any) {
+      showToast('Could not read file: ' + err.message)
+    } finally {
+      setCsvUploading(false)
+    }
   }
 
   // --- Agent schedules ---
@@ -267,6 +362,36 @@ export default function SettingsPage() {
           {selection.kind === 'doctorSchedules' && (
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
               <h2 className="font-medium text-slate-700">Doctor Schedules</h2>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-medium text-slate-600">Bulk update from CSV</p>
+                <p className="text-xs text-slate-500">
+                  Upload a weekly schedule for all doctors at once — columns: Doctor, Sunday, Monday, Tuesday,
+                  Wednesday, Thursday, Friday, Saturday. Each day cell is a time range like <code>09:00-21:00</code>,
+                  or <code>OFF</code> for a day off. Re-upload each month to correct the schedule — every day in
+                  the file replaces whatever was there before for that doctor.
+                </p>
+                <div className="flex flex-wrap gap-2 items-center pt-1">
+                  <button onClick={downloadScheduleTemplate} className="text-xs px-3 py-1.5 border border-slate-300 rounded-md text-slate-600 hover:bg-white">
+                    Download current schedule as CSV
+                  </button>
+                  <label className="text-xs px-3 py-1.5 bg-teal-600 text-white rounded-md font-medium cursor-pointer hover:bg-teal-700">
+                    {csvUploading ? 'Uploading…' : 'Upload CSV'}
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      disabled={csvUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleScheduleCsvUpload(file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
               <select className="input" value={selectedDoctor} onChange={(e) => setSelectedDoctor(e.target.value)}>
                 {doctors.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
               </select>
