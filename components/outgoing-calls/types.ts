@@ -90,6 +90,7 @@ export const CATEGORY_BADGE_TONE: Record<string, string> = {
 // Each filter maps to one or more categories. `undefined` categories = show all.
 export const QUICK_FILTERS: { key: string; label: string; categories?: string[] }[] = [
   { key: 'all',           label: 'All' },
+  { key: 'overdue',       label: 'Overdue (No-show 7d+)', categories: ['no_show_14','no_show_28'] },
   { key: 'no_show_7',     label: 'No-show 7d',   categories: ['no_show_7'] },
   { key: 'no_show_14',    label: 'No-show 14d',  categories: ['no_show_14'] },
   { key: 'no_show_28',    label: 'No-show 28d',  categories: ['no_show_28'] },

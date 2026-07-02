@@ -27,13 +27,13 @@ export default function OutgoingCallsPage() {
   const [quickFilter, setQuickFilter] = useState('all')
   const [leadTypeFilter, setLeadTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('pending')
+  const [statusFilter, setStatusFilter] = useState('')
 
   async function load() {
     setLoading(true)
-    const view = statusFilter === 'pending' ? 'outgoing_call_sheet_view' : 'outgoing_call_all_attempts_view'
+    const view = statusFilter === '' ? 'outgoing_call_sheet_view' : 'outgoing_call_all_attempts_view'
     let q = supabase.from(view).select('*').order('category_rank').order('relevant_date', { ascending: false }).range(0, 9999)
-    if (statusFilter === 'pending') {
+    if (statusFilter === '') {
       q = q.lte('scheduled_date', date).eq('attempt_status', 'pending')
     } else if (statusFilter !== 'all') {
       q = q.eq('outcome_code', statusFilter)
@@ -137,8 +137,8 @@ export default function OutgoingCallsPage() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="pending">Pending</option>
-            <option value="all">All statuses</option>
+            <option value="">Open Queue</option>
+            <option value="all">All History</option>
             <option value="reached">Reached</option>
             <option value="booked_appointment">Booked</option>
             <option value="not_interested">Not interested</option>
