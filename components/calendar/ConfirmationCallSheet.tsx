@@ -87,6 +87,20 @@ export default function ConfirmationCallSheet({
 
   useEffect(() => { load() }, [load])
 
+  // Live-sync with changes from Lead Intake, another tab, or the Calendar
+  // grid itself (new bookings, reschedules, patient/status edits).
+  useEffect(() => {
+    const channel = supabase
+      .channel(`calendar-day-${date}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointment_confirmation_calls' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date])
+
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)

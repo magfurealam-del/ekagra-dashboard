@@ -45,6 +45,25 @@ export default function CalendarPage() {
     return () => { cancelled = true }
   }, [start, end])
 
+  // Live-sync the month grid with changes made from Lead Intake, another
+  // browser tab, or the appointment panel below (new bookings, reschedules,
+  // status/patient edits) instead of only refreshing on direct clicks here.
+  useEffect(() => {
+    const channel = supabase
+      .channel('calendar-grid')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => {
+        supabase.from('calendar_day_summary').select('*').gte('appointment_date', start).lte('appointment_date', end)
+          .then(({ data }) => {
+            setDaySummaryRows(data || [])
+            const docs = new Set<string>()
+            ;(data || []).forEach((r: any) => (r.doctors_list || []).forEach((d: string) => docs.add(d)))
+            setAllDoctors(Array.from(docs).sort())
+          })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [start, end])
+
   function changeMonth(delta: number) {
     let m = month + delta, y = year
     if (m < 0)  { m = 11; y -= 1 }

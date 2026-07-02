@@ -52,6 +52,12 @@ export default function OutgoingCallsPage() {
 
   useEffect(() => {
     load()
+    const channel = supabase
+      .channel('outgoing-calls')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter])
 
