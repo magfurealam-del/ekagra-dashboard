@@ -15,7 +15,7 @@ const CATEGORIES = [
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<'dropdowns' | 'schedules'>('dropdowns')
+  const [tab, setTab] = useState<'dropdowns' | 'doctorSchedules' | 'agentSchedules'>('dropdowns')
   const [category, setCategory] = useState(CATEGORIES[0])
   const [options, setOptions] = useState<any[]>([])
   const [newLabel, setNewLabel] = useState('')
@@ -24,6 +24,10 @@ export default function SettingsPage() {
   const [doctors, setDoctors] = useState<any[]>([])
   const [schedules, setSchedules] = useState<any[]>([])
   const [selectedDoctor, setSelectedDoctor] = useState('')
+
+  const [agents, setAgents] = useState<any[]>([])
+  const [agentSchedules, setAgentSchedules] = useState<any[]>([])
+  const [newAgentName, setNewAgentName] = useState('')
 
   function showToast(msg: string) {
     setToast(msg)
@@ -72,8 +76,8 @@ export default function SettingsPage() {
     setSchedules(data || [])
   }
 
-  useEffect(() => { if (tab === 'schedules') loadDoctors() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (tab === 'schedules' && selectedDoctor) loadSchedules(selectedDoctor) }, [tab, selectedDoctor]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (tab === 'doctorSchedules') loadDoctors() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (tab === 'doctorSchedules' && selectedDoctor) loadSchedules(selectedDoctor) }, [tab, selectedDoctor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function scheduleForDay(dow: number) {
     return schedules.find((s) => s.day_of_week === dow)
@@ -103,14 +107,51 @@ export default function SettingsPage() {
     loadSchedules(selectedDoctor)
   }
 
+  // --- Agent schedules ---
+  async function loadAgents() {
+    const { data } = await supabase.from('agents').select('*').eq('active', true).order('agent_name')
+    setAgents(data || [])
+  }
+
+  async function loadAgentSchedules() {
+    const { data } = await supabase.from('agent_schedules').select('*')
+    setAgentSchedules(data || [])
+  }
+
+  useEffect(() => { if (tab === 'agentSchedules') { loadAgents(); loadAgentSchedules() } }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function agentDayActive(agentName: string, dow: number) {
+    return agentSchedules.find((s) => s.agent_name === agentName && s.day_of_week === dow)?.is_active ?? false
+  }
+
+  async function toggleAgentDay(agentName: string, dow: number, isActive: boolean) {
+    const existing = agentSchedules.find((s) => s.agent_name === agentName && s.day_of_week === dow)
+    if (existing) {
+      await supabase.from('agent_schedules').update({ is_active: isActive }).eq('id', existing.id)
+    } else {
+      await supabase.from('agent_schedules').insert({ agent_name: agentName, day_of_week: dow, is_active: isActive })
+    }
+    loadAgentSchedules()
+  }
+
+  async function addAgent() {
+    if (!newAgentName.trim()) return
+    const { error } = await supabase.from('agents').insert({ agent_name: newAgentName.trim(), role: 'agent', active: true })
+    if (error) { showToast('Failed: ' + error.message); return }
+    setNewAgentName('')
+    showToast('Agent added — set their days below.')
+    loadAgents()
+  }
+
   return (
     <div className="space-y-4 pb-20 max-w-2xl">
       <h1 className="text-2xl font-semibold">Settings</h1>
-      <p className="text-sm text-slate-500">Manage dropdown options and doctor schedules used across the intake, appointment, and follow-up forms.</p>
+      <p className="text-sm text-slate-500">Manage dropdown options, doctor schedules, and call center agent schedules.</p>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button onClick={() => setTab('dropdowns')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === 'dropdowns' ? 'bg-teal-600 text-white' : 'border border-slate-300 text-slate-600'}`}>Dropdown options</button>
-        <button onClick={() => setTab('schedules')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === 'schedules' ? 'bg-teal-600 text-white' : 'border border-slate-300 text-slate-600'}`}>Doctor schedules</button>
+        <button onClick={() => setTab('doctorSchedules')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === 'doctorSchedules' ? 'bg-teal-600 text-white' : 'border border-slate-300 text-slate-600'}`}>Doctor schedules</button>
+        <button onClick={() => setTab('agentSchedules')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === 'agentSchedules' ? 'bg-teal-600 text-white' : 'border border-slate-300 text-slate-600'}`}>Agent schedules</button>
       </div>
 
       {tab === 'dropdowns' && (
@@ -141,7 +182,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {tab === 'schedules' && (
+      {tab === 'doctorSchedules' && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
           <select className="input" value={selectedDoctor} onChange={(e) => setSelectedDoctor(e.target.value)}>
             {doctors.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
@@ -178,6 +219,53 @@ export default function SettingsPage() {
               )
             })}
           </ul>
+        </div>
+      )}
+
+      {tab === 'agentSchedules' && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+          <p className="text-xs text-slate-500">
+            Check the days each agent is scheduled to make outgoing follow-up calls. The Outgoing Call queue
+            auto-assigns each pending call to whichever agent(s) are active that day — rotating between them
+            if more than one is checked — with no code changes needed.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="text-left py-2 pr-3 font-medium text-slate-500">Agent</th>
+                  {DAYS.map((d) => (
+                    <th key={d} className="text-center py-2 px-1 font-medium text-slate-500 text-xs">{d.slice(0, 3)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {agents.map((a) => (
+                  <tr key={a.id}>
+                    <td className="py-2 pr-3 font-medium text-slate-700">{a.agent_name}</td>
+                    {DAYS.map((_, dow) => (
+                      <td key={dow} className="text-center py-2 px-1">
+                        <input
+                          type="checkbox"
+                          checked={agentDayActive(a.agent_name, dow)}
+                          onChange={(e) => toggleAgentDay(a.agent_name, dow, e.target.checked)}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {agents.length === 0 && (
+                  <tr><td colSpan={8} className="py-3 text-sm text-slate-400">No agents yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-2 pt-2 border-t border-slate-100">
+            <input className="input flex-1" placeholder="New agent name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} />
+            <button onClick={addAgent} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Add agent</button>
+          </div>
         </div>
       )}
 

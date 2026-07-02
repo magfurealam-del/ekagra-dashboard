@@ -32,7 +32,7 @@ export default function OutgoingCallsPage() {
   async function load() {
     setLoading(true)
     const view = statusFilter === 'pending' ? 'outgoing_call_sheet_view' : 'outgoing_call_all_attempts_view'
-    let q = supabase.from(view).select('*').order('category_rank').order('relevant_date', { ascending: false })
+    let q = supabase.from(view).select('*').order('category_rank').order('relevant_date', { ascending: false }).range(0, 9999)
     if (statusFilter === 'pending') {
       q = q.lte('scheduled_date', date).eq('attempt_status', 'pending')
     } else if (statusFilter !== 'all') {
