@@ -4,10 +4,8 @@ import { usePathname } from 'next/navigation'
 
 const links = [
   { href: '/', label: 'Lead Intake & Appointment' },
-  { href: '/today', label: "Today's Appointments" },
   { href: '/patients', label: 'Patient List' },
   { href: '/calendar', label: 'Calendar' },
-  { href: '/followups', label: 'No-Shows & Follow-ups' },
   { href: '/outgoing-calls', label: 'Outgoing Call Sheet' },
   { href: '/settings', label: 'Settings' },
 ]

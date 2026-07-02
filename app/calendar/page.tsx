@@ -10,7 +10,9 @@ export default function CalendarPage() {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  )
 
   const [daySummaryRows, setDaySummaryRows] = useState<any[]>([])
   const [loadingGrid, setLoadingGrid] = useState(true)
@@ -94,10 +96,10 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Main content — calendar left, call sheet right when a date is selected */}
-      <div className={`grid gap-4 ${sheetOpen ? 'grid-cols-1 xl:grid-cols-[1fr_2.2fr]' : 'grid-cols-1'}`}>
+      {/* Main content — calendar on top, appointment panel below when a date is selected */}
+      <div className={sheetOpen ? 'flex flex-col gap-4' : ''}>
         {/* Calendar grid */}
-        <div className="lg:h-[calc(100vh-160px)] min-h-[600px]">
+        <div className={sheetOpen ? 'h-[360px]' : 'lg:h-[calc(100vh-160px)] min-h-[600px]'}>
           <CalendarGrid
             year={year}
             month={month}
@@ -106,12 +108,13 @@ export default function CalendarPage() {
             onDayClick={setSelectedDate}
             onPrev={() => changeMonth(-1)}
             onNext={() => changeMonth(1)}
+            compact={sheetOpen}
           />
         </div>
 
-        {/* Confirmation call sheet — opens inline on the right */}
+        {/* Appointment / confirmation call panel — full width below the calendar */}
         {sheetOpen && (
-          <div className="lg:h-[calc(100vh-160px)] min-h-[600px]">
+          <div className="min-h-[600px]">
             <ConfirmationCallSheet
               date={selectedDate!}
               onClose={() => setSelectedDate(null)}

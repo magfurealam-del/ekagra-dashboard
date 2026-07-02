@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import RescheduleModal from './RescheduleModal'
+import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -64,6 +65,7 @@ export default function ConfirmationCallSheet({
   const [page, setPage] = useState(1)
   const [rescheduling, setRescheduling] = useState<any | null>(null)
   const PER_PAGE = 10
+  const apptStatusOpts = useDropdownOptions('appointment_status')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -125,6 +127,31 @@ export default function ConfirmationCallSheet({
     setSaving(null)
     if (error) { showToast('Error: ' + error.message); return }
     showToast(`Call reversed`)
+    load()
+  }
+
+  async function updateAppointmentStatus(appointmentId: number, status: string) {
+    const { error } = await supabase.rpc('update_appointment_status', {
+      p_appointment_id: appointmentId, p_status: status, p_confirmation_status: null, p_notes: null,
+    })
+    if (error) { showToast('Error: ' + error.message); return }
+    showToast('Status updated.')
+    load()
+  }
+
+  async function updateHospitalId(patientId: number, hospitalId: string) {
+    const { error } = await supabase.rpc('update_hospital_patient_id', {
+      p_patient_id: patientId, p_hospital_patient_id: hospitalId,
+    })
+    if (error) { showToast('Error: ' + error.message); return }
+    showToast('Hospital ID updated.')
+    load()
+  }
+
+  async function updatePatientInfo(patientId: number, fullName: string, phone: string) {
+    const { error } = await supabase.from('patients').update({ full_name: fullName, phone }).eq('id', patientId)
+    if (error) { showToast('Error: ' + error.message); return }
+    showToast('Patient info updated.')
     load()
   }
 
@@ -254,6 +281,7 @@ export default function ConfirmationCallSheet({
                 <th className="px-3 py-2.5 font-medium whitespace-nowrap">Time</th>
                 <th className="px-3 py-2.5 font-medium">Patient</th>
                 <th className="px-3 py-2.5 font-medium">Phone</th>
+                <th className="px-3 py-2.5 font-medium">Hospital ID</th>
                 <th className="px-3 py-2.5 font-medium">Doctor</th>
                 <th className="px-3 py-2.5 font-medium">Reason for Visit</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
@@ -263,73 +291,18 @@ export default function ConfirmationCallSheet({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginated.map(r => {
-                // For imported appointments without a linked patient, parse info from notes
-                const parsed = parseNotes(r.notes)
-                const displayName = r.patient_name || parsed.display.split(' · ')[0] || 'Unknown'
-                const displayPhone = r.phone || parsed.phone
-                const displayReason = r.patient_name
-                  ? r.notes  // real patient — notes are plain text
-                  : parsed.display.includes('—') ? parsed.display.split('—').slice(1).join('—').trim() : r.notes
-
-                return (
-                  <tr key={r.appointment_id} className="hover:bg-slate-50">
-                    <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
-                    <td className="px-3 py-3 align-top">
-                      <div className="font-medium text-slate-800">{displayName}</div>
-                      {r.hn && <div className="text-slate-400 text-xs mt-0.5">HN: {r.hn}</div>}
-                    </td>
-                    <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap">
-                      {displayPhone || '—'}
-                    </td>
-                    <td className="px-3 py-3 text-slate-600 align-top">
-                      <div>{(r.doctor_service || '—')}</div>
-                      {r.service_type && <div className="text-xs text-slate-400 mt-0.5">{r.service_type}</div>}
-                    </td>
-                    <td className="px-3 py-3 align-top text-slate-600 max-w-[280px]">
-                      {displayReason || '—'}
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <span className={`text-xs rounded px-1.5 py-0.5 ${STATUS_BADGE[r.appointment_status] ?? 'bg-slate-100 text-slate-500'}`}>
-                        {r.appointment_status}
-                      </span>
-                      {r.no_show_risk && (
-                        <div className="mt-1">
-                          <span className={`text-xs rounded px-1.5 py-0.5 ${RISK_BADGE[r.no_show_risk]}`}>
-                            {r.no_show_risk} risk
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 align-top min-w-[150px]">
-                      <CallOutcomeCell
-                        row={r}
-                        callType="night_before"
-                        outcome={r.nb_outcome}
-                        agentVal={r.nb_agent}
-                        calledAt={r.nb_called_at}
-                      />
-                    </td>
-                    <td className="px-3 py-3 align-top min-w-[150px]">
-                      <CallOutcomeCell
-                        row={r}
-                        callType="morning_of"
-                        outcome={r.mo_outcome}
-                        agentVal={r.mo_agent}
-                        calledAt={r.mo_called_at}
-                      />
-                    </td>
-                    <td className="px-3 py-3 align-top whitespace-nowrap">
-                      <button
-                        onClick={() => setRescheduling(r)}
-                        className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-colors"
-                      >
-                        Reschedule
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
+              {paginated.map(r => (
+                <AppointmentRow
+                  key={r.appointment_id}
+                  r={r}
+                  statusOpts={apptStatusOpts.options}
+                  onUpdateStatus={updateAppointmentStatus}
+                  onUpdateHospitalId={updateHospitalId}
+                  onUpdatePatientInfo={updatePatientInfo}
+                  onReschedule={() => setRescheduling(r)}
+                  CallOutcomeCell={CallOutcomeCell}
+                />
+              ))}
             </tbody>
           </table>
         )}
@@ -366,5 +339,97 @@ export default function ConfirmationCallSheet({
         </div>
       )}
     </div>
+  )
+}
+
+function AppointmentRow({
+  r, statusOpts, onUpdateStatus, onUpdateHospitalId, onUpdatePatientInfo, onReschedule, CallOutcomeCell,
+}: any) {
+  const parsed = parseNotes(r.notes)
+  const fallbackName = parsed.display.split(' · ')[0] || 'Unknown'
+  const fallbackPhone = parsed.phone
+  const displayReason = r.patient_name
+    ? r.notes
+    : parsed.display.includes('—') ? parsed.display.split('—').slice(1).join('—').trim() : r.notes
+
+  const [status, setStatus] = useState(r.appointment_status || 'Booked')
+  const [name, setName] = useState(r.patient_name || fallbackName)
+  const [phone, setPhone] = useState(r.phone || fallbackPhone || '')
+  const [hospitalId, setHospitalId] = useState(r.hospital_patient_id || '')
+
+  return (
+    <tr className="hover:bg-slate-50">
+      <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
+      <td className="px-3 py-3 align-top">
+        {r.patient_id ? (
+          <input
+            className="input w-36 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name !== r.patient_name && onUpdatePatientInfo(r.patient_id, name, phone)}
+          />
+        ) : (
+          <div className="font-medium text-slate-800">{name}</div>
+        )}
+        {r.hn && <div className="text-slate-400 text-xs mt-0.5">HN: {r.hn}</div>}
+      </td>
+      <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap">
+        {r.patient_id ? (
+          <input
+            className="input w-32 text-sm"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            onBlur={() => phone !== r.phone && onUpdatePatientInfo(r.patient_id, name, phone)}
+          />
+        ) : (
+          phone || '—'
+        )}
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input
+          className="input w-24 text-sm"
+          value={hospitalId}
+          onChange={(e) => setHospitalId(e.target.value)}
+          onBlur={() => r.patient_id && hospitalId !== r.hospital_patient_id && onUpdateHospitalId(r.patient_id, hospitalId)}
+        />
+      </td>
+      <td className="px-3 py-3 text-slate-600 align-top">
+        <div>{(r.doctor_service || '—')}</div>
+        {r.service_type && <div className="text-xs text-slate-400 mt-0.5">{r.service_type}</div>}
+      </td>
+      <td className="px-3 py-3 align-top text-slate-600 max-w-[280px]">
+        {displayReason || '—'}
+      </td>
+      <td className="px-3 py-3 align-top">
+        <select
+          className="input text-xs py-1"
+          value={status}
+          onChange={(e) => { setStatus(e.target.value); onUpdateStatus(r.appointment_id, e.target.value) }}
+        >
+          {statusOpts.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {r.no_show_risk && (
+          <div className="mt-1">
+            <span className={`text-xs rounded px-1.5 py-0.5 ${RISK_BADGE[r.no_show_risk]}`}>
+              {r.no_show_risk} risk
+            </span>
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-3 align-top min-w-[150px]">
+        <CallOutcomeCell row={r} callType="night_before" outcome={r.nb_outcome} agentVal={r.nb_agent} calledAt={r.nb_called_at} />
+      </td>
+      <td className="px-3 py-3 align-top min-w-[150px]">
+        <CallOutcomeCell row={r} callType="morning_of" outcome={r.mo_outcome} agentVal={r.mo_agent} calledAt={r.mo_called_at} />
+      </td>
+      <td className="px-3 py-3 align-top whitespace-nowrap">
+        <button
+          onClick={onReschedule}
+          className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-colors"
+        >
+          Reschedule
+        </button>
+      </td>
+    </tr>
   )
 }

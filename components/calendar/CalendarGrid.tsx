@@ -19,7 +19,7 @@ function isToday(year: number, month: number, d: number) {
 }
 
 export default function CalendarGrid({
-  year, month, dayData, selectedDate, onDayClick, onPrev, onNext,
+  year, month, dayData, selectedDate, onDayClick, onPrev, onNext, compact,
 }: {
   year: number
   month: number
@@ -28,13 +28,14 @@ export default function CalendarGrid({
   onDayClick: (dateStr: string) => void
   onPrev: () => void
   onNext: () => void
+  compact?: boolean
 }) {
   const cells = monthMatrix(year, month)
   const monthLabel = new Date(year, month, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <div className={`bg-white rounded-xl border border-slate-200 h-full flex flex-col ${compact ? 'p-2' : 'p-4'}`}>
+      <div className={`flex items-center justify-between ${compact ? 'mb-2' : 'mb-4'}`}>
         <button onClick={onPrev} className="px-3 py-1 border rounded-md text-sm hover:bg-slate-50">← Prev</button>
         <h2 className="font-semibold text-slate-800">{monthLabel}</h2>
         <button onClick={onNext} className="px-3 py-1 border rounded-md text-sm hover:bg-slate-50">Next →</button>
@@ -58,7 +59,7 @@ export default function CalendarGrid({
               key={i}
               onClick={() => clickable && onDayClick(dateStr)}
               disabled={!clickable}
-              className={`border rounded-lg p-2 text-left min-h-[120px] overflow-hidden transition-all text-xs ${
+              className={`border rounded-lg overflow-hidden transition-all text-xs ${compact ? 'p-1 min-h-[36px]' : 'p-2 min-h-[120px] text-left'} ${
                 selected ? 'border-teal-500 ring-2 ring-teal-300 bg-teal-50'
                 : today ? 'border-teal-400 bg-teal-50'
                 : 'border-slate-200 hover:border-slate-300'
@@ -70,7 +71,7 @@ export default function CalendarGrid({
                   <span className="font-bold text-slate-800 text-sm leading-none">{cell.total}</span>
                 )}
               </div>
-              {cell && (
+              {cell && !compact && (
                 <>
                   <div className="mt-1.5 space-y-0.5">
                     {cell.pills.map(p => (
@@ -91,11 +92,13 @@ export default function CalendarGrid({
           )
         })}
       </div>
-      <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-200"/>Confirmed</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-200"/>Pending</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-200"/>No-show Risk</span>
-      </div>
+      {!compact && (
+        <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-200"/>Confirmed</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-200"/>Pending</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-200"/>No-show Risk</span>
+        </div>
+      )}
     </div>
   )
 }
