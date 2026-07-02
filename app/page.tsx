@@ -91,6 +91,16 @@ export default function LeadIntakePage() {
   const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
+  const agentOpts = useAgents()
+
+  // Pre-fill the call center agent with whoever is on duty today, per Settings schedule
+  useEffect(() => {
+    const dhakaToday = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' })).toISOString().slice(0, 10)
+    supabase.rpc('get_scheduled_agent', { p_date: dhakaToday }).then(({ data }) => {
+      const onDuty = data as unknown as string
+      if (onDuty) setForm((f: any) => (f.agent_name ? f : { ...f, agent_name: onDuty }))
+    })
+  }, [])
 
   function showToast(msg: string) {
     setToast(msg)
@@ -363,7 +373,7 @@ export default function LeadIntakePage() {
                 <SearchableSelect options={campaignBucketOpts.options} value={form.campaign_bucket} onChange={(v) => set('campaign_bucket', v)} />
               </Field>
               <Field label="Call center agent *">
-                <input className="input" placeholder="Yakub / Fatema" value={form.agent_name} onChange={(e) => set('agent_name', e.target.value)} />
+                <SearchableSelect options={agentOpts} value={form.agent_name} onChange={(v) => set('agent_name', v)} />
               </Field>
             </div>
           </section>
@@ -501,7 +511,7 @@ function buildWhatsAppMessage(form: any): string {
   lines.push(`Entry Type: ${form.new_old_status === 'New' ? 'New Call' : 'Follow-up Call'}`)
   lines.push(`Patient Name: ${form.patient_name || '—'}`)
   lines.push(`Contact Number: ${form.phone || '—'}`)
-  if (form.call_status_note) lines.push(`Call Status: ${form.call_status_note}`)
+  if (form.source_channel) lines.push(`Source: ${form.source_channel}`)
   if (form.appointment_date) lines.push(`Appointment Date: ${formatDateDMY(form.appointment_date)}`)
   if (form.appointment_time) lines.push(`Appointment Time: ${formatTime12h(form.appointment_time)}`)
   if (form.service_type) lines.push(`Appointment For: ${form.service_type}`)
@@ -584,6 +594,16 @@ function useDoctorSlots(doctorName: string, dateStr: string): { label: string; v
     }
     return slots
   }, [dateStr, schedule])
+}
+
+function useAgents() {
+  const [options, setOptions] = useState<{ label: string; value: string }[]>([])
+  useEffect(() => {
+    supabase.from('agents').select('agent_name').eq('active', true).order('agent_name').then(({ data }) => {
+      if (data) setOptions(data.map((a: any) => ({ label: a.agent_name, value: a.agent_name })))
+    })
+  }, [])
+  return options
 }
 
 function useDoctors() {
