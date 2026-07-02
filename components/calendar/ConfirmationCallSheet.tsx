@@ -45,14 +45,6 @@ function outcomeLabel(outcome: string | null) {
   return outcome.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
-// Parse patient name / phone / reason out of the notes field used by imported appointments
-function parseNotes(notes: string | null): { display: string; phone: string | null } {
-  if (!notes) return { display: '—', phone: null }
-  // Pattern: "Name · Location · +880... — reason"
-  const phoneMatch = notes.match(/(\+\d{10,15})/)
-  return { display: notes, phone: phoneMatch ? phoneMatch[1] : null }
-}
-
 export default function ConfirmationCallSheet({
   date, onClose,
 }: { date: string; onClose: () => void }) {
@@ -66,6 +58,20 @@ export default function ConfirmationCallSheet({
   const [rescheduling, setRescheduling] = useState<any | null>(null)
   const PER_PAGE = 10
   const apptStatusOpts = useDropdownOptions('appointment_status')
+  const [agentOpts, setAgentOpts] = useState<string[]>([])
+
+  useEffect(() => {
+    supabase.from('agents').select('agent_name').eq('active', true).order('agent_name').then(({ data }) => {
+      setAgentOpts((data || []).map((a: any) => a.agent_name))
+    })
+  }, [])
+
+  // Prefill the agent dropdown with whoever is scheduled on duty for this specific date
+  useEffect(() => {
+    supabase.rpc('get_scheduled_agent', { p_date: date }).then(({ data }) => {
+      if (data) setAgentName(data as unknown as string)
+    })
+  }, [date])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -139,12 +145,12 @@ export default function ConfirmationCallSheet({
     load()
   }
 
-  async function updateHospitalId(patientId: number, hospitalId: string) {
-    const { error } = await supabase.rpc('update_hospital_patient_id', {
-      p_patient_id: patientId, p_hospital_patient_id: hospitalId,
+  async function updatePatientHn(patientId: number, hn: string) {
+    const { error } = await supabase.rpc('update_patient_hn', {
+      p_patient_id: patientId, p_new_hn: hn,
     })
     if (error) { showToast('Error: ' + error.message); return }
-    showToast('Hospital ID updated.')
+    showToast('Patient ID saved.')
     load()
   }
 
@@ -234,8 +240,8 @@ export default function ConfirmationCallSheet({
             onChange={e => setAgentName(e.target.value)}
             className="border border-slate-300 rounded-md px-2 py-1 text-xs bg-white"
           >
-            <option>Yakub</option>
-            <option>Fatema</option>
+            {agentOpts.length === 0 && <option>{agentName}</option>}
+            {agentOpts.map((a) => <option key={a}>{a}</option>)}
           </select>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-sm px-1">✕</button>
         </div>
@@ -297,7 +303,7 @@ export default function ConfirmationCallSheet({
                   r={r}
                   statusOpts={apptStatusOpts.options}
                   onUpdateStatus={updateAppointmentStatus}
-                  onUpdateHospitalId={updateHospitalId}
+                  onUpdatePatientHn={updatePatientHn}
                   onUpdatePatientInfo={updatePatientInfo}
                   onReschedule={() => setRescheduling(r)}
                   CallOutcomeCell={CallOutcomeCell}
@@ -343,19 +349,19 @@ export default function ConfirmationCallSheet({
 }
 
 function AppointmentRow({
-  r, statusOpts, onUpdateStatus, onUpdateHospitalId, onUpdatePatientInfo, onReschedule, CallOutcomeCell,
+  r, statusOpts, onUpdateStatus, onUpdatePatientHn, onUpdatePatientInfo, onReschedule, CallOutcomeCell,
 }: any) {
-  const parsed = parseNotes(r.notes)
-  const fallbackName = parsed.display.split(' · ')[0] || 'Unknown'
-  const fallbackPhone = parsed.phone
-  const displayReason = r.patient_name
-    ? r.notes
-    : parsed.display.includes('—') ? parsed.display.split('—').slice(1).join('—').trim() : r.notes
+  // Safety net: strip a lingering "Name · Location · +Phone — reason" prefix
+  // if any notes weren't cleaned server-side, so only the actual reason shows.
+  const rawNotes = r.notes || ''
+  const legacyMatch = rawNotes.match(/^.*·.*·.*\+\d{10,15}.*—\s*(.*)$/)
+  const displayReason = legacyMatch ? legacyMatch[1].trim() : rawNotes
 
   const [status, setStatus] = useState(r.appointment_status || 'Booked')
-  const [name, setName] = useState(r.patient_name || fallbackName)
-  const [phone, setPhone] = useState(r.phone || fallbackPhone || '')
-  const [hospitalId, setHospitalId] = useState(r.hospital_patient_id || '')
+  const [name, setName] = useState(r.patient_name || 'Unknown')
+  const [phone, setPhone] = useState(r.phone || '')
+  const hasRealHn = !!r.hn && !r.hn.startsWith('APP-')
+  const [hnInput, setHnInput] = useState(hasRealHn ? r.hn : '')
 
   return (
     <tr className="hover:bg-slate-50">
@@ -371,7 +377,6 @@ function AppointmentRow({
         ) : (
           <div className="font-medium text-slate-800">{name}</div>
         )}
-        {r.hn && <div className="text-slate-400 text-xs mt-0.5">HN: {r.hn}</div>}
       </td>
       <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap">
         {r.patient_id ? (
@@ -386,12 +391,17 @@ function AppointmentRow({
         )}
       </td>
       <td className="px-3 py-3 align-top">
-        <input
-          className="input w-24 text-sm"
-          value={hospitalId}
-          onChange={(e) => setHospitalId(e.target.value)}
-          onBlur={() => r.patient_id && hospitalId !== r.hospital_patient_id && onUpdateHospitalId(r.patient_id, hospitalId)}
-        />
+        {hasRealHn ? (
+          <span className="text-slate-700 text-sm font-mono">{r.hn}</span>
+        ) : (
+          <input
+            className="input w-24 text-sm"
+            placeholder="Enter ID"
+            value={hnInput}
+            onChange={(e) => setHnInput(e.target.value)}
+            onBlur={() => r.patient_id && hnInput && hnInput !== r.hn && onUpdatePatientHn(r.patient_id, hnInput)}
+          />
+        )}
       </td>
       <td className="px-3 py-3 text-slate-600 align-top">
         <div>{(r.doctor_service || '—')}</div>
