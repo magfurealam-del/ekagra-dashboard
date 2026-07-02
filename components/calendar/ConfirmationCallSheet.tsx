@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import RescheduleModal from './RescheduleModal'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -61,6 +62,7 @@ export default function ConfirmationCallSheet({
   const [saving, setSaving] = useState<string | null>(null)  // "nb-{id}" | "mo-{id}" | "undo-nb-{id}" | "undo-mo-{id}"
   const [toast, setToast] = useState('')
   const [page, setPage] = useState(1)
+  const [rescheduling, setRescheduling] = useState<any | null>(null)
   const PER_PAGE = 10
 
   const load = useCallback(async () => {
@@ -257,6 +259,7 @@ export default function ConfirmationCallSheet({
                 <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium">Night Before</th>
                 <th className="px-3 py-2.5 font-medium">Morning Of</th>
+                <th className="px-3 py-2.5 font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -316,6 +319,14 @@ export default function ConfirmationCallSheet({
                         calledAt={r.mo_called_at}
                       />
                     </td>
+                    <td className="px-3 py-3 align-top whitespace-nowrap">
+                      <button
+                        onClick={() => setRescheduling(r)}
+                        className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-colors"
+                      >
+                        Reschedule
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -339,6 +350,14 @@ export default function ConfirmationCallSheet({
               className="px-2 py-1 border rounded disabled:opacity-40 hover:bg-slate-50">→</button>
           </div>
         </div>
+      )}
+
+      {rescheduling && (
+        <RescheduleModal
+          appointment={rescheduling}
+          onClose={() => setRescheduling(null)}
+          onDone={() => { setRescheduling(null); showToast('Appointment rescheduled.'); load() }}
+        />
       )}
 
       {toast && (

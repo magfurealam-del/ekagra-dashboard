@@ -16,7 +16,6 @@ export default function TodayAppointmentsPage() {
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
   const apptStatusOpts = useDropdownOptions('appointment_status')
-  const confirmStatusOpts = useDropdownOptions('confirmation_status')
 
   function showToast(msg: string) {
     setToast(msg)
@@ -35,9 +34,13 @@ export default function TodayAppointmentsPage() {
 
   useEffect(() => {
     load()
+    // Live-sync with any change made from the Calendar or Lead Intake page:
+    // new appointments, status/notes edits, or patient name/phone corrections.
     const channel = supabase
       .channel('today-appts')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, () => load())
       .subscribe()
     const interval = setInterval(load, 45000)
     return () => {
@@ -47,9 +50,9 @@ export default function TodayAppointmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, statusFilter])
 
-  async function updateStatus(appointmentId: number, status: string, confirmationStatus: string, notes: string) {
+  async function updateStatus(appointmentId: number, status: string, notes: string) {
     const { error } = await supabase.rpc('update_appointment_status', {
-      p_appointment_id: appointmentId, p_status: status, p_confirmation_status: confirmationStatus, p_notes: notes,
+      p_appointment_id: appointmentId, p_status: status, p_confirmation_status: null, p_notes: notes,
     })
     if (error) { showToast('Update failed: ' + error.message); return }
     showToast('Appointment status updated.')
@@ -62,6 +65,13 @@ export default function TodayAppointmentsPage() {
     })
     if (error) { showToast('Update failed: ' + error.message); return }
     showToast('Hospital patient ID updated.')
+    load()
+  }
+
+  async function updatePatientInfo(patientId: number, fullName: string, phone: string) {
+    const { error } = await supabase.from('patients').update({ full_name: fullName, phone }).eq('id', patientId)
+    if (error) { showToast('Update failed: ' + error.message); return }
+    showToast('Patient info updated.')
     load()
   }
 
@@ -84,6 +94,9 @@ export default function TodayAppointmentsPage() {
           </select>
         </label>
         <button onClick={load} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Refresh</button>
+        <p className="text-xs text-slate-400 ml-auto self-center">
+          Status options are managed in Settings → Dropdown options → appointment status.
+        </p>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
@@ -102,14 +115,13 @@ export default function TodayAppointmentsPage() {
                 <th className="text-left px-3 py-2">Hospital ID</th>
                 <th className="text-left px-3 py-2">Doctor / service</th>
                 <th className="text-left px-3 py-2">Status</th>
-                <th className="text-left px-3 py-2">Confirmation</th>
                 <th className="text-left px-3 py-2">Notes</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <Row key={r.appointment_id} r={r} statusOpts={apptStatusOpts.options} confirmOpts={confirmStatusOpts.options}
-                  onUpdateStatus={updateStatus} onUpdateHospitalId={updateHospitalId} />
+                <Row key={r.appointment_id} r={r} statusOpts={apptStatusOpts.options}
+                  onUpdateStatus={updateStatus} onUpdateHospitalId={updateHospitalId} onUpdatePatientInfo={updatePatientInfo} />
               ))}
             </tbody>
           </table>
@@ -123,17 +135,40 @@ export default function TodayAppointmentsPage() {
   )
 }
 
-function Row({ r, statusOpts, confirmOpts, onUpdateStatus, onUpdateHospitalId }: any) {
+function Row({ r, statusOpts, onUpdateStatus, onUpdateHospitalId, onUpdatePatientInfo }: any) {
   const [status, setStatus] = useState(r.appointment_status || 'Booked')
-  const [confirm, setConfirm] = useState(r.confirmation_status || 'Not Confirmed')
   const [notes, setNotes] = useState(r.notes || '')
   const [hospitalId, setHospitalId] = useState(r.hospital_patient_id || '')
+  const [patientName, setPatientName] = useState(r.patient_name || '')
+  const [phone, setPhone] = useState(r.phone || '')
 
   return (
     <tr className="border-t border-slate-100">
       <td className="px-3 py-2">{r.appointment_time}</td>
-      <td className="px-3 py-2 font-medium">{r.patient_name}</td>
-      <td className="px-3 py-2">{r.phone}</td>
+      <td className="px-3 py-2 font-medium">
+        {r.patient_id ? (
+          <input
+            className="input w-40"
+            value={patientName}
+            onChange={(e) => setPatientName(e.target.value)}
+            onBlur={() => patientName !== r.patient_name && onUpdatePatientInfo(r.patient_id, patientName, phone)}
+          />
+        ) : (
+          patientName || '—'
+        )}
+      </td>
+      <td className="px-3 py-2">
+        {r.patient_id ? (
+          <input
+            className="input w-32"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            onBlur={() => phone !== r.phone && onUpdatePatientInfo(r.patient_id, patientName, phone)}
+          />
+        ) : (
+          phone || '—'
+        )}
+      </td>
       <td className="px-3 py-2">{r.patient_type}</td>
       <td className="px-3 py-2">
         <input className="input w-28" value={hospitalId} onChange={(e) => setHospitalId(e.target.value)}
@@ -141,18 +176,13 @@ function Row({ r, statusOpts, confirmOpts, onUpdateStatus, onUpdateHospitalId }:
       </td>
       <td className="px-3 py-2">{r.doctor_service}</td>
       <td className="px-3 py-2">
-        <select className="input" value={status} onChange={(e) => { setStatus(e.target.value); onUpdateStatus(r.appointment_id, e.target.value, confirm, notes) }}>
+        <select className="input" value={status} onChange={(e) => { setStatus(e.target.value); onUpdateStatus(r.appointment_id, e.target.value, notes) }}>
           {statusOpts.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </td>
       <td className="px-3 py-2">
-        <select className="input" value={confirm} onChange={(e) => { setConfirm(e.target.value); onUpdateStatus(r.appointment_id, status, e.target.value, notes) }}>
-          {confirmOpts.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </td>
-      <td className="px-3 py-2">
         <input className="input w-40" value={notes} onChange={(e) => setNotes(e.target.value)}
-          onBlur={() => notes !== r.notes && onUpdateStatus(r.appointment_id, status, confirm, notes)} />
+          onBlur={() => notes !== r.notes && onUpdateStatus(r.appointment_id, status, notes)} />
       </td>
     </tr>
   )

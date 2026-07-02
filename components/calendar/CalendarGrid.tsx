@@ -58,19 +58,23 @@ export default function CalendarGrid({
               key={i}
               onClick={() => clickable && onDayClick(dateStr)}
               disabled={!clickable}
-              className={`border rounded-lg p-2 text-left min-h-[120px] transition-all text-xs ${
+              className={`border rounded-lg p-2 text-left min-h-[120px] overflow-hidden transition-all text-xs ${
                 selected ? 'border-teal-500 ring-2 ring-teal-300 bg-teal-50'
                 : today ? 'border-teal-400 bg-teal-50'
                 : 'border-slate-200 hover:border-slate-300'
               } ${clickable ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
             >
-              <div className={`font-semibold text-sm ${today ? 'text-teal-700' : 'text-slate-700'}`}>{d}</div>
+              <div className="flex items-center justify-between">
+                <span className={`font-medium text-xs ${today ? 'text-teal-700' : 'text-slate-500'}`}>{d}</span>
+                {cell && (
+                  <span className="font-bold text-slate-800 text-sm leading-none">{cell.total}</span>
+                )}
+              </div>
               {cell && (
                 <>
-                  <div className="font-bold text-slate-800 text-sm leading-none mt-0.5">{cell.total}</div>
-                  <div className="mt-1 space-y-0.5">
+                  <div className="mt-1.5 space-y-0.5">
                     {cell.pills.map(p => (
-                      <div key={p.key} className={`text-[9px] rounded px-1 ${p.className} leading-tight`}>
+                      <div key={p.key} className={`text-[9px] rounded px-1 ${p.className} leading-tight truncate`}>
                         {p.count != null ? `${p.label}: ${p.count}` : p.label}
                       </div>
                     ))}
