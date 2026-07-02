@@ -329,10 +329,9 @@ export default function LeadIntakePage() {
         )}
       </section>
 
-      {/* Left / Right columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_320px] gap-4 items-start">
-        <div className="space-y-4">
-          {/* Section 2: Lead Details */}
+      {/* Sections 2, 3, 4 side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        {/* Section 2: Lead Details */}
           <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
             <SectionTitle n={2} title="Lead Details" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -408,7 +407,6 @@ export default function LeadIntakePage() {
               <span className="text-xs text-slate-400">{form.notes.length}/300</span>
             </Field>
           </section>
-        </div>
 
         {/* Section 4: Appointment / Follow-up Decision */}
         <section className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 lg:h-fit">
@@ -477,10 +475,10 @@ export default function LeadIntakePage() {
             <span className="text-xs text-slate-400">{form.internal_note.length}/250</span>
           </Field>
         </section>
-
-        {/* WhatsApp-ready message panel */}
-        <WhatsAppPanel form={form} copyLabel={copyLabel} setCopyLabel={setCopyLabel} showToast={showToast} />
       </div>
+
+      {/* WhatsApp-ready message panel — full width below */}
+      <WhatsAppPanel form={form} copyLabel={copyLabel} setCopyLabel={setCopyLabel} showToast={showToast} />
 
       {/* Sticky bottom action bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex z-30">
@@ -535,7 +533,7 @@ function WhatsAppPanel({
   }
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 lg:sticky lg:top-4">
+    <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-medium text-slate-700 text-sm">WhatsApp Message</h2>
         <button
