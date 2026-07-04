@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
+import { useAuth } from '@/lib/AuthContext'
 import {
   FOLLOWUP_QUEUE_OUTCOMES, CALLBACK_OUTCOMES, SUPPRESSED_OUTCOMES,
   defaultPriority,
@@ -90,16 +91,14 @@ export default function LeadIntakePage() {
   const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
-  const agentOpts = useAgents()
+  const { profile } = useAuth()
 
-  // Pre-fill the call center agent with whoever is on duty today, per Settings schedule
+  // Attribution is now the actual logged-in user — the field is no longer an
+  // editable picker (that let anyone log entries under any name); the server
+  // stamps the authenticated identity regardless of what's sent here.
   useEffect(() => {
-    const dhakaToday = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka' })).toISOString().slice(0, 10)
-    supabase.rpc('get_scheduled_agent', { p_date: dhakaToday }).then(({ data }) => {
-      const onDuty = data as unknown as string
-      if (onDuty) setForm((f: any) => (f.agent_name ? f : { ...f, agent_name: onDuty }))
-    })
-  }, [])
+    if (profile?.full_name) set('agent_name', profile.full_name)
+  }, [profile?.full_name]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function showToast(msg: string) {
     setToast(msg)
@@ -376,8 +375,8 @@ export default function LeadIntakePage() {
                   onChange={(e) => set('referral_name', e.target.value)}
                 />
               </Field>
-              <Field label="Call center agent *">
-                <SearchableSelect options={agentOpts} value={form.agent_name} onChange={(v) => set('agent_name', v)} />
+              <Field label="Call center agent">
+                <input className="input bg-slate-50 text-slate-600" value={form.agent_name} disabled title="Attributed automatically to your logged-in account" />
               </Field>
             </div>
           </section>
@@ -599,16 +598,6 @@ function useDoctorSlots(doctorName: string, dateStr: string): { label: string; v
     }
     return slots
   }, [dateStr, schedule])
-}
-
-function useAgents() {
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([])
-  useEffect(() => {
-    supabase.from('agents').select('agent_name').eq('active', true).order('agent_name').then(({ data }) => {
-      if (data) setOptions(data.map((a: any) => ({ label: a.agent_name, value: a.agent_name })))
-    })
-  }, [])
-  return options
 }
 
 function useDoctors() {

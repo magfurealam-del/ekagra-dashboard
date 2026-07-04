@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import RescheduleModal from './RescheduleModal'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
+import { useAuth } from '@/lib/AuthContext'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -54,27 +55,17 @@ export default function ConfirmationCallSheet({
   const [allRows, setAllRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('All Patients')
-  const [agentName, setAgentName] = useState('Yakub')
+  const { profile } = useAuth()
+  // Attribution is the actual logged-in user, not a pickable dropdown — the
+  // server stamps the authenticated identity on every call regardless of
+  // what's sent here, so this is just for display.
+  const agentName = profile?.full_name || profile?.email || 'agent'
   const [saving, setSaving] = useState<string | null>(null)  // "nb-{id}" | "mo-{id}" | "undo-nb-{id}" | "undo-mo-{id}"
   const [toast, setToast] = useState('')
   const [page, setPage] = useState(1)
   const [rescheduling, setRescheduling] = useState<any | null>(null)
   const PER_PAGE = 10
   const apptStatusOpts = useDropdownOptions('appointment_status')
-  const [agentOpts, setAgentOpts] = useState<string[]>([])
-
-  useEffect(() => {
-    supabase.from('agents').select('agent_name').eq('active', true).order('agent_name').then(({ data }) => {
-      setAgentOpts((data || []).map((a: any) => a.agent_name))
-    })
-  }, [])
-
-  // Prefill the agent dropdown with whoever is scheduled on duty for this specific date
-  useEffect(() => {
-    supabase.rpc('get_scheduled_agent', { p_date: date }).then(({ data }) => {
-      if (data) setAgentName(data as unknown as string)
-    })
-  }, [date])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -287,14 +278,9 @@ export default function ConfirmationCallSheet({
           <p className="text-xs text-slate-500">{formattedDate}</p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={agentName}
-            onChange={e => setAgentName(e.target.value)}
-            className="border border-slate-300 rounded-md px-2 py-1 text-xs bg-white"
-          >
-            {agentOpts.length === 0 && <option>{agentName}</option>}
-            {agentOpts.map((a) => <option key={a}>{a}</option>)}
-          </select>
+          <span title="Confirmation calls are attributed to your logged-in account" className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-2 py-1">
+            {agentName}
+          </span>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-sm px-1">✕</button>
         </div>
       </div>

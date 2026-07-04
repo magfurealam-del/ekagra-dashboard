@@ -2,7 +2,9 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/AuthContext'
 
 const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[] }[] = [
   {
@@ -49,9 +51,18 @@ const ALL_CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-type Selection = { kind: 'dropdown'; category: string } | { kind: 'doctorSchedules' } | { kind: 'agentSchedules' }
+type Selection = { kind: 'dropdown'; category: string } | { kind: 'doctorSchedules' } | { kind: 'agentSchedules' } | { kind: 'auditLog' }
 
 export default function SettingsPage() {
+  const router = useRouter()
+  const { profile, isAdmin, loading: authLoading } = useAuth()
+
+  // Settings (dropdowns, schedules, and the audit log below) is admin-only —
+  // agents can still read this data elsewhere in the app, but can't manage it.
+  useEffect(() => {
+    if (!authLoading && profile && !isAdmin) router.replace('/')
+  }, [authLoading, profile, isAdmin, router])
+
   const [selection, setSelection] = useState<Selection>({ kind: 'dropdown', category: CATEGORY_GROUPS[0].items[0].key })
   const [options, setOptions] = useState<any[]>([])
   const [newLabel, setNewLabel] = useState('')
@@ -64,6 +75,21 @@ export default function SettingsPage() {
   const [agents, setAgents] = useState<any[]>([])
   const [agentSchedules, setAgentSchedules] = useState<any[]>([])
   const [newAgentName, setNewAgentName] = useState('')
+
+  // --- Audit log ---
+  const [loginHistory, setLoginHistory] = useState<any[]>([])
+  const [changeHistory, setChangeHistory] = useState<any[]>([])
+
+  async function loadAuditLog() {
+    const [{ data: logins }, { data: changes }] = await Promise.all([
+      supabase.rpc('get_login_history', { p_limit: 100 }),
+      supabase.from('data_change_audit_log').select('*').order('changed_at', { ascending: false }).limit(100),
+    ])
+    setLoginHistory(logins || [])
+    setChangeHistory(changes || [])
+  }
+
+  useEffect(() => { if (selection.kind === 'auditLog') loadAuditLog() }, [selection]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function showToast(msg: string) {
     setToast(msg)
@@ -328,6 +354,14 @@ export default function SettingsPage() {
               </SidebarButton>
             </div>
           </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase px-3 mb-1">Security</p>
+            <div className="space-y-0.5">
+              <SidebarButton active={selection.kind === 'auditLog'} onClick={() => setSelection({ kind: 'auditLog' })}>
+                Audit Log
+              </SidebarButton>
+            </div>
+          </div>
         </nav>
 
         {/* Panel */}
@@ -473,6 +507,57 @@ export default function SettingsPage() {
               <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <input className="input flex-1" placeholder="New agent name" value={newAgentName} onChange={(e) => setNewAgentName(e.target.value)} />
                 <button onClick={addAgent} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Add agent</button>
+              </div>
+            </div>
+          )}
+
+          {selection.kind === 'auditLog' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <h2 className="font-medium text-slate-700">Sign-in History</h2>
+                <p className="text-xs text-slate-500">Who logged in, and when — sourced directly from Supabase Auth.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-slate-400 uppercase">
+                      <tr><th className="text-left px-2 py-1">When</th><th className="text-left px-2 py-1">Name</th><th className="text-left px-2 py-1">Email</th><th className="text-left px-2 py-1">Event</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loginHistory.map((r: any, i: number) => (
+                        <tr key={i}>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{r.happened_at ? new Date(r.happened_at).toLocaleString() : '—'}</td>
+                          <td className="px-2 py-1.5">{r.full_name || '—'}</td>
+                          <td className="px-2 py-1.5 text-slate-500">{r.email || '—'}</td>
+                          <td className="px-2 py-1.5">{r.event}</td>
+                        </tr>
+                      ))}
+                      {loginHistory.length === 0 && <tr><td colSpan={4} className="py-3 text-sm text-slate-400">No sign-in events yet.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <h2 className="font-medium text-slate-700">Data Change History</h2>
+                <p className="text-xs text-slate-500">Recent inserts/updates across patient, lead, and appointment records, with who made each change.</p>
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-slate-400 uppercase sticky top-0 bg-white">
+                      <tr><th className="text-left px-2 py-1">When</th><th className="text-left px-2 py-1">Table</th><th className="text-left px-2 py-1">Op</th><th className="text-left px-2 py-1">Row</th><th className="text-left px-2 py-1">Changed By</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {changeHistory.map((r: any) => (
+                        <tr key={r.id}>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{r.changed_at ? new Date(r.changed_at).toLocaleString() : '—'}</td>
+                          <td className="px-2 py-1.5">{r.table_name}</td>
+                          <td className="px-2 py-1.5">{r.operation}</td>
+                          <td className="px-2 py-1.5 text-slate-500">{r.row_pk}</td>
+                          <td className="px-2 py-1.5">{r.changed_by || '—'}</td>
+                        </tr>
+                      ))}
+                      {changeHistory.length === 0 && <tr><td colSpan={5} className="py-3 text-sm text-slate-400">No data changes logged yet.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
