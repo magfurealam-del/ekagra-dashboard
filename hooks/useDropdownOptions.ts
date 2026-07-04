@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { subscribeDropdownOptionsChanges } from '@/lib/dropdownOptionsBus'
 
 export type DropdownOption = { label: string; value: string }
 
@@ -30,14 +31,15 @@ export function useDropdownOptions(category: string) {
 
     // Pick up changes made from Settings (add/remove/activate) without
     // requiring a page reload on whichever page is using this dropdown.
-    const channel = supabase
-      .channel(`dropdown-options-${category}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dropdown_options', filter: `category=eq.${category}` }, load)
-      .subscribe()
+    // Uses one shared Realtime channel for the whole table instead of a
+    // dedicated channel per category/hook instance.
+    const unsubscribe = subscribeDropdownOptionsChanges((changedCategory) => {
+      if (changedCategory === category) load()
+    })
 
     return () => {
       active = false
-      supabase.removeChannel(channel)
+      unsubscribe()
     }
   }, [category])
 
