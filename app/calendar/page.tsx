@@ -15,37 +15,50 @@ export default function CalendarPage() {
     `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   )
 
-  const [daySummaryRows, setDaySummaryRows] = useState<any[]>([])
-  const [typeSummaryRows, setTypeSummaryRows] = useState<any[]>([])
+  // Raw appointment rows for the visible month — filtering by doctor happens
+  // entirely client-side (useMemo below) so switching doctors is instant and
+  // actually updates the grid, instead of only ever affecting the day panel.
+  const [monthRows, setMonthRows] = useState<any[]>([])
   const [loadingGrid, setLoadingGrid] = useState(true)
 
   // Doctor/patient filter
   const [doctorFilter, setDoctorFilter] = useState<string>('all')
-  const [allDoctors, setAllDoctors] = useState<string[]>([])
 
   const start = useMemo(() => new Date(year, month, 1).toISOString().slice(0, 10), [year, month])
   const end   = useMemo(() => new Date(year, month + 1, 0).toISOString().slice(0, 10), [year, month])
 
   async function loadCalendarData() {
-    const [{ data: summary }, { data: types }] = await Promise.all([
-      supabase.from('calendar_day_summary').select('*').gte('appointment_date', start).lte('appointment_date', end),
-      supabase.from('calendar_day_type_summary').select('*').gte('appointment_date', start).lte('appointment_date', end),
-    ])
-    setDaySummaryRows(summary || [])
-    setTypeSummaryRows(types || [])
-    const docs = new Set<string>()
-    ;(summary || []).forEach((r: any) => (r.doctors_list || []).forEach((d: string) => docs.add(d)))
-    setAllDoctors(Array.from(docs).sort())
-    return summary
+    const { data } = await supabase
+      .from('crm_appointments')
+      .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, no_show_risk')
+      .gte('appointment_date', start)
+      .lte('appointment_date', end)
+      .neq('appointment_status', 'Cancelled')
+    setMonthRows(data || [])
+    return data
   }
 
-  // Load day summaries + per-appointment-type counts from Supabase views
+  // Load the month's appointments once; doctor filtering is applied client-side
   useEffect(() => {
     let cancelled = false
     setLoadingGrid(true)
     loadCalendarData().then(() => { if (!cancelled) setLoadingGrid(false) })
     return () => { cancelled = true }
   }, [start, end])
+
+  // All doctors seen this month — always derived from the unfiltered set so
+  // the dropdown doesn't shrink to just the currently-selected doctor.
+  const allDoctors = useMemo(() => {
+    const docs = new Set<string>()
+    monthRows.forEach((r: any) => { if (r.doctor_service) docs.add(r.doctor_service) })
+    return Array.from(docs).sort()
+  }, [monthRows])
+
+  // The set the grid/dashboard actually render from — reacts to doctorFilter
+  const filteredRows = useMemo(
+    () => (doctorFilter === 'all' ? monthRows : monthRows.filter((r: any) => r.doctor_service === doctorFilter)),
+    [monthRows, doctorFilter]
+  )
 
   // Live-sync the month grid with changes made from Lead Intake, another
   // browser tab, or the appointment panel below (new bookings, reschedules,
@@ -65,45 +78,61 @@ export default function CalendarPage() {
     setMonth(m); setYear(y); setSelectedDate(null)
   }
 
-  // Per-day appointment-type breakdown, keyed by date
+  // Per-day appointment-type breakdown, keyed by date — reacts to doctorFilter
   const typeCountsByDate: Record<string, TypeCount[]> = useMemo(() => {
+    const perDate: Record<string, Record<string, number>> = {}
+    filteredRows.forEach((r: any) => {
+      const type = r.appointment_type || 'Unspecified'
+      const byType = perDate[r.appointment_date] || (perDate[r.appointment_date] = {})
+      byType[type] = (byType[type] || 0) + 1
+    })
     const map: Record<string, TypeCount[]> = {}
-    typeSummaryRows.forEach((row: any) => {
-      const list = map[row.appointment_date] || (map[row.appointment_date] = [])
-      list.push({ type: row.appt_type, count: row.cnt })
+    Object.entries(perDate).forEach(([date, counts]) => {
+      map[date] = Object.entries(counts).map(([type, count]) => ({ type, count }))
     })
     return map
-  }, [typeSummaryRows])
+  }, [filteredRows])
 
   // Month-wide totals per appointment type, feeding the dashboard cards below
   const monthTypeTotals: TypeTotal[] = useMemo(() => {
     const totals: Record<string, number> = {}
-    typeSummaryRows.forEach((row: any) => {
-      totals[row.appt_type] = (totals[row.appt_type] || 0) + row.cnt
+    filteredRows.forEach((r: any) => {
+      const type = r.appointment_type || 'Unspecified'
+      totals[type] = (totals[type] || 0) + 1
     })
     return Object.entries(totals).map(([type, count]) => ({ type, count }))
-  }, [typeSummaryRows])
+  }, [filteredRows])
 
-  // Build day cells
+  // Build day cells — reacts to doctorFilter via filteredRows
   const dayData: Record<string, DayCellData> = useMemo(() => {
+    const perDate: Record<string, any[]> = {}
+    filteredRows.forEach((r: any) => {
+      ;(perDate[r.appointment_date] || (perDate[r.appointment_date] = [])).push(r)
+    })
     const map: Record<string, DayCellData> = {}
-    daySummaryRows.forEach((row: any) => {
+    Object.entries(perDate).forEach(([date, dayRows]) => {
+      const confirmedCount = dayRows.filter(r => r.confirmation_status === 'Confirmed' || r.confirmation_status === 'confirmed').length
+      const pendingCount = dayRows.filter(r =>
+        r.confirmation_status !== 'Confirmed' && r.confirmation_status !== 'confirmed' &&
+        r.appointment_status !== 'Cancelled' && r.appointment_status !== 'Rescheduled'
+      ).length
+      const riskCount = dayRows.filter(r => r.no_show_risk === 'high').length
+      const doctors = Array.from(new Set(dayRows.map(r => r.doctor_service).filter(Boolean))).sort()
+
       const pills: DayPill[] = []
-      if (row.confirmed_count > 0)
-        pills.push({ key: 'confirmed', label: '✓', className: 'bg-emerald-100 text-emerald-700', count: row.confirmed_count })
-      if (row.pending_count > 0)
-        pills.push({ key: 'pending', label: '⏳', className: 'bg-amber-100 text-amber-700', count: row.pending_count })
-      if (row.no_show_risk_count > 0)
-        pills.push({ key: 'risk', label: '⚠', className: 'bg-rose-100 text-rose-700', count: row.no_show_risk_count })
-      map[row.appointment_date] = {
+      if (confirmedCount > 0) pills.push({ key: 'confirmed', label: '✓', className: 'bg-emerald-100 text-emerald-700', count: confirmedCount })
+      if (pendingCount > 0)   pills.push({ key: 'pending', label: '⏳', className: 'bg-amber-100 text-amber-700', count: pendingCount })
+      if (riskCount > 0)      pills.push({ key: 'risk', label: '⚠', className: 'bg-rose-100 text-rose-700', count: riskCount })
+
+      map[date] = {
         pills,
-        total: row.total_count,
-        doctors: row.doctors_list || [],
-        typeCounts: typeCountsByDate[row.appointment_date] || [],
+        total: dayRows.length,
+        doctors,
+        typeCounts: typeCountsByDate[date] || [],
       }
     })
     return map
-  }, [daySummaryRows, typeCountsByDate])
+  }, [filteredRows, typeCountsByDate])
 
   const sheetOpen = !!selectedDate
 
