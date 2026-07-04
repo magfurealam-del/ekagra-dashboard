@@ -1,21 +1,24 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import RescheduleModal from './RescheduleModal'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
+import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
 
+// Compact icon-only outcome buttons — full labels used to force these two
+// call columns to wrap onto multiple lines and eat most of the table width.
 const OUTCOME_BUTTONS = [
-  { label: 'Confirmed ✓',   outcome: 'confirmed',        tone: 'bg-emerald-600 text-white hover:bg-emerald-700 hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1' },
-  { label: 'Not Reached',   outcome: 'not_reached',      tone: 'bg-slate-200 text-slate-700 hover:bg-slate-300 hover:ring-2 hover:ring-slate-400 hover:ring-offset-1' },
-  { label: 'Busy',          outcome: 'busy',             tone: 'bg-amber-100 text-amber-700 hover:bg-amber-200 hover:ring-2 hover:ring-amber-400 hover:ring-offset-1' },
-  { label: 'Switched Off',  outcome: 'switched_off',     tone: 'bg-slate-200 text-slate-600 hover:bg-slate-300 hover:ring-2 hover:ring-slate-400 hover:ring-offset-1' },
-  { label: 'Reschedule',    outcome: 'wants_reschedule', tone: 'bg-purple-100 text-purple-700 hover:bg-purple-200 hover:ring-2 hover:ring-purple-400 hover:ring-offset-1' },
-  { label: 'Cancelled',     outcome: 'cancelled',        tone: 'bg-rose-100 text-rose-700 hover:bg-rose-200 hover:ring-2 hover:ring-rose-400 hover:ring-offset-1' },
-  { label: 'Wrong #',       outcome: 'wrong_number',     tone: 'bg-rose-200 text-rose-700 hover:bg-rose-300 hover:ring-2 hover:ring-rose-500 hover:ring-offset-1' },
+  { label: '✓',  title: 'Confirmed',    outcome: 'confirmed',        tone: 'bg-emerald-600 text-white hover:bg-emerald-700' },
+  { label: '✗',  title: 'Not Reached',  outcome: 'not_reached',      tone: 'bg-slate-200 text-slate-700 hover:bg-slate-300' },
+  { label: '⏳', title: 'Busy',         outcome: 'busy',             tone: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
+  { label: '📵', title: 'Switched Off', outcome: 'switched_off',     tone: 'bg-slate-200 text-slate-600 hover:bg-slate-300' },
+  { label: '↻',  title: 'Reschedule',   outcome: 'wants_reschedule', tone: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
+  { label: '⊘',  title: 'Cancelled',    outcome: 'cancelled',        tone: 'bg-rose-100 text-rose-700 hover:bg-rose-200' },
+  { label: '#',  title: 'Wrong Number', outcome: 'wrong_number',     tone: 'bg-rose-200 text-rose-700 hover:bg-rose-300' },
 ]
 
 const STATUS_BADGE: Record<string, string> = {
@@ -46,9 +49,9 @@ function outcomeLabel(outcome: string | null) {
 }
 
 export default function ConfirmationCallSheet({
-  date, onClose,
-}: { date: string; onClose: () => void }) {
-  const [rows, setRows] = useState<any[]>([])
+  date, doctorFilter, onClose,
+}: { date: string; doctorFilter?: string; onClose: () => void }) {
+  const [allRows, setAllRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('All Patients')
   const [agentName, setAgentName] = useState('Yakub')
@@ -81,11 +84,19 @@ export default function ConfirmationCallSheet({
       .eq('appointment_date', date)
       .neq('appointment_status', 'Cancelled')
       .order('appointment_time')
-    setRows(data || [])
+    setAllRows(data || [])
     setLoading(false)
   }, [date])
 
+  // Applied on top of the loaded day so the header dashboard, tabs, and
+  // table all reflect the same doctor-filtered set as the calendar grid above.
+  const rows = useMemo(
+    () => (!doctorFilter || doctorFilter === 'all' ? allRows : allRows.filter(r => r.doctor_service === doctorFilter)),
+    [allRows, doctorFilter]
+  )
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { setPage(1) }, [doctorFilter])
 
   // Live-sync with changes from Lead Intake, another tab, or the Calendar
   // grid itself (new bookings, reschedules, patient/status edits).
@@ -105,6 +116,20 @@ export default function ConfirmationCallSheet({
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
   }
+
+  // Service-type breakdown for the selected day — only types actually
+  // present are shown, so this dashboard row shrinks/grows with the day's
+  // real appointment mix instead of listing every possible type.
+  const serviceTypeTotals = useMemo(() => {
+    const totals: Record<string, number> = {}
+    rows.forEach(r => {
+      const type = r.service_type || 'Unspecified'
+      totals[type] = (totals[type] || 0) + 1
+    })
+    return Object.entries(totals)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+  }, [rows])
 
   const filtered = rows.filter(r => {
     if (tab === 'Night-Before Calls')  return !r.nb_outcome
@@ -190,7 +215,10 @@ export default function ConfirmationCallSheet({
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
 
-  function CallOutcomeCell({
+  // One compact row per call type (Night Before / Morning Of) — icon-only
+  // outcome buttons so both fit on a single line inside one narrow column,
+  // instead of the two separate wide columns of full-text buttons before.
+  function CallOutcomeRow({
     row,
     callType,
     outcome,
@@ -207,46 +235,45 @@ export default function ConfirmationCallSheet({
     const setKey  = `${callType === 'night_before' ? 'nb' : 'mo'}-${row.appointment_id}`
     const isUndoing = saving === undoKey
     const isSetting = saving === setKey
+    const rowLabel = callType === 'night_before' ? 'NB' : 'MO'
 
-    if (outcome) {
-      return (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={`text-xs rounded px-2 py-1 ${STATUS_BADGE[outcome] ?? 'bg-slate-100'}`}>
+    return (
+      <div className="flex items-center gap-1.5 whitespace-nowrap">
+        <span className="text-[10px] font-semibold text-slate-400 w-5 shrink-0">{rowLabel}</span>
+        {outcome ? (
+          <>
+            <span
+              title={`${agentVal ?? ''}${calledAt ? ' · ' + new Date(calledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}`}
+              className={`text-[11px] rounded px-1.5 py-0.5 ${STATUS_BADGE[outcome] ?? 'bg-slate-100'}`}
+            >
               {outcomeLabel(outcome)}
             </span>
             <button
               onClick={() => reverseCall(row, callType)}
               disabled={isUndoing}
               title="Undo this call — recorded by mistake"
-              className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-500
+              className="text-[11px] px-1 rounded border border-slate-300 text-slate-400
                          hover:bg-rose-50 hover:border-rose-300 hover:text-rose-600
-                         transition-colors disabled:opacity-40"
+                         transition-colors disabled:opacity-40 shrink-0"
             >
-              {isUndoing ? '…' : '↩ Undo'}
+              {isUndoing ? '…' : '↩'}
             </button>
+          </>
+        ) : (
+          <div className="flex gap-1">
+            {OUTCOME_BUTTONS.slice(0, 4).map(b => (
+              <button
+                key={b.outcome}
+                disabled={isSetting}
+                title={b.title}
+                onClick={() => recordCall(row, callType, b.outcome)}
+                className={`text-[11px] leading-none w-5 h-5 flex items-center justify-center rounded transition-all ${b.tone} disabled:opacity-50`}
+              >
+                {b.label}
+              </button>
+            ))}
           </div>
-          {agentVal && (
-            <div className="text-xs text-slate-400">
-              {agentVal}{calledAt ? ' ' + new Date(calledAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}
-            </div>
-          )}
-        </div>
-      )
-    }
-
-    return (
-      <div className="flex flex-wrap gap-1.5">
-        {OUTCOME_BUTTONS.slice(0, 4).map(b => (
-          <button
-            key={b.outcome}
-            disabled={isSetting}
-            onClick={() => recordCall(row, callType, b.outcome)}
-            className={`text-xs px-2 py-1 rounded transition-all ${b.tone} disabled:opacity-50`}
-          >
-            {b.label}
-          </button>
-        ))}
+        )}
       </div>
     )
   }
@@ -297,28 +324,43 @@ export default function ConfirmationCallSheet({
             </div>
           ))}
         </div>
+
+        {/* Service-type dashboard for this day — dynamic, non-zero types only */}
+        {serviceTypeTotals.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+            {serviceTypeTotals.map(t => {
+              const color = appointmentTypeColor(t.type)
+              return (
+                <span key={t.type} className={`text-xs rounded-full pl-1.5 pr-2 py-0.5 flex items-center gap-1 ${color.chip}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${color.dot}`} />
+                  {t.type}: <strong>{t.count}</strong>
+                </span>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-auto">
         {loading ? (
           <div className="p-4 space-y-2">{[0,1,2].map(i=><div key={i} className="h-16 bg-slate-100 rounded animate-pulse"/>)}</div>
         ) : paginated.length === 0 ? (
           <p className="p-4 text-sm text-slate-400">No appointments match this tab.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr className="text-left text-slate-500 border-b border-slate-200">
-                <th className="px-3 py-2.5 font-medium whitespace-nowrap">Time</th>
-                <th className="px-3 py-2.5 font-medium">Patient</th>
-                <th className="px-3 py-2.5 font-medium">Phone</th>
-                <th className="px-3 py-2.5 font-medium">Hospital ID</th>
-                <th className="px-3 py-2.5 font-medium">Doctor</th>
-                <th className="px-3 py-2.5 font-medium">Reason for Visit</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
-                <th className="px-3 py-2.5 font-medium">Night Before</th>
-                <th className="px-3 py-2.5 font-medium">Morning Of</th>
-                <th className="px-3 py-2.5 font-medium"></th>
+                <th className="px-2 py-2.5 font-medium whitespace-nowrap">Time</th>
+                <th className="px-2 py-2.5 font-medium">Patient</th>
+                <th className="px-2 py-2.5 font-medium">Phone</th>
+                <th className="px-2 py-2.5 font-medium">Hosp. ID</th>
+                <th className="px-2 py-2.5 font-medium">Doctor</th>
+                <th className="px-2 py-2.5 font-medium">Service Type</th>
+                <th className="px-2 py-2.5 font-medium">Reason</th>
+                <th className="px-2 py-2.5 font-medium">Status</th>
+                <th className="px-2 py-2.5 font-medium">Confirmation Calls</th>
+                <th className="px-2 py-2.5 font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -332,7 +374,7 @@ export default function ConfirmationCallSheet({
                   onUpdatePatientInfo={updatePatientInfo}
                   onLinkPatient={linkPatient}
                   onReschedule={() => setRescheduling(r)}
-                  CallOutcomeCell={CallOutcomeCell}
+                  CallOutcomeRow={CallOutcomeRow}
                 />
               ))}
             </tbody>
@@ -375,7 +417,7 @@ export default function ConfirmationCallSheet({
 }
 
 function AppointmentRow({
-  r, statusOpts, onUpdateStatus, onUpdatePatientHn, onUpdatePatientInfo, onLinkPatient, onReschedule, CallOutcomeCell,
+  r, statusOpts, onUpdateStatus, onUpdatePatientHn, onUpdatePatientInfo, onLinkPatient, onReschedule, CallOutcomeRow,
 }: any) {
   // Safety net: strip a lingering "Name · Location · +Phone — reason" prefix
   // if any notes weren't cleaned server-side, so only the actual reason shows.
@@ -405,33 +447,35 @@ function AppointmentRow({
     }
   }
 
+  const serviceColor = appointmentTypeColor(r.service_type || 'Unspecified')
+
   return (
     <tr className="hover:bg-slate-50">
-      <td className="px-3 py-3 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
-      <td className="px-3 py-3 align-top">
+      <td className="px-2 py-2.5 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
+      <td className="px-2 py-2.5 align-top">
         <input
-          className="input w-36 text-sm"
+          className="input w-32 text-sm"
           value={name}
           placeholder="Patient name"
           onChange={(e) => setName(e.target.value)}
           onBlur={() => name !== (r.patient_name || '') && saveNamePhone(name, phone)}
         />
       </td>
-      <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top text-slate-600 whitespace-nowrap">
         <input
-          className="input w-32 text-sm"
+          className="input w-28 text-sm"
           value={phone}
           placeholder="Phone"
           onChange={(e) => setPhone(e.target.value)}
           onBlur={() => phone !== (r.phone || '') && saveNamePhone(name, phone)}
         />
       </td>
-      <td className="px-3 py-3 align-top">
+      <td className="px-2 py-2.5 align-top">
         {hasRealHn ? (
-          <span className="text-slate-700 text-sm font-mono">{r.hn}</span>
+          <span className="text-slate-700 text-xs font-mono">{r.hn}</span>
         ) : (
           <input
-            className="input w-24 text-sm"
+            className="input w-20 text-sm"
             placeholder="Enter ID"
             value={hnInput}
             onChange={(e) => setHnInput(e.target.value)}
@@ -439,14 +483,19 @@ function AppointmentRow({
           />
         )}
       </td>
-      <td className="px-3 py-3 text-slate-600 align-top">
-        <div>{(r.doctor_service || '—')}</div>
-        {r.service_type && <div className="text-xs text-slate-400 mt-0.5">{r.service_type}</div>}
+      <td className="px-2 py-2.5 text-slate-600 align-top max-w-[110px] truncate" title={r.doctor_service || ''}>
+        {(r.doctor_service || '—')}
       </td>
-      <td className="px-3 py-3 align-top text-slate-600 max-w-[280px]">
+      <td className="px-2 py-2.5 align-top">
+        <span className={`inline-flex items-center gap-1 text-xs rounded-full pl-1.5 pr-2 py-0.5 whitespace-nowrap ${serviceColor.chip}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${serviceColor.dot}`} />
+          {r.service_type || 'Unspecified'}
+        </span>
+      </td>
+      <td className="px-2 py-2.5 align-top text-slate-600 max-w-[140px] truncate" title={displayReason || ''}>
         {displayReason || '—'}
       </td>
-      <td className="px-3 py-3 align-top">
+      <td className="px-2 py-2.5 align-top">
         <select
           className="input text-xs py-1"
           value={status}
@@ -462,18 +511,19 @@ function AppointmentRow({
           </div>
         )}
       </td>
-      <td className="px-3 py-3 align-top min-w-[150px]">
-        <CallOutcomeCell row={r} callType="night_before" outcome={r.nb_outcome} agentVal={r.nb_agent} calledAt={r.nb_called_at} />
+      <td className="px-2 py-2.5 align-top min-w-[170px]">
+        <div className="space-y-1">
+          <CallOutcomeRow row={r} callType="night_before" outcome={r.nb_outcome} agentVal={r.nb_agent} calledAt={r.nb_called_at} />
+          <CallOutcomeRow row={r} callType="morning_of" outcome={r.mo_outcome} agentVal={r.mo_agent} calledAt={r.mo_called_at} />
+        </div>
       </td>
-      <td className="px-3 py-3 align-top min-w-[150px]">
-        <CallOutcomeCell row={r} callType="morning_of" outcome={r.mo_outcome} agentVal={r.mo_agent} calledAt={r.mo_called_at} />
-      </td>
-      <td className="px-3 py-3 align-top whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top whitespace-nowrap">
         <button
           onClick={onReschedule}
-          className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-colors"
+          title="Reschedule"
+          className="text-xs w-6 h-6 flex items-center justify-center rounded border border-slate-300 text-slate-600 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-colors"
         >
-          Reschedule
+          ↻
         </button>
       </td>
     </tr>

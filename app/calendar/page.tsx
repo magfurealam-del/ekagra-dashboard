@@ -153,6 +153,7 @@ export default function CalendarPage() {
           <div className="min-h-[600px]">
             <ConfirmationCallSheet
               date={selectedDate!}
+              doctorFilter={doctorFilter}
               onClose={() => setSelectedDate(null)}
             />
           </div>
