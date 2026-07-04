@@ -1,28 +1,34 @@
 'use client'
 
-const KPI_CARDS = [
-  { key: 'total_patients',        label: "Tomorrow's Patients",     icon: '👥', tone: 'text-slate-800' },
-  { key: 'night_before_confirmed',label: 'Night-Before Confirmed',  icon: '✅', tone: 'text-emerald-600' },
-  { key: 'morning_confirmed',     label: 'Morning Confirmed',       icon: '🌅', tone: 'text-teal-600' },
-  { key: 'pending_calls',         label: 'Pending Calls',           icon: '📞', tone: 'text-amber-600' },
-  { key: 'no_show_risk',          label: 'No-Show Risk',            icon: '⚠️', tone: 'text-rose-600' },
-  { key: 'doctors_scheduled',     label: 'Doctors Scheduled',       icon: '👨‍⚕️', tone: 'text-indigo-600' },
-]
+import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 
-export default function CalendarKPIs({ kpi }: { kpi: any | null }) {
-  const total = kpi?.total_patients || 0
+export type TypeTotal = { type: string; count: number }
+
+// Dashboard cards for appointment types — only types with a non-zero count
+// for the visible month are rendered, so the row shrinks/grows automatically
+// as the mix of bookings changes.
+export default function CalendarKPIs({ typeTotals }: { typeTotals: TypeTotal[] }) {
+  const nonZero = typeTotals.filter(t => t.count > 0).sort((a, b) => b.count - a.count)
+
+  if (nonZero.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-3 text-sm text-slate-400">
+        No appointments scheduled this month yet.
+      </div>
+    )
+  }
+
   return (
-    <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
-      {KPI_CARDS.map((c) => {
-        const val = kpi?.[c.key] ?? '—'
-        const pct = c.key === 'night_before_confirmed' && total > 0 ? `${Math.round((val/total)*100)}%` : null
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {nonZero.map(t => {
+        const color = appointmentTypeColor(t.type)
         return (
-          <div key={c.key} className="bg-white rounded-xl border border-slate-200 p-3">
-            <div className="text-xs text-slate-500 flex items-center gap-1">
-              <span>{c.icon}</span> {c.label}
+          <div key={t.type} className="bg-white rounded-xl border border-slate-200 p-3">
+            <div className="text-xs text-slate-500 flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${color.dot}`} />
+              <span className="truncate">{t.type}</span>
             </div>
-            <div className={`text-2xl font-bold mt-1 ${c.tone}`}>{val}</div>
-            {pct && <div className="text-xs text-slate-400">{pct}</div>}
+            <div className={`text-2xl font-bold mt-1 ${color.tone}`}>{t.count}</div>
           </div>
         )
       })}

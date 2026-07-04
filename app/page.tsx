@@ -20,7 +20,7 @@ const blankForm = {
   location: '',
   new_old_status: 'New',
   source_channel: '',
-  campaign_bucket: '',
+  referral_name: '',
   agent_name: '',
 
   lead_bucket: '',
@@ -84,7 +84,6 @@ export default function LeadIntakePage() {
   const branchOpts = useDropdownOptions('branch')
   const genderOpts = useDropdownOptions('gender')
   const sourceChannelOpts = useDropdownOptions('intake_source_channel')
-  const campaignBucketOpts = useDropdownOptions('intake_campaign_bucket')
   const leadBucketOpts = useDropdownOptions('intake_lead_bucket')
   const mainConcernOpts = useDropdownOptions('intake_main_concern')
   const urgencyOpts = useDropdownOptions('intake_urgency')
@@ -221,7 +220,7 @@ export default function LeadIntakePage() {
         location: form.location,
         new_old_status: form.new_old_status,
         source_channel: form.source_channel,
-        campaign_bucket: form.campaign_bucket,
+        referral_name: form.referral_name,
         agent_name: form.agent_name,
         lead_bucket: form.lead_bucket,
         main_concern: form.main_concern,
@@ -369,8 +368,13 @@ export default function LeadIntakePage() {
               <Field label="Source channel *">
                 <SearchableSelect options={sourceChannelOpts.options} value={form.source_channel} onChange={(v) => set('source_channel', v)} />
               </Field>
-              <Field label="Campaign bucket">
-                <SearchableSelect options={campaignBucketOpts.options} value={form.campaign_bucket} onChange={(v) => set('campaign_bucket', v)} />
+              <Field label="Doctor / referral name">
+                <input
+                  className="input"
+                  placeholder="e.g. Dr. Rahman or referring patient's name"
+                  value={form.referral_name}
+                  onChange={(e) => set('referral_name', e.target.value)}
+                />
               </Field>
               <Field label="Call center agent *">
                 <SearchableSelect options={agentOpts} value={form.agent_name} onChange={(v) => set('agent_name', v)} />
@@ -512,6 +516,7 @@ function buildWhatsAppMessage(form: any): string {
   lines.push(`Patient Name: ${form.patient_name || '—'}`)
   lines.push(`Contact Number: ${form.phone || '—'}`)
   if (form.source_channel) lines.push(`Source: ${form.source_channel}`)
+  if (form.referral_name) lines.push(`Doctor/Referral: ${form.referral_name}`)
   if (form.appointment_date) lines.push(`Appointment Date: ${formatDateDMY(form.appointment_date)}`)
   if (form.appointment_time) lines.push(`Appointment Time: ${formatTime12h(form.appointment_time)}`)
   if (form.service_type) lines.push(`Appointment For: ${form.service_type}`)

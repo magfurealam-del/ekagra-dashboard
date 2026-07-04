@@ -13,17 +13,6 @@ export const SOURCE_CHANNEL_OPTIONS = [
   'Other',
 ]
 
-export const CAMPAIGN_BUCKET_OPTIONS = [
-  'Wound Care Campaign',
-  'Screening Package Campaign',
-  'Surgery / Procedure Campaign',
-  'General Consultation',
-  'Dressing / Wound Follow-up',
-  'Existing Patient Follow-up',
-  'Organic / Unknown',
-  'Other',
-]
-
 export const LEAD_BUCKET_OPTIONS = [
   'Wound',
   'Screening',

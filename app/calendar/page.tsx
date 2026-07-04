@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import CalendarGrid, { DayCellData, DayPill } from '@/components/calendar/CalendarGrid'
+import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/calendar/CalendarGrid'
+import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
 
 export default function CalendarPage() {
@@ -15,6 +16,7 @@ export default function CalendarPage() {
   )
 
   const [daySummaryRows, setDaySummaryRows] = useState<any[]>([])
+  const [typeSummaryRows, setTypeSummaryRows] = useState<any[]>([])
   const [loadingGrid, setLoadingGrid] = useState(true)
 
   // Doctor/patient filter
@@ -24,24 +26,24 @@ export default function CalendarPage() {
   const start = useMemo(() => new Date(year, month, 1).toISOString().slice(0, 10), [year, month])
   const end   = useMemo(() => new Date(year, month + 1, 0).toISOString().slice(0, 10), [year, month])
 
-  // Load day summaries from the new calendar_day_summary view
+  async function loadCalendarData() {
+    const [{ data: summary }, { data: types }] = await Promise.all([
+      supabase.from('calendar_day_summary').select('*').gte('appointment_date', start).lte('appointment_date', end),
+      supabase.from('calendar_day_type_summary').select('*').gte('appointment_date', start).lte('appointment_date', end),
+    ])
+    setDaySummaryRows(summary || [])
+    setTypeSummaryRows(types || [])
+    const docs = new Set<string>()
+    ;(summary || []).forEach((r: any) => (r.doctors_list || []).forEach((d: string) => docs.add(d)))
+    setAllDoctors(Array.from(docs).sort())
+    return summary
+  }
+
+  // Load day summaries + per-appointment-type counts from Supabase views
   useEffect(() => {
     let cancelled = false
     setLoadingGrid(true)
-    supabase
-      .from('calendar_day_summary')
-      .select('*')
-      .gte('appointment_date', start)
-      .lte('appointment_date', end)
-      .then(({ data }) => {
-        if (cancelled) return
-        setDaySummaryRows(data || [])
-        // Collect distinct doctors for filter
-        const docs = new Set<string>()
-        ;(data || []).forEach((r: any) => (r.doctors_list || []).forEach((d: string) => docs.add(d)))
-        setAllDoctors(Array.from(docs).sort())
-        setLoadingGrid(false)
-      })
+    loadCalendarData().then(() => { if (!cancelled) setLoadingGrid(false) })
     return () => { cancelled = true }
   }, [start, end])
 
@@ -51,15 +53,7 @@ export default function CalendarPage() {
   useEffect(() => {
     const channel = supabase
       .channel('calendar-grid')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => {
-        supabase.from('calendar_day_summary').select('*').gte('appointment_date', start).lte('appointment_date', end)
-          .then(({ data }) => {
-            setDaySummaryRows(data || [])
-            const docs = new Set<string>()
-            ;(data || []).forEach((r: any) => (r.doctors_list || []).forEach((d: string) => docs.add(d)))
-            setAllDoctors(Array.from(docs).sort())
-          })
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => { loadCalendarData() })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [start, end])
@@ -70,6 +64,25 @@ export default function CalendarPage() {
     if (m > 11) { m = 0;  y += 1 }
     setMonth(m); setYear(y); setSelectedDate(null)
   }
+
+  // Per-day appointment-type breakdown, keyed by date
+  const typeCountsByDate: Record<string, TypeCount[]> = useMemo(() => {
+    const map: Record<string, TypeCount[]> = {}
+    typeSummaryRows.forEach((row: any) => {
+      const list = map[row.appointment_date] || (map[row.appointment_date] = [])
+      list.push({ type: row.appt_type, count: row.cnt })
+    })
+    return map
+  }, [typeSummaryRows])
+
+  // Month-wide totals per appointment type, feeding the dashboard cards below
+  const monthTypeTotals: TypeTotal[] = useMemo(() => {
+    const totals: Record<string, number> = {}
+    typeSummaryRows.forEach((row: any) => {
+      totals[row.appt_type] = (totals[row.appt_type] || 0) + row.cnt
+    })
+    return Object.entries(totals).map(([type, count]) => ({ type, count }))
+  }, [typeSummaryRows])
 
   // Build day cells
   const dayData: Record<string, DayCellData> = useMemo(() => {
@@ -86,10 +99,11 @@ export default function CalendarPage() {
         pills,
         total: row.total_count,
         doctors: row.doctors_list || [],
+        typeCounts: typeCountsByDate[row.appointment_date] || [],
       }
     })
     return map
-  }, [daySummaryRows])
+  }, [daySummaryRows, typeCountsByDate])
 
   const sheetOpen = !!selectedDate
 
@@ -114,6 +128,9 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+
+      {/* Appointment-type dashboard — cards appear only for types with bookings this month */}
+      {!sheetOpen && <CalendarKPIs typeTotals={monthTypeTotals} />}
 
       {/* Main content — calendar on top, appointment panel below when a date is selected */}
       <div className={sheetOpen ? 'flex flex-col gap-4' : ''}>

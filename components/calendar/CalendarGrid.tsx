@@ -1,7 +1,10 @@
 'use client'
 
+import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
+
 export type DayPill = { key: string; label: string; className: string; count?: number }
-export type DayCellData = { pills: DayPill[]; total: number; doctors?: string[] }
+export type TypeCount = { type: string; count: number }
+export type DayCellData = { pills: DayPill[]; total: number; doctors?: string[]; typeCounts?: TypeCount[] }
 
 function monthMatrix(year: number, month: number) {
   const first = new Date(year, month, 1)
@@ -71,6 +74,17 @@ export default function CalendarGrid({
                   <span className="font-bold text-slate-800 text-sm leading-none">{cell.total}</span>
                 )}
               </div>
+              {cell && cell.typeCounts && cell.typeCounts.length > 0 && (
+                <div className={`flex gap-0.5 flex-wrap ${compact ? 'mt-0.5' : 'mt-1'}`}>
+                  {cell.typeCounts.map(tc => (
+                    <span
+                      key={tc.type}
+                      title={`${tc.type}: ${tc.count}`}
+                      className={`rounded-full ${appointmentTypeColor(tc.type).dot} ${compact ? 'w-1.5 h-1.5' : 'w-2 h-2'}`}
+                    />
+                  ))}
+                </div>
+              )}
               {cell && !compact && (
                 <>
                   <div className="mt-1.5 space-y-0.5">

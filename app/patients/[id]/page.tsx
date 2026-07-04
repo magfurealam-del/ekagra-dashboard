@@ -81,8 +81,8 @@ export default function PatientProfilePage() {
 
       <Section title="Lead history">
         {leads.length === 0 ? <Empty /> : (
-          <Table cols={['Date', 'Source', 'Status', 'Main problem', 'Agent']}
-            rows={leads.map((l) => [l.created_at?.slice(0, 10), l.source, l.lead_status, l.main_problem, l.agent_name])} />
+          <Table cols={['Date', 'Source', 'Doctor/Referral', 'Status', 'Main problem', 'Agent']}
+            rows={leads.map((l) => [l.created_at?.slice(0, 10), l.source, l.referral_name, l.lead_status, l.main_problem, l.agent_name])} />
         )}
       </Section>
 
