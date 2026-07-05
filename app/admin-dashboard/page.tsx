@@ -270,8 +270,38 @@ export default function AdminDashboardPage() {
                   colorFor={(label) => appointmentTypeColor(label).dot}
                 />
               </Panel>
-              <Panel title="Doctor Load" subtitle="Appointments booked per doctor">
-                <BarList items={(metrics.by_doctor || []).map((s: any) => ({ label: s.doctor, count: s.count }))} />
+              <Panel title="Doctor Performance" subtitle="Appointments, invoice-validated no-show rate, and revenue per doctor">
+                {(metrics.by_doctor_performance || []).length === 0 ? (
+                  <p className="text-sm text-slate-400">No appointments this period.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-slate-400 uppercase">
+                      <tr>
+                        <th className="text-left py-1">Doctor</th>
+                        <th className="text-right py-1">Appts</th>
+                        <th className="text-right py-1">No-Show Rate</th>
+                        <th className="text-right py-1">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(metrics.by_doctor_performance || []).map((d: any) => (
+                        <tr key={d.doctor}>
+                          <td className="py-1.5 truncate max-w-[160px]">{d.doctor}</td>
+                          <td className="py-1.5 text-right">{d.appointments}</td>
+                          <td className={`py-1.5 text-right font-medium ${d.no_show_rate > 40 ? 'text-rose-600' : d.no_show_rate > 20 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {d.no_show_rate != null ? `${d.no_show_rate}%` : '—'}
+                          </td>
+                          <td className="py-1.5 text-right text-slate-700">{money(d.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <p className="text-xs text-slate-400 mt-2">
+                  No-show rate is invoice-validated: an appointment counts as attended only if a matching invoice
+                  exists for that patient nearby, across all invoice types (daycare, pathology, pharmacy, IPD) —
+                  not admissions-only.
+                </p>
               </Panel>
               <Panel title="Agent Performance" subtitle="Leads handled and booking rate per agent">
                 {(metrics.by_agent || []).length === 0 ? (
@@ -306,7 +336,7 @@ export default function AdminDashboardPage() {
             <div className="space-y-4">
               <Panel
                 title="No-Show / Attendance Validation"
-                subtitle="Cross-checks the CRM's reported appointment status against a matching invoice for the same patient within a few days"
+                subtitle="Cross-checks the CRM's reported appointment status against the invoice source of truth (OCR/Google-Sheet fed, all invoice types — daycare, pathology, pharmacy, IPD)"
               >
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                   <KPICard label="CRM: Completed" value={metrics.attendance_validation?.crm_completed ?? 0} tone="text-emerald-600" />
@@ -326,12 +356,13 @@ export default function AdminDashboardPage() {
                     sub="worth a second look"
                   />
                 </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800">
-                  <strong>Caveat:</strong> this hospital&apos;s invoice records mostly cover admission-based billing,
-                  not routine outpatient consultations — so a low &quot;matching invoice&quot; rate among Completed
-                  visits is expected and does <em>not</em> mean those visits didn&apos;t happen. Treat the
-                  &quot;No-show but has an invoice anyway&quot; count as the actionable signal here: those are cases
-                  worth double-checking, since an invoice existing usually means the patient did come in.
+                <div className="bg-sky-50 border border-sky-200 rounded-md p-3 text-xs text-sky-800">
+                  The Overview tab&apos;s <strong>Attended</strong>/<strong>No-Shows</strong>/<strong>Show Rate</strong> now
+                  use this invoice-validated definition directly (not the agent-set status alone) — an appointment
+                  only counts as attended if a matching invoice exists for that patient within a few days, across
+                  every invoice type. The table here is the transparency layer: it shows where the CRM&apos;s status
+                  and the invoice record disagree, so &quot;No-show but has an invoice anyway&quot; is the case worth
+                  double-checking first.
                 </div>
               </Panel>
             </div>
