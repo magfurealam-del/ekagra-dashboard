@@ -8,6 +8,7 @@ const links = [
   { href: '/patients', label: 'Patient List' },
   { href: '/calendar', label: 'Calendar' },
   { href: '/outgoing-calls', label: 'Outgoing Call Sheet' },
+  { href: '/admin-dashboard', label: 'Dashboard', adminOnly: true },
   { href: '/settings', label: 'Settings', adminOnly: true },
 ]
 
