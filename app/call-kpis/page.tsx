@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
@@ -79,6 +79,30 @@ type CallLogRow = {
   agent: string | null
   outcome: string | null
   notes: string | null
+  details: Record<string, string | number | null> | null
+}
+
+const DETAIL_FIELD_LABEL: Record<string, string> = {
+  hospital_id: 'Hospital ID',
+  source: 'Source',
+  campaign: 'Campaign',
+  referral_name: 'Referral',
+  patient_type: 'Patient Type',
+  main_problem: 'Main Concern',
+  lead_bucket: 'Lead Bucket',
+  urgency: 'Urgency',
+  priority: 'Priority',
+  diabetes_status: 'Diabetes Status',
+  location: 'Location',
+  category: 'Category',
+  reason: 'Reason',
+  followup_number: 'Follow-up #',
+  scheduled_date: 'Scheduled Date',
+  appointment_date: 'Appointment Date',
+  appointment_time: 'Appointment Time',
+  doctor_service: 'Doctor / Service',
+  appointment_type: 'Appointment Type',
+  attempt_number: 'Attempt #',
 }
 
 type SortKey = 'call_date' | 'patient_name' | 'direction' | 'agent' | 'outcome'
@@ -97,6 +121,7 @@ export default function CallKpisPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [directionFilter, setDirectionFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
+  const [expandedRow, setExpandedRow] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -300,6 +325,7 @@ export default function CallKpisPage() {
                 <table className="w-full text-sm">
                   <thead className="text-xs text-slate-400 uppercase sticky top-0 bg-white">
                     <tr>
+                      <th className="w-5"></th>
                       <SortHeader label="Date" k="call_date" />
                       <SortHeader label="Direction" k="direction" />
                       <SortHeader label="Patient" k="patient_name" />
@@ -309,22 +335,56 @@ export default function CallKpisPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {callLog.map((r, i) => (
-                      <tr key={i}>
-                        <td className="py-1.5 whitespace-nowrap text-slate-500">
-                          {new Date(r.call_date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="py-1.5">
-                          <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
-                            {r.direction}
-                          </span>
-                        </td>
-                        <td className="py-1.5">{r.patient_name || '—'}</td>
-                        <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
-                        <td className="py-1.5">{r.agent || '—'}</td>
-                        <td className="py-1.5">{r.outcome || '—'}</td>
-                      </tr>
-                    ))}
+                    {callLog.map((r, i) => {
+                      const isOpen = expandedRow === i
+                      const detailEntries = Object.entries(r.details || {}).filter(([, v]) => v !== null && v !== '')
+                      return (
+                        <Fragment key={i}>
+                          <tr
+                            className="cursor-pointer hover:bg-slate-50"
+                            onClick={() => setExpandedRow(isOpen ? null : i)}
+                          >
+                            <td className="py-1.5 text-slate-400 text-center">{isOpen ? '▾' : '▸'}</td>
+                            <td className="py-1.5 whitespace-nowrap text-slate-500">
+                              {new Date(r.call_date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="py-1.5">
+                              <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
+                                {r.direction}
+                              </span>
+                            </td>
+                            <td className="py-1.5">{r.patient_name || '—'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
+                            <td className="py-1.5">{r.agent || '—'}</td>
+                            <td className="py-1.5">{r.outcome || '—'}</td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-slate-50">
+                              <td colSpan={7} className="px-4 py-3">
+                                {detailEntries.length === 0 && !r.notes ? (
+                                  <p className="text-xs text-slate-400">No additional details recorded.</p>
+                                ) : (
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
+                                    {detailEntries.map(([k, v]) => (
+                                      <div key={k}>
+                                        <div className="text-[10px] uppercase text-slate-400">{DETAIL_FIELD_LABEL[k] || k}</div>
+                                        <div className="text-xs text-slate-700">{String(v)}</div>
+                                      </div>
+                                    ))}
+                                    {r.notes && (
+                                      <div className="col-span-2 md:col-span-4">
+                                        <div className="text-[10px] uppercase text-slate-400">Notes</div>
+                                        <div className="text-xs text-slate-700">{r.notes}</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
