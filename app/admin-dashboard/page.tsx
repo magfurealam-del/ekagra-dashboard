@@ -177,14 +177,22 @@ export default function AdminDashboardPage() {
           {tab === 'overview' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-                <KPICard label="Total Leads" value={metrics.total_leads} tone="text-slate-800" delta={d(metrics.total_leads, 'total_leads')} />
-                <KPICard label="Booked" value={metrics.booked_leads} tone="text-teal-600" delta={d(metrics.booked_leads, 'booked_leads')} />
-                <KPICard label="Booking Rate" value={`${bookingRate}%`} tone="text-teal-600" delta={compare && prevMetrics ? pctDelta(bookingRate, prevBookingRate) : undefined} />
-                <KPICard label="Appointments" value={metrics.total_appointments} tone="text-indigo-600" delta={d(metrics.total_appointments, 'total_appointments')} />
-                <KPICard label="Attended" value={metrics.attended} tone="text-emerald-600" delta={d(metrics.attended, 'attended')} />
-                <KPICard label="Show Rate" value={metrics.show_rate != null ? `${metrics.show_rate}%` : '—'} tone="text-emerald-600" delta={compare && prevMetrics ? pctDelta(metrics.show_rate || 0, prevMetrics.show_rate || 0) : undefined} />
-                <KPICard label="No-Shows" value={metrics.no_shows} tone="text-rose-600" delta={d(metrics.no_shows, 'no_shows')} />
-                <KPICard label="Pending Callbacks" value={metrics.pending_callbacks} tone="text-amber-600" />
+                <KPICard label="Total Leads" value={metrics.total_leads} tone="text-slate-800" delta={d(metrics.total_leads, 'total_leads')}
+                  tooltip="Every call/contact logged in Lead Intake during this period, regardless of outcome." />
+                <KPICard label="Booked" value={metrics.booked_leads} tone="text-teal-600" delta={d(metrics.booked_leads, 'booked_leads')}
+                  tooltip="Leads from this period whose intake outcome was 'Appointment Booked'." />
+                <KPICard label="Booking Rate" value={`${bookingRate}%`} tone="text-teal-600" delta={compare && prevMetrics ? pctDelta(bookingRate, prevBookingRate) : undefined}
+                  tooltip="Booked ÷ Total Leads. How often a call turns into a scheduled visit." />
+                <KPICard label="Appointments" value={metrics.total_appointments} tone="text-indigo-600" delta={d(metrics.total_appointments, 'total_appointments')}
+                  tooltip="All appointments with a visit date inside this period, booked at any time." />
+                <KPICard label="Attended" value={metrics.attended} tone="text-emerald-600" delta={d(metrics.attended, 'attended')}
+                  tooltip="Invoice-validated: only counted if a matching invoice exists for that patient nearby — not just the agent-set status." />
+                <KPICard label="Show Rate" value={metrics.show_rate != null ? `${metrics.show_rate}%` : '—'} tone="text-emerald-600" delta={compare && prevMetrics ? pctDelta(metrics.show_rate || 0, prevMetrics.show_rate || 0) : undefined}
+                  tooltip="Attended ÷ (Attended + No-Shows) among appointments already in the past. Excludes upcoming/Scheduled visits." />
+                <KPICard label="No-Shows" value={metrics.no_shows} tone="text-rose-600" delta={d(metrics.no_shows, 'no_shows')}
+                  tooltip="Past-dated, non-cancelled appointments with no matching invoice found — see Data Quality tab for the full reconciliation." />
+                <KPICard label="Pending Callbacks" value={metrics.pending_callbacks} tone="text-amber-600"
+                  tooltip="Snapshot right now (not date-range filtered): open items in the Outgoing Calls queue." />
               </div>
 
               <Panel title="Daily Trend" subtitle="Leads received vs appointments scheduled, per day">
@@ -212,16 +220,16 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Panel title="Lead → Appointment Funnel" subtitle="From first contact to a completed visit">
                 <FunnelChart steps={[
-                  { label: 'Leads', count: metrics.total_leads },
-                  { label: 'Booked', count: metrics.booked_leads },
-                  { label: 'Attended', count: metrics.attended },
+                  { label: 'Leads', count: metrics.total_leads, hint: 'every logged call this period' },
+                  { label: 'Booked', count: metrics.booked_leads, hint: 'intake outcome was Appointment Booked' },
+                  { label: 'Attended', count: metrics.attended, hint: 'invoice-validated visit, not just agent-set status' },
                 ]} />
               </Panel>
               <Panel title="Follow-up Funnel" subtitle="Outbound follow-up calls in this period">
                 <FunnelChart steps={[
-                  { label: 'Logged', count: metrics.follow_up_funnel?.logged || 0 },
-                  { label: 'Reached', count: metrics.follow_up_funnel?.reached || 0 },
-                  { label: 'Positive Outcome', count: metrics.follow_up_funnel?.positive || 0 },
+                  { label: 'Logged', count: metrics.follow_up_funnel?.logged || 0, hint: 'follow-up calls recorded this period' },
+                  { label: 'Reached', count: metrics.follow_up_funnel?.reached || 0, hint: 'excludes no-response/not-reachable/switched-off' },
+                  { label: 'Positive Outcome', count: metrics.follow_up_funnel?.positive || 0, hint: 'mentions a booking or resolved problem in the notes' },
                 ]} />
                 <p className="text-xs text-slate-400 mt-2">
                   &quot;Positive&quot; = mentions an appointment/booking or a resolved problem in the call notes — a
@@ -229,7 +237,8 @@ export default function AdminDashboardPage() {
                 </p>
               </Panel>
               <Panel title="Pending Callback Queue" subtitle="Point-in-time snapshot, not filtered by date range">
-                <KPICard label="Open in Queue" value={metrics.pending_callbacks} tone="text-amber-600" />
+                <KPICard label="Open in Queue" value={metrics.pending_callbacks} tone="text-amber-600"
+                  tooltip="Outgoing Calls queue items still awaiting a call attempt, right now." />
               </Panel>
             </div>
           )}
@@ -237,17 +246,20 @@ export default function AdminDashboardPage() {
           {tab === 'revenue' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <KPICard label="Total Revenue" value={money(metrics.total_revenue)} tone="text-emerald-600" delta={d(metrics.total_revenue, 'total_revenue')} />
+                <KPICard label="Total Revenue" value={money(metrics.total_revenue)} tone="text-emerald-600" delta={d(metrics.total_revenue, 'total_revenue')}
+                  tooltip="Sum of invoice revenue attributed back to a lead's source, for invoices dated in this period." />
                 <KPICard
                   label="Revenue / Booked Lead"
                   value={metrics.booked_leads > 0 ? money(metrics.total_revenue / metrics.booked_leads) : '—'}
                   tone="text-emerald-600"
+                  tooltip="Total Revenue ÷ Booked leads. A rough per-booking value, not a true per-patient average."
                 />
               </div>
               <Panel title="Revenue by Source" subtitle="Attributed via matched invoices (crm_billing_links), not every lead has a matched invoice yet">
                 <BarList
                   items={(metrics.revenue_by_source || []).map((s: any) => ({ label: s.source, count: Math.round(s.revenue) }))}
                   colorFor={(label) => SOURCE_COLORS[label] || 'bg-slate-400'}
+                  unit="৳"
                 />
               </Panel>
             </div>
