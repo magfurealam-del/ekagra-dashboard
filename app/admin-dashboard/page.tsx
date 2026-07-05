@@ -85,6 +85,8 @@ export default function AdminDashboardPage() {
   const [prevMetrics, setPrevMetrics] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
 
   useEffect(() => {
     if (!isAdmin) return
@@ -103,6 +105,27 @@ export default function AdminDashboardPage() {
     })
     return () => { cancelled = true }
   }, [start, end, compare, prevRange.start, prevRange.end, isAdmin])
+
+  async function reloadMetrics() {
+    const { data } = await supabase.rpc('get_admin_dashboard_metrics', { p_start_date: start, p_end_date: end })
+    setMetrics(data)
+  }
+
+  // Recomputes appointment_status from the invoice source of truth for
+  // appointments on/after sinceDate — lets an admin re-trigger the June-
+  // onwards correction (or any range) without needing direct DB access.
+  async function recomputeStatusFromInvoices(sinceDate: string | null) {
+    setSyncing(true)
+    setSyncMsg('')
+    const { data, error } = await supabase.rpc('sync_appointment_status_from_invoices', {
+      p_only_pending: false,
+      p_since_date: sinceDate,
+    })
+    setSyncing(false)
+    if (error) { setSyncMsg('Error: ' + error.message); return }
+    setSyncMsg(`Updated ${data} appointment${data === 1 ? '' : 's'}.`)
+    reloadMetrics()
+  }
 
   if (!isAdmin) return null
 
@@ -375,6 +398,29 @@ export default function AdminDashboardPage() {
                   every invoice type. The table here is the transparency layer: it shows where the CRM&apos;s status
                   and the invoice record disagree, so &quot;No-show but has an invoice anyway&quot; is the case worth
                   double-checking first.
+                </div>
+              </Panel>
+
+              <Panel
+                title="Recompute Appointment Status"
+                subtitle="Overwrites appointment_status (Completed/No-show) from the invoice source of truth for the chosen range — Scheduled/Cancelled/Rescheduled are left alone"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => recomputeStatusFromInvoices('2026-06-01')}
+                    disabled={syncing}
+                    className="bg-teal-600 text-white px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
+                  >
+                    {syncing ? 'Recomputing…' : 'Recompute June 2026 onward'}
+                  </button>
+                  <button
+                    onClick={() => recomputeStatusFromInvoices(null)}
+                    disabled={syncing}
+                    className="border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {syncing ? 'Recomputing…' : 'Recompute entire history'}
+                  </button>
+                  {syncMsg && <span className="text-xs text-slate-500">{syncMsg}</span>}
                 </div>
               </Panel>
             </div>
