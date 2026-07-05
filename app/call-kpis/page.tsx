@@ -5,10 +5,11 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
+import MiniCalendar from '@/components/callkpis/MiniCalendar'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 
-function toISO(d: Date) { return d.toISOString().slice(0, 10) }
+function toISO(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
 function rangeFor(key: RangeKey, customStart: string, customEnd: string) {
   const today = new Date()
@@ -122,6 +123,23 @@ export default function CallKpisPage() {
   const [directionFilter, setDirectionFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date())
+  const selectedDate = rangeKey === 'custom' && customStart === customEnd ? customStart : null
+
+  function selectDate(iso: string) {
+    setRangeKey('custom')
+    setCustomStart(iso)
+    setCustomEnd(iso)
+    setCalendarMonth(new Date(iso + 'T00:00:00'))
+  }
+
+  const countsByDate = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const d of metrics?.daily_trend || []) {
+      map[d.date] = (d.incoming || 0) + (d.outgoing || 0) + (d.confirmation || 0)
+    }
+    return map
+  }, [metrics])
 
   useEffect(() => {
     let cancelled = false
@@ -140,6 +158,17 @@ export default function CallKpisPage() {
     label: OUTGOING_OUTCOME_LABEL[s.outcome] || s.outcome,
     count: s.count,
   }))
+
+  // Per-agent tally with a blended conversion rate across every call type
+  // that can lead to a booking (incoming intake + outgoing follow-up).
+  const agentTally = (metrics?.by_agent || []).map((a: any) => {
+    const totalCalls = a.incoming + a.outgoing + a.confirmation
+    const bookableCalls = a.incoming + a.outgoing
+    const bookings = (a.incoming_booked || 0) + (a.outgoing_booked || 0)
+    const conversionRate = bookableCalls > 0 ? Math.round((bookings / bookableCalls) * 100) : null
+    const confirmationRate = a.confirmation > 0 ? Math.round((a.confirmation_confirmed / a.confirmation) * 100) : null
+    return { ...a, totalCalls, bookings, conversionRate, confirmationRate }
+  }).sort((x: any, y: any) => y.totalCalls - x.totalCalls)
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -256,6 +285,47 @@ export default function CallKpisPage() {
             </Panel>
           </div>
 
+          <Panel title="Agent Tally" subtitle="Total calls handled and blended conversion rate, per agent, for the selected period">
+            {agentTally.length === 0 ? (
+              <p className="text-sm text-slate-400">No agent-attributed calls this period.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {agentTally.map((a: any) => (
+                  <div key={a.agent} className="border border-slate-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-slate-800 text-sm">{a.agent}</span>
+                      <span className="text-xs text-slate-400">{a.totalCalls} call{a.totalCalls === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                      <div>
+                        <div className="text-base font-bold text-teal-600">{a.incoming}</div>
+                        <div className="text-[10px] text-slate-400">Incoming</div>
+                      </div>
+                      <div>
+                        <div className="text-base font-bold text-indigo-600">{a.outgoing}</div>
+                        <div className="text-[10px] text-slate-400">Outgoing</div>
+                      </div>
+                      <div>
+                        <div className="text-base font-bold text-purple-600">{a.confirmation}</div>
+                        <div className="text-[10px] text-slate-400">Confirmation</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
+                      <span className="text-slate-500" title="Bookings (incoming + outgoing) ÷ incoming + outgoing calls">
+                        Conversion: <strong className="text-emerald-600">{a.conversionRate != null ? `${a.conversionRate}%` : '—'}</strong>
+                      </span>
+                      {a.confirmation > 0 && (
+                        <span className="text-slate-500" title="Confirmed ÷ confirmation calls attempted">
+                          Confirmed: <strong className="text-emerald-600">{a.confirmationRate != null ? `${a.confirmationRate}%` : '—'}</strong>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
           <Panel title="Agent Performance" subtitle="Incoming, outgoing, and confirmation call volume, per agent">
             {(metrics.by_agent || []).length === 0 ? (
               <p className="text-sm text-slate-400">No agent-attributed calls this period.</p>
@@ -296,7 +366,16 @@ export default function CallKpisPage() {
             )}
           </Panel>
 
-          <Panel title="Call Log" subtitle="Every incoming, outgoing, and confirmation call in this period, with patient details — click a column header to sort">
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
+            <MiniCalendar
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
+              selectedDate={selectedDate}
+              onSelectDate={selectDate}
+              countsByDate={countsByDate}
+            />
+            <div className="flex-1 w-full min-w-0">
+              <Panel title="Call Log" subtitle={selectedDate ? `Calls on ${new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} — click a column header to sort` : 'Every incoming, outgoing, and confirmation call in this period, with patient details — click a column header to sort'}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <input
                 type="text"
@@ -389,7 +468,9 @@ export default function CallKpisPage() {
                 </table>
               </div>
             )}
-          </Panel>
+              </Panel>
+            </div>
+          </div>
         </div>
       )}
     </div>
