@@ -54,6 +54,35 @@ const OUTGOING_OUTCOME_COLORS: Record<string, string> = {
   'Do Not Call': 'bg-rose-600',
 }
 
+const CONFIRMATION_OUTCOME_COLORS: Record<string, string> = {
+  'Confirmed': 'bg-emerald-500',
+  'Not Reached': 'bg-slate-400',
+  'Busy': 'bg-amber-500',
+  'Switched Off': 'bg-slate-400',
+  'Wants Reschedule': 'bg-purple-500',
+  'Cancelled': 'bg-rose-500',
+  'Wrong Number': 'bg-rose-600',
+}
+
+const DIRECTION_BADGE: Record<string, string> = {
+  'Incoming': 'bg-teal-100 text-teal-700',
+  'Outgoing': 'bg-indigo-100 text-indigo-700',
+  'Confirmation - Night Before': 'bg-purple-100 text-purple-700',
+  'Confirmation - Morning Of': 'bg-sky-100 text-sky-700',
+}
+
+type CallLogRow = {
+  call_date: string
+  direction: string
+  patient_name: string | null
+  phone: string | null
+  agent: string | null
+  outcome: string | null
+  notes: string | null
+}
+
+type SortKey = 'call_date' | 'patient_name' | 'direction' | 'agent' | 'outcome'
+
 export default function CallKpisPage() {
   const [rangeKey, setRangeKey] = useState<RangeKey>('today')
   const [customStart, setCustomStart] = useState(toISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))
@@ -63,6 +92,11 @@ export default function CallKpisPage() {
   const [metrics, setMetrics] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const [sortKey, setSortKey] = useState<SortKey>('call_date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [directionFilter, setDirectionFilter] = useState<string>('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -81,6 +115,44 @@ export default function CallKpisPage() {
     label: OUTGOING_OUTCOME_LABEL[s.outcome] || s.outcome,
     count: s.count,
   }))
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'call_date' ? 'desc' : 'asc')
+    }
+  }
+
+  const callLog: CallLogRow[] = useMemo(() => {
+    let rows: CallLogRow[] = metrics?.call_log || []
+    if (directionFilter !== 'all') rows = rows.filter(r => r.direction === directionFilter)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      rows = rows.filter(r =>
+        (r.patient_name || '').toLowerCase().includes(q) ||
+        (r.phone || '').toLowerCase().includes(q) ||
+        (r.agent || '').toLowerCase().includes(q)
+      )
+    }
+    const sorted = [...rows].sort((a, b) => {
+      const av = (a[sortKey] || '') as string
+      const bv = (b[sortKey] || '') as string
+      if (sortKey === 'call_date') return new Date(av).getTime() - new Date(bv).getTime()
+      return av.localeCompare(bv)
+    })
+    if (sortDir === 'desc') sorted.reverse()
+    return sorted
+  }, [metrics, directionFilter, search, sortKey, sortDir])
+
+  function SortHeader({ label, k }: { label: string; k: SortKey }) {
+    return (
+      <th className="text-left py-1 cursor-pointer select-none hover:text-slate-600" onClick={() => toggleSort(k)}>
+        {label}{sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+      </th>
+    )
+  }
 
   return (
     <div className="space-y-4 pb-20">
@@ -123,20 +195,22 @@ export default function CallKpisPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KPICard label="Incoming Calls" value={metrics.incoming_total} tone="text-teal-600"
               tooltip="Calls received and logged via Lead Intake during this period." />
             <KPICard label="Outgoing Calls Made" value={metrics.outgoing_total} tone="text-indigo-600"
               tooltip="Outbound follow-up calls actually attempted (outcome recorded) in this period, from the Outgoing Call Sheet." />
+            <KPICard label="Confirmation Calls" value={metrics.confirmation_total} tone="text-purple-600"
+              tooltip="Night-before and morning-of appointment confirmation calls logged from the Calendar during this period." />
             <KPICard label="Outgoing Pending" value={metrics.outgoing_pending} tone="text-amber-600"
               tooltip="Snapshot right now (not date-range filtered): open items still waiting in the outgoing call queue." />
           </div>
 
-          <Panel title="Daily Call Volume" subtitle="Incoming vs. outgoing calls, per day">
+          <Panel title="Daily Call Volume" subtitle="Incoming, outgoing, and confirmation calls, per day">
             <CallTrendChart data={metrics.daily_trend || []} />
           </Panel>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Panel title="Incoming Call Outcomes" subtitle="What happened on the intake call itself">
               <BarList
                 items={(metrics.by_incoming_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
@@ -149,36 +223,111 @@ export default function CallKpisPage() {
                 colorFor={(label) => OUTGOING_OUTCOME_COLORS[label] || 'bg-slate-400'}
               />
             </Panel>
+            <Panel title="Confirmation Call Outcomes" subtitle="Night-before / morning-of calls from the Calendar">
+              <BarList
+                items={(metrics.by_confirmation_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
+                colorFor={(label) => CONFIRMATION_OUTCOME_COLORS[label] || 'bg-slate-400'}
+              />
+            </Panel>
           </div>
 
-          <Panel title="Agent Performance" subtitle="Incoming and outgoing call volume, and booking outcomes, per agent">
+          <Panel title="Agent Performance" subtitle="Incoming, outgoing, and confirmation call volume, per agent">
             {(metrics.by_agent || []).length === 0 ? (
               <p className="text-sm text-slate-400">No agent-attributed calls this period.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="text-xs text-slate-400 uppercase">
                   <tr>
-                    <th className="text-left py-1">Agent</th>
-                    <th className="text-right py-1">Incoming</th>
-                    <th className="text-right py-1">Incoming Booked</th>
-                    <th className="text-right py-1">Outgoing</th>
-                    <th className="text-right py-1">Outgoing Reached</th>
-                    <th className="text-right py-1">Outgoing Booked</th>
+                    <th className="text-left py-1" rowSpan={2}>Agent</th>
+                    <th className="text-center py-1 border-l border-slate-100" colSpan={2}>Incoming</th>
+                    <th className="text-center py-1 border-l border-slate-100" colSpan={3}>Outgoing</th>
+                    <th className="text-center py-1 border-l border-slate-100" colSpan={2}>Confirmation</th>
+                  </tr>
+                  <tr>
+                    <th className="text-right py-1 border-l border-slate-100 font-normal">Total</th>
+                    <th className="text-right py-1 font-normal">Booked</th>
+                    <th className="text-right py-1 border-l border-slate-100 font-normal">Total</th>
+                    <th className="text-right py-1 font-normal">Reached</th>
+                    <th className="text-right py-1 font-normal">Booked</th>
+                    <th className="text-right py-1 border-l border-slate-100 font-normal">Total</th>
+                    <th className="text-right py-1 font-normal">Confirmed</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {(metrics.by_agent || []).map((a: any) => (
                     <tr key={a.agent}>
                       <td className="py-1.5">{a.agent}</td>
-                      <td className="py-1.5 text-right">{a.incoming}</td>
+                      <td className="py-1.5 text-right border-l border-slate-100">{a.incoming}</td>
                       <td className="py-1.5 text-right text-teal-600 font-medium">{a.incoming_booked}</td>
-                      <td className="py-1.5 text-right">{a.outgoing}</td>
+                      <td className="py-1.5 text-right border-l border-slate-100">{a.outgoing}</td>
                       <td className="py-1.5 text-right">{a.outgoing_reached}</td>
                       <td className="py-1.5 text-right text-teal-600 font-medium">{a.outgoing_booked}</td>
+                      <td className="py-1.5 text-right border-l border-slate-100">{a.confirmation}</td>
+                      <td className="py-1.5 text-right text-teal-600 font-medium">{a.confirmation_confirmed}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+          </Panel>
+
+          <Panel title="Call Log" subtitle="Every incoming, outgoing, and confirmation call in this period, with patient details — click a column header to sort">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <input
+                type="text"
+                placeholder="Search patient, phone, or agent…"
+                className="input py-1.5 text-xs w-56"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              <div className="flex items-center gap-1 flex-wrap">
+                {(['all', 'Incoming', 'Outgoing', 'Confirmation - Night Before', 'Confirmation - Morning Of'] as const).map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setDirectionFilter(d)}
+                    className={`text-xs px-2.5 py-1 rounded-md transition-colors ${directionFilter === d ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {d === 'all' ? 'All' : d}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-slate-400 ml-auto">{callLog.length} call{callLog.length === 1 ? '' : 's'}</span>
+            </div>
+            {callLog.length === 0 ? (
+              <p className="text-sm text-slate-400">No calls match this filter.</p>
+            ) : (
+              <div className="overflow-auto max-h-[500px]">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-slate-400 uppercase sticky top-0 bg-white">
+                    <tr>
+                      <SortHeader label="Date" k="call_date" />
+                      <SortHeader label="Direction" k="direction" />
+                      <SortHeader label="Patient" k="patient_name" />
+                      <th className="text-left py-1">Phone</th>
+                      <SortHeader label="Agent" k="agent" />
+                      <SortHeader label="Outcome" k="outcome" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {callLog.map((r, i) => (
+                      <tr key={i}>
+                        <td className="py-1.5 whitespace-nowrap text-slate-500">
+                          {new Date(r.call_date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="py-1.5">
+                          <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
+                            {r.direction}
+                          </span>
+                        </td>
+                        <td className="py-1.5">{r.patient_name || '—'}</td>
+                        <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
+                        <td className="py-1.5">{r.agent || '—'}</td>
+                        <td className="py-1.5">{r.outcome || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Panel>
         </div>
