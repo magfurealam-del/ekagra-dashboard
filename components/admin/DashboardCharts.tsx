@@ -4,14 +4,51 @@
 // admin dashboard doesn't need a charting library — consistent with the
 // rest of this app's zero-extra-dependency style.
 
+// delta is the % change vs the comparison period, when comparison mode is on
 export function KPICard({
-  label, value, sub, tone = 'text-slate-800',
-}: { label: string; value: string | number; sub?: string; tone?: string }) {
+  label, value, sub, tone = 'text-slate-800', delta,
+}: { label: string; value: string | number; sub?: string; tone?: string; delta?: number | null }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className={`text-2xl font-bold mt-1 ${tone}`}>{value}</div>
+      <div className="flex items-baseline gap-1.5">
+        <div className={`text-2xl font-bold mt-1 ${tone}`}>{value}</div>
+        {delta != null && isFinite(delta) && (
+          <span className={`text-xs font-medium ${delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+            {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'}{Math.abs(delta)}%
+          </span>
+        )}
+      </div>
       {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
+    </div>
+  )
+}
+
+// Classic conversion funnel: decreasing-width bars with %-of-previous-step labels
+export function FunnelChart({ steps }: { steps: { label: string; count: number }[] }) {
+  const max = Math.max(1, ...steps.map(s => s.count))
+  return (
+    <div className="space-y-2">
+      {steps.map((s, i) => {
+        const pctOfMax = (s.count / max) * 100
+        const pctOfPrev = i === 0 ? null : steps[i - 1].count > 0 ? Math.round((s.count / steps[i - 1].count) * 100) : 0
+        return (
+          <div key={s.label}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-slate-600">{s.label}</span>
+              <span className="text-slate-500">
+                {s.count}{pctOfPrev != null && <span className="text-slate-400"> · {pctOfPrev}% of prev</span>}
+              </span>
+            </div>
+            <div className="h-6 bg-slate-100 rounded-md overflow-hidden">
+              <div
+                className="h-full rounded-md bg-gradient-to-r from-teal-500 to-teal-400 flex items-center justify-end pr-2 transition-all"
+                style={{ width: `${Math.max(pctOfMax, 4)}%` }}
+              />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
