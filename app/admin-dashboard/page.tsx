@@ -402,6 +402,30 @@ export default function AdminDashboardPage() {
               </Panel>
 
               <Panel
+                title="Field Confirmations"
+                subtitle="Staff-confirmed edits to appointment status, patient name/phone, or hospital ID from the Calendar's confirmation call sheet"
+              >
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                  <KPICard label="Total Confirmations" value={metrics.field_confirmations?.total ?? 0} tone="text-slate-800"
+                    tooltip="Every explicitly-confirmed edit to status, patient name/phone, or hospital ID in this period, attributed to the logged-in staff member who made it." />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs font-medium text-slate-500 mb-2">By Field</div>
+                    <BarList
+                      items={(metrics.field_confirmations?.by_field || []).map((s: any) => ({ label: s.field, count: s.count }))}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500 mb-2">By Agent</div>
+                    <BarList
+                      items={(metrics.field_confirmations?.by_agent || []).map((s: any) => ({ label: s.agent, count: s.count }))}
+                    />
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel
                 title="Recompute Appointment Status"
                 subtitle="Overwrites appointment_status (Completed/No-show) from the invoice source of truth for the chosen range — Scheduled/Cancelled/Rescheduled are left alone"
               >
