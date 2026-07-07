@@ -419,14 +419,28 @@ function relTime(iso: string | null): string {
   return `${days}d ago`
 }
 
+// Auto-sync writes are tagged internally with these system identifiers
+// rather than a person's name — shown with a distinct icon/label so staff
+// can tell "an invoice corrected this" apart from a colleague's edit.
+const SYSTEM_ATTRIBUTION_LABEL: Record<string, string> = {
+  invoice_auto_sync: 'Invoice match (admin recompute)',
+  invoice_auto_sync_cron: 'Invoice match (nightly sync)',
+  invoice_sync: 'Invoice match (admin recompute)',
+}
+
 // Small "Confirmed by X · time" line shown under a field once it has an
 // attributed edit — the same value the KPI dashboard's Field Confirmations
 // panel counts, so what an agent sees here matches what admins see there.
 function Attribution({ by, at }: { by: string | null; at: string | null }) {
   if (!by) return null
+  const isSystem = by in SYSTEM_ATTRIBUTION_LABEL
+  const label = SYSTEM_ATTRIBUTION_LABEL[by] || by
   return (
-    <div className="text-[10px] text-slate-400 mt-0.5 truncate" title={at ? new Date(at).toLocaleString() : undefined}>
-      by {by}{at ? ` · ${relTime(at)}` : ''}
+    <div
+      className={`text-[10px] mt-0.5 truncate ${isSystem ? 'text-sky-600' : 'text-slate-400'}`}
+      title={at ? new Date(at).toLocaleString() : undefined}
+    >
+      {isSystem ? '🧾 ' : 'by '}{label}{at ? ` · ${relTime(at)}` : ''}
     </div>
   )
 }
