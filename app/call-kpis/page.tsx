@@ -74,9 +74,28 @@ const DIRECTION_BADGE: Record<string, string> = {
   'Confirmation - Morning Of': 'bg-sky-100 text-sky-700',
 }
 
+// Source badge colors — lead sources reuse the same palette as the Admin
+// Dashboard's "Lead Source" panel so the two stay visually consistent;
+// outgoing follow-up categories and confirmation calls get their own
+// distinct hues so all three directions are identifiable at a glance.
+const SOURCE_BADGE: Record<string, string> = {
+  'Facebook': 'bg-blue-100 text-blue-700',
+  'Referral': 'bg-emerald-100 text-emerald-700',
+  'Phone / Hotline': 'bg-amber-100 text-amber-700',
+  'Walk-in': 'bg-purple-100 text-purple-700',
+  'Unknown': 'bg-slate-100 text-slate-500',
+  'No-show Follow-up': 'bg-rose-100 text-rose-700',
+  'Surgery Follow-up': 'bg-orange-100 text-orange-700',
+  'Healing Follow-up': 'bg-orange-50 text-orange-600',
+  'Wound Care Lead': 'bg-sky-100 text-sky-700',
+  'Screening Lead': 'bg-indigo-100 text-indigo-700',
+  'Appointment Confirmation': 'bg-fuchsia-100 text-fuchsia-700',
+}
+
 type CallLogRow = {
   call_date: string
   direction: string
+  source: string | null
   patient_name: string | null
   phone: string | null
   agent: string | null
@@ -108,7 +127,7 @@ const DETAIL_FIELD_LABEL: Record<string, string> = {
   attempt_number: 'Attempt #',
 }
 
-type SortKey = 'call_date' | 'patient_name' | 'direction' | 'agent' | 'outcome'
+type SortKey = 'call_date' | 'patient_name' | 'direction' | 'source' | 'agent' | 'outcome'
 
 export default function CallKpisPage() {
   const router = useRouter()
@@ -419,6 +438,7 @@ export default function CallKpisPage() {
                       <th className="w-5"></th>
                       <SortHeader label="Date" k="call_date" />
                       <SortHeader label="Direction" k="direction" />
+                      <SortHeader label="Source" k="source" />
                       <SortHeader label="Patient" k="patient_name" />
                       <th className="text-left py-1">Phone</th>
                       <SortHeader label="Agent" k="agent" />
@@ -444,6 +464,11 @@ export default function CallKpisPage() {
                                 {r.direction}
                               </span>
                             </td>
+                            <td className="py-1.5">
+                              <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
+                                {r.source || '—'}
+                              </span>
+                            </td>
                             <td className="py-1.5">{r.patient_name || '—'}</td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
                             <td className="py-1.5">{r.agent || '—'}</td>
@@ -451,7 +476,7 @@ export default function CallKpisPage() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={7} className="px-4 py-3">
+                              <td colSpan={8} className="px-4 py-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
