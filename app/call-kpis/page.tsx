@@ -101,6 +101,8 @@ type CallLogRow = {
   agent: string | null
   outcome: string | null
   notes: string | null
+  appointment_date: string | null
+  appointment_time: string | null
   details: Record<string, string | number | null> | null
 }
 
@@ -437,12 +439,12 @@ export default function CallKpisPage() {
                     <tr>
                       <th className="w-5"></th>
                       <SortHeader label="Date" k="call_date" />
-                      <SortHeader label="Direction" k="direction" />
-                      <SortHeader label="Source" k="source" />
+                      <SortHeader label="Direction / Source" k="direction" />
                       <SortHeader label="Patient" k="patient_name" />
                       <th className="text-left py-1">Phone</th>
                       <SortHeader label="Agent" k="agent" />
                       <SortHeader label="Outcome" k="outcome" />
+                      <th className="text-left py-1">Appointment</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -460,19 +462,24 @@ export default function CallKpisPage() {
                               {new Date(r.call_date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td className="py-1.5">
-                              <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
-                                {r.direction}
-                              </span>
-                            </td>
-                            <td className="py-1.5">
-                              <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
-                                {r.source || '—'}
-                              </span>
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
+                                  {r.direction}
+                                </span>
+                                <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
+                                  {r.source || '—'}
+                                </span>
+                              </div>
                             </td>
                             <td className="py-1.5">{r.patient_name || '—'}</td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
                             <td className="py-1.5">{r.agent || '—'}</td>
                             <td className="py-1.5">{r.outcome || '—'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap">
+                              {r.appointment_date
+                                ? `${new Date(r.appointment_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}${r.appointment_time ? ` · ${r.appointment_time}` : ''}`
+                                : '—'}
+                            </td>
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
