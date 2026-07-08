@@ -92,6 +92,13 @@ const SOURCE_BADGE: Record<string, string> = {
   'Appointment Confirmation': 'bg-fuchsia-100 text-fuchsia-700',
 }
 
+type InvoiceMatch = {
+  status: 'matched' | 'missing'
+  method: string | null
+  invoice_no: string | null
+  invoice_date: string | null
+} | null
+
 type CallLogRow = {
   call_date: string
   direction: string
@@ -103,7 +110,30 @@ type CallLogRow = {
   notes: string | null
   appointment_date: string | null
   appointment_time: string | null
+  invoice_match: InvoiceMatch
   details: Record<string, string | number | null> | null
+}
+
+// Merges every outcome-color map into one lookup so a single Outcome cell
+// can be colored regardless of which direction (incoming/outgoing/
+// confirmation) it came from — falls back to a neutral badge otherwise.
+const OUTCOME_BADGE: Record<string, string> = {
+  'Appointment Booked': 'bg-teal-100 text-teal-700',
+  'No Appointment Yet': 'bg-amber-100 text-amber-700',
+  'No-show': 'bg-rose-100 text-rose-700',
+  'Not Interested': 'bg-slate-200 text-slate-600',
+  'General Inquiry': 'bg-sky-100 text-sky-700',
+  'Reached': 'bg-emerald-100 text-emerald-700',
+  'Not Reached': 'bg-slate-200 text-slate-600',
+  'Busy': 'bg-amber-100 text-amber-700',
+  'Switched Off': 'bg-slate-200 text-slate-600',
+  'Wrong Number': 'bg-rose-100 text-rose-700',
+  'Already Visited': 'bg-indigo-100 text-indigo-700',
+  'Call Later': 'bg-sky-100 text-sky-700',
+  'Do Not Call': 'bg-rose-200 text-rose-700',
+  'Confirmed': 'bg-emerald-100 text-emerald-700',
+  'Wants Reschedule': 'bg-purple-100 text-purple-700',
+  'Cancelled': 'bg-rose-100 text-rose-700',
 }
 
 const DETAIL_FIELD_LABEL: Record<string, string> = {
@@ -445,6 +475,7 @@ export default function CallKpisPage() {
                       <SortHeader label="Agent" k="agent" />
                       <SortHeader label="Outcome" k="outcome" />
                       <th className="text-left py-1">Appointment</th>
+                      <th className="text-left py-1">Invoice Match</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -474,16 +505,38 @@ export default function CallKpisPage() {
                             <td className="py-1.5">{r.patient_name || '—'}</td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
                             <td className="py-1.5">{r.agent || '—'}</td>
-                            <td className="py-1.5">{r.outcome || '—'}</td>
+                            <td className="py-1.5">
+                              {r.outcome ? (
+                                <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${OUTCOME_BADGE[r.outcome] || 'bg-slate-100 text-slate-600'}`}>
+                                  {r.outcome}
+                                </span>
+                              ) : '—'}
+                            </td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">
                               {r.appointment_date
                                 ? `${new Date(r.appointment_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}${r.appointment_time ? ` · ${r.appointment_time}` : ''}`
                                 : '—'}
                             </td>
+                            <td className="py-1.5 whitespace-nowrap">
+                              {!r.invoice_match ? (
+                                <span className="text-slate-300">—</span>
+                              ) : r.invoice_match.status === 'matched' ? (
+                                <span
+                                  className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-700"
+                                  title={`Invoice ${r.invoice_match.invoice_no} dated ${r.invoice_match.invoice_date}`}
+                                >
+                                  ✓ Matched · {r.invoice_match.method}
+                                </span>
+                              ) : (
+                                <span className="text-xs rounded-full px-2 py-0.5 bg-rose-100 text-rose-700" title="No invoice found under this patient's ID, phone, or hospital ID within the visit window.">
+                                  ✕ Missing
+                                </span>
+                              )}
+                            </td>
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={8} className="px-4 py-3">
+                              <td colSpan={9} className="px-4 py-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
