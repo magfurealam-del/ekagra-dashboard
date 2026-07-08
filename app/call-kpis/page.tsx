@@ -469,7 +469,8 @@ export default function CallKpisPage() {
                     <tr>
                       <th className="w-5"></th>
                       <SortHeader label="Date" k="call_date" />
-                      <SortHeader label="Direction / Source" k="direction" />
+                      <SortHeader label="Direction" k="direction" />
+                      <SortHeader label="Source" k="source" />
                       <SortHeader label="Patient" k="patient_name" />
                       <th className="text-left py-1">Phone</th>
                       <SortHeader label="Agent" k="agent" />
@@ -493,14 +494,14 @@ export default function CallKpisPage() {
                               {new Date(r.call_date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td className="py-1.5">
-                              <div className="flex flex-col gap-0.5 items-start">
-                                <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
-                                  {r.direction}
-                                </span>
-                                <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
-                                  {r.source || '—'}
-                                </span>
-                              </div>
+                              <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight max-w-[90px] text-center ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
+                                {r.direction}
+                              </span>
+                            </td>
+                            <td className="py-1.5">
+                              <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight max-w-[90px] text-center ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
+                                {r.source || '—'}
+                              </span>
                             </td>
                             <td className="py-1.5">{r.patient_name || '—'}</td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
@@ -536,7 +537,7 @@ export default function CallKpisPage() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={9} className="px-4 py-3">
+                              <td colSpan={10} className="px-4 py-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
