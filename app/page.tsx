@@ -208,6 +208,18 @@ export default function LeadIntakePage() {
     const err = validate(effectiveOutcome)
     if (err) { showToast(err); return }
 
+    // Warn before creating a second lead for the same phone number within
+    // 30 minutes — catches accidental double-submits (e.g. resubmitting
+    // because a field was missed) without blocking a genuine second call.
+    const { data: dup } = await supabase.rpc('check_recent_duplicate_lead', { p_phone: form.phone, p_minutes: 30 })
+    if (dup) {
+      const minutesAgo = Math.max(1, Math.round((Date.now() - new Date(dup.created_at).getTime()) / 60000))
+      const proceed = window.confirm(
+        `${dup.lead_name || 'A lead'} for this phone number was already saved ${minutesAgo} minute${minutesAgo === 1 ? '' : 's'} ago by ${dup.agent_name || 'someone'}.\n\nSave this as a new, separate lead anyway?`
+      )
+      if (!proceed) return
+    }
+
     setSaving(true)
     const autoPriority = defaultPriority(form.lead_bucket, form.urgency, effectiveOutcome)
 
