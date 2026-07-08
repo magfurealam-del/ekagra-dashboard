@@ -347,6 +347,7 @@ export default function ConfirmationCallSheet({
                 <th className="px-2 py-2.5 font-medium">Service Type</th>
                 <th className="px-2 py-2.5 font-medium">Reason</th>
                 <th className="px-2 py-2.5 font-medium">Status</th>
+                <th className="px-2 py-2.5 font-medium">Doctor Availability</th>
                 <th className="px-2 py-2.5 font-medium">Confirmation Calls</th>
                 <th className="px-2 py-2.5 font-medium"></th>
               </tr>
@@ -629,6 +630,18 @@ function AppointmentRow({
               {r.no_show_risk} risk
             </span>
           </div>
+        )}
+      </td>
+      <td className="px-2 py-2.5 align-top max-w-[160px]">
+        {r.doctor_availability_conflict ? (
+          <span
+            className="text-xs rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 inline-block"
+            title="Front desk changed this doctor's availability for this date — reschedule this patient."
+          >
+            ⚠ {r.doctor_availability_conflict}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-300">—</span>
         )}
       </td>
       <td className="px-2 py-2.5 align-top min-w-[170px]">

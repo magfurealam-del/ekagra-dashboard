@@ -91,6 +91,7 @@ export default function LeadIntakePage() {
   const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
+  const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
   const { profile } = useAuth()
 
   // Attribution is now the actual logged-in user — the field is no longer an
@@ -469,7 +470,12 @@ export default function LeadIntakePage() {
                     onChange={(v) => set('appointment_time', v)}
                   />
                   {form.doctor && form.appointment_date && timeSlots.length === 0 && (
-                    <span className="text-xs text-rose-600">No slots configured for this doctor on this day — check Settings.</span>
+                    <span className="text-xs text-rose-600">
+                      {doctorAvailabilityNote || 'No slots configured for this doctor on this day — check Settings.'}
+                    </span>
+                  )}
+                  {form.doctor && form.appointment_date && timeSlots.length > 0 && doctorAvailabilityNote && (
+                    <span className="text-xs text-amber-600">{doctorAvailabilityNote}</span>
                   )}
                 </Field>
               </div>
@@ -579,6 +585,7 @@ function WhatsAppPanel({
 
 function useDoctorSlots(doctorName: string, dateStr: string): { label: string; value: string }[] {
   const [schedule, setSchedule] = useState<any[]>([])
+  const [override, setOverride] = useState<any | null>(null)
 
   useEffect(() => {
     if (!doctorName) { setSchedule([]); return }
@@ -587,13 +594,31 @@ function useDoctorSlots(doctorName: string, dateStr: string): { label: string; v
     })
   }, [doctorName])
 
+  // Front-desk daily override (doctor called in sick, reduced hours, etc.)
+  // — always re-checked live, so a change made minutes ago is reflected
+  // immediately without a page reload.
+  useEffect(() => {
+    if (!doctorName || !dateStr) { setOverride(null); return }
+    supabase.from('doctor_daily_availability').select('*').eq('doctor_name', doctorName).eq('avail_date', dateStr).maybeSingle().then(({ data }) => {
+      setOverride(data || null)
+    })
+  }, [doctorName, dateStr])
+
   return useMemo(() => {
     if (!dateStr || schedule.length === 0) return []
+    if (override && !override.is_available) return []
+
     const dow = new Date(dateStr + 'T00:00:00').getDay()
     const day = schedule.find((s) => s.day_of_week === dow)
     if (!day) return []
-    const [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
-    const [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
+
+    let [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
+    let [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
+    if (override?.is_available && override.start_time && override.end_time) {
+      ;[sh, sm] = override.start_time.slice(0, 5).split(':').map(Number)
+      ;[eh, em] = override.end_time.slice(0, 5).split(':').map(Number)
+    }
+
     const step = day.slot_minutes || 15
     const slots: { label: string; value: string }[] = []
     let mins = sh * 60 + sm
@@ -609,7 +634,28 @@ function useDoctorSlots(doctorName: string, dateStr: string): { label: string; v
       mins += step
     }
     return slots
-  }, [dateStr, schedule])
+  }, [dateStr, schedule, override])
+}
+
+// Companion to useDoctorSlots — surfaces *why* slots are empty when it's a
+// front-desk availability override, rather than the generic "no schedule
+// configured" message.
+function useDoctorAvailabilityNote(doctorName: string, dateStr: string): string | null {
+  const [note, setNote] = useState<string | null>(null)
+  useEffect(() => {
+    if (!doctorName || !dateStr) { setNote(null); return }
+    supabase.from('doctor_daily_availability').select('*').eq('doctor_name', doctorName).eq('avail_date', dateStr).maybeSingle().then(({ data }) => {
+      if (!data) { setNote(null); return }
+      if (!data.is_available) { setNote(`${doctorName} is unavailable on this date${data.note ? ` — ${data.note}` : ''}.`); return }
+      if (data.start_time && data.end_time) {
+        const fmt = (t: string) => { const [h, m] = t.slice(0, 5).split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; const h12 = h % 12 === 0 ? 12 : h % 12; return `${h12}:${String(m).padStart(2, '0')} ${ap}` }
+        setNote(`${doctorName} has reduced hours on this date: ${fmt(data.start_time)} – ${fmt(data.end_time)} only.`)
+      } else {
+        setNote(null)
+      }
+    })
+  }, [doctorName, dateStr])
+  return note
 }
 
 function useDoctors() {

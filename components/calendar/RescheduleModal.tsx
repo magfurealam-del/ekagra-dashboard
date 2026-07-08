@@ -15,32 +15,49 @@ export default function RescheduleModal({
   const [newTime, setNewTime] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [availabilityNote, setAvailabilityNote] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!newDate || !appointment.doctor_service) { setSlots([]); return }
-    supabase
-      .from('doctor_schedules')
-      .select('*')
-      .eq('doctor_name', appointment.doctor_service)
-      .eq('is_active', true)
-      .then(({ data }) => {
-        const dow = new Date(newDate + 'T00:00:00').getDay()
-        const day = (data || []).find((s: any) => s.day_of_week === dow)
-        if (!day) { setSlots([]); return }
-        const [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
-        const [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
-        const step = day.slot_minutes || 15
-        const list: string[] = []
-        let mins = sh * 60 + sm
-        const endMins = eh * 60 + em
-        while (mins < endMins) {
-          const h = Math.floor(mins / 60)
-          const m = mins % 60
-          list.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-          mins += step
-        }
-        setSlots(list)
-      })
+    if (!newDate || !appointment.doctor_service) { setSlots([]); setAvailabilityNote(null); return }
+    const doctorName = appointment.doctor_service
+    Promise.all([
+      supabase.from('doctor_schedules').select('*').eq('doctor_name', doctorName).eq('is_active', true),
+      // Front-desk daily override, checked live so rescheduling always
+      // reflects the current on-duty state, not a stale cached schedule.
+      supabase.from('doctor_daily_availability').select('*').eq('doctor_name', doctorName).eq('avail_date', newDate).maybeSingle(),
+    ]).then(([{ data }, { data: override }]) => {
+      if (override && !override.is_available) {
+        setSlots([])
+        setAvailabilityNote(`${doctorName} is unavailable on this date${override.note ? ` — ${override.note}` : ''}.`)
+        return
+      }
+
+      const dow = new Date(newDate + 'T00:00:00').getDay()
+      const day = (data || []).find((s: any) => s.day_of_week === dow)
+      if (!day) { setSlots([]); setAvailabilityNote(null); return }
+
+      let [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
+      let [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
+      if (override?.is_available && override.start_time && override.end_time) {
+        ;[sh, sm] = override.start_time.slice(0, 5).split(':').map(Number)
+        ;[eh, em] = override.end_time.slice(0, 5).split(':').map(Number)
+        setAvailabilityNote(`${doctorName} has reduced hours on this date: ${formatSlot(override.start_time)} – ${formatSlot(override.end_time)} only.`)
+      } else {
+        setAvailabilityNote(null)
+      }
+
+      const step = day.slot_minutes || 15
+      const list: string[] = []
+      let mins = sh * 60 + sm
+      const endMins = eh * 60 + em
+      while (mins < endMins) {
+        const h = Math.floor(mins / 60)
+        const m = mins % 60
+        list.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+        mins += step
+      }
+      setSlots(list)
+    })
   }, [newDate, appointment.doctor_service])
 
   function formatSlot(t: string) {
@@ -87,7 +104,12 @@ export default function RescheduleModal({
             {slots.map((s) => <option key={s} value={s}>{formatSlot(s)}</option>)}
           </select>
           {newDate && slots.length === 0 && (
-            <span className="text-xs text-rose-600 mt-1 block">No slots configured for this doctor on this day — check Settings.</span>
+            <span className="text-xs text-rose-600 mt-1 block">
+              {availabilityNote || 'No slots configured for this doctor on this day — check Settings.'}
+            </span>
+          )}
+          {newDate && slots.length > 0 && availabilityNote && (
+            <span className="text-xs text-amber-600 mt-1 block">{availabilityNote}</span>
           )}
         </label>
 
