@@ -464,9 +464,16 @@ function AppointmentRow({
   const [savingContact, setSavingContact] = useState(false)
   const [savingHn, setSavingHn] = useState(false)
 
-  const statusDirty = status !== (r.appointment_status || 'Booked')
-  const contactDirty = name !== (r.patient_name || '') || phone !== (r.phone || '')
-  const hnDirty = !hasRealHn && hnInput && hnInput !== (r.hn || '')
+  // Invoice-matched records are locked: the invoice is the source of truth
+  // and always wins over a manual edit, so once it has corrected a field
+  // there's nothing for a human edit to accomplish except create a
+  // discrepancy the next sync will immediately overwrite anyway.
+  const patientLocked = r.patient_updated_by in SYSTEM_ATTRIBUTION_LABEL
+  const statusLocked = r.status_updated_by in SYSTEM_ATTRIBUTION_LABEL && status === 'Confirmed'
+
+  const statusDirty = !statusLocked && status !== (r.appointment_status || 'Booked')
+  const contactDirty = !patientLocked && (name !== (r.patient_name || '') || phone !== (r.phone || ''))
+  const hnDirty = !patientLocked && !hasRealHn && hnInput && hnInput !== (r.hn || '')
 
   async function confirmStatus() {
     setSavingStatus(true)
@@ -498,11 +505,17 @@ function AppointmentRow({
     <tr className="hover:bg-slate-50">
       <td className="px-2 py-2.5 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
       <td className="px-2 py-2.5 align-top">
+        {patientLocked && (
+          <div className="text-[10px] font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 mb-1 inline-flex items-center gap-1" title="Patient name, phone, and Hospital ID were corrected from a matched invoice and are locked — the invoice is the source of truth.">
+            🧾 Invoice found — locked
+          </div>
+        )}
         <div className="flex items-center gap-1">
           <input
-            className="input w-32 text-sm"
+            className={`input w-32 text-sm ${patientLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
             value={name}
             placeholder="Patient name"
+            disabled={patientLocked}
             onChange={(e) => setName(e.target.value)}
           />
           {contactDirty && (
@@ -521,9 +534,10 @@ function AppointmentRow({
       <td className="px-2 py-2.5 align-top text-slate-600 whitespace-nowrap">
         <div className="flex items-center gap-1">
           <input
-            className="input w-28 text-sm"
+            className={`input w-28 text-sm ${patientLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
             value={phone}
             placeholder="Phone"
+            disabled={patientLocked}
             onChange={(e) => setPhone(e.target.value)}
           />
           {contactDirty && (
@@ -544,9 +558,10 @@ function AppointmentRow({
         ) : (
           <div className="flex items-center gap-1">
             <input
-              className="input w-20 text-sm"
+              className={`input w-20 text-sm ${patientLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
               placeholder="Enter ID"
               value={hnInput}
+              disabled={patientLocked}
               onChange={(e) => setHnInput(e.target.value)}
             />
             {hnDirty && (
@@ -578,9 +593,11 @@ function AppointmentRow({
       <td className="px-2 py-2.5 align-top">
         <div className="flex items-center gap-1">
           <select
-            className="input text-xs py-1"
+            className={`input text-xs py-1 ${statusLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
             value={status}
+            disabled={statusLocked}
             onChange={(e) => setStatus(e.target.value)}
+            title={statusLocked ? 'Confirmed by a matched invoice — locked, since the invoice is the source of truth.' : undefined}
           >
             {statusOpts.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
