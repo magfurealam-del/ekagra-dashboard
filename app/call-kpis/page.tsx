@@ -99,11 +99,18 @@ type InvoiceMatch = {
   invoice_date: string | null
 } | null
 
+const PATIENT_TYPE_BADGE: Record<string, string> = {
+  'New': 'bg-teal-100 text-teal-700',
+  'Old': 'bg-indigo-100 text-indigo-700',
+  'Unknown': 'bg-slate-100 text-slate-500',
+}
+
 type CallLogRow = {
   call_date: string
   direction: string
   source: string | null
   patient_name: string | null
+  patient_type: string | null
   phone: string | null
   agent: string | null
   outcome: string | null
@@ -472,6 +479,7 @@ export default function CallKpisPage() {
                       <SortHeader label="Direction" k="direction" />
                       <SortHeader label="Source" k="source" />
                       <SortHeader label="Patient" k="patient_name" />
+                      <th className="text-left py-1">Old/New</th>
                       <th className="text-left py-1">Phone</th>
                       <SortHeader label="Agent" k="agent" />
                       <SortHeader label="Outcome" k="outcome" />
@@ -504,6 +512,11 @@ export default function CallKpisPage() {
                               </span>
                             </td>
                             <td className="py-1.5">{r.patient_name || '—'}</td>
+                            <td className="py-1.5">
+                              <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${PATIENT_TYPE_BADGE[r.patient_type || 'Unknown']}`}>
+                                {r.patient_type || 'Unknown'}
+                              </span>
+                            </td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
                             <td className="py-1.5">{r.agent || '—'}</td>
                             <td className="py-1.5">
@@ -537,7 +550,7 @@ export default function CallKpisPage() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={10} className="px-4 py-3">
+                              <td colSpan={11} className="px-4 py-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
