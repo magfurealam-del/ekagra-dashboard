@@ -255,7 +255,7 @@ export default function CallKpisPage() {
 
   function SortHeader({ label, k }: { label: string; k: SortKey }) {
     return (
-      <th className="text-left py-1 cursor-pointer select-none hover:text-slate-600" onClick={() => toggleSort(k)}>
+      <th className="text-left py-1 cursor-pointer select-none hover:text-slate-600 border border-slate-200 px-2" onClick={() => toggleSort(k)}>
         {label}{sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
       </th>
     )
@@ -447,23 +447,23 @@ export default function CallKpisPage() {
               <p className="text-sm text-slate-400">No calls match this filter.</p>
             ) : (
               <div className="overflow-auto max-h-[500px]">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm border-collapse">
                   <thead className="text-xs text-slate-400 uppercase sticky top-0 bg-white">
                     <tr>
-                      <th className="w-5"></th>
+                      <th className="w-5 border border-slate-200 px-2"></th>
                       <SortHeader label="Date" k="call_date" />
                       <SortHeader label="Direction" k="direction" />
                       <SortHeader label="Source" k="source" />
                       <SortHeader label="Patient" k="patient_name" />
-                      <th className="text-left py-1">Old/New</th>
-                      <th className="text-left py-1">Phone</th>
-                      <th className="text-left py-1">Hospital ID</th>
-                      <th className="text-left py-1">Location</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Old/New</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Phone</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Hospital ID</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Location</th>
                       <SortHeader label="Agent" k="agent" />
                       <SortHeader label="Outcome" k="outcome" />
-                      <th className="text-left py-1">Doctor / Service</th>
-                      <th className="text-left py-1">Appointment</th>
-                      <th className="text-left py-1">Invoice Match</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Doctor / Service</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Appointment</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Invoice Match</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -473,58 +473,58 @@ export default function CallKpisPage() {
                       return (
                         <Fragment key={i}>
                           <tr
-                            className="cursor-pointer hover:bg-slate-50"
+                            className="cursor-pointer hover:bg-slate-50 align-top"
                             onClick={() => setExpandedRow(isOpen ? null : i)}
                           >
-                            <td className="py-1.5 text-slate-400 text-center">{isOpen ? '▾' : '▸'}</td>
-                            <td className="py-1.5 whitespace-nowrap text-slate-500">
+                            <td className="py-1.5 text-slate-400 text-center border border-slate-100 px-2">{isOpen ? '▾' : '▸'}</td>
+                            <td className="py-1.5 whitespace-nowrap text-slate-500 border border-slate-100 px-2">
                               {new Date(r.call_date).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </td>
-                            <td className="py-1.5">
-                              <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight max-w-[90px] text-center ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
+                            <td className="py-1.5 border border-slate-100 px-2">
+                              <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight w-full text-center break-words ${DIRECTION_BADGE[r.direction] || 'bg-slate-100 text-slate-600'}`}>
                                 {r.direction}
                               </span>
                             </td>
-                            <td className="py-1.5">
-                              <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight max-w-[90px] text-center ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
+                            <td className="py-1.5 border border-slate-100 px-2">
+                              <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight w-full text-center break-words ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
                                 {r.source || '—'}
                               </span>
                             </td>
-                            <td className="py-1.5">{r.patient_name || '—'}</td>
-                            <td className="py-1.5">
+                            <td className="py-1.5 break-words max-w-[140px] border border-slate-100 px-2">{r.patient_name || '—'}</td>
+                            <td className="py-1.5 border border-slate-100 px-2">
                               <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${PATIENT_TYPE_BADGE[r.patient_type || 'Unknown']}`}>
                                 {r.patient_type || 'Unknown'}
                               </span>
                             </td>
-                            <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
-                            <td className="py-1.5 text-slate-600 whitespace-nowrap font-mono text-xs">{r.hospital_id || '—'}</td>
-                            <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.location || '—'}</td>
-                            <td className="py-1.5">{r.agent || '—'}</td>
-                            <td className="py-1.5">
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap border border-slate-100 px-2">{r.phone || '—'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap font-mono text-xs border border-slate-100 px-2">{r.hospital_id || '—'}</td>
+                            <td className="py-1.5 text-slate-600 break-words max-w-[110px] border border-slate-100 px-2">{r.location || '—'}</td>
+                            <td className="py-1.5 break-words max-w-[100px] border border-slate-100 px-2">{r.agent || '—'}</td>
+                            <td className="py-1.5 border border-slate-100 px-2">
                               {r.outcome ? (
-                                <span className={`text-xs rounded-full px-2 py-0.5 whitespace-nowrap ${OUTCOME_BADGE[r.outcome] || 'bg-slate-100 text-slate-600'}`}>
+                                <span className={`inline-block text-xs rounded-full px-2 py-0.5 break-words max-w-[130px] ${OUTCOME_BADGE[r.outcome] || 'bg-slate-100 text-slate-600'}`}>
                                   {r.outcome}
                                 </span>
                               ) : '—'}
                             </td>
-                            <td className="py-1.5 text-slate-600 max-w-[140px] truncate" title={r.doctor_service || ''}>{r.doctor_service || '—'}</td>
-                            <td className="py-1.5 text-slate-600 whitespace-nowrap">
+                            <td className="py-1.5 text-slate-600 max-w-[150px] break-words border border-slate-100 px-2">{r.doctor_service || '—'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap border border-slate-100 px-2">
                               {r.appointment_date
                                 ? `${new Date(r.appointment_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}${r.appointment_time ? ` · ${r.appointment_time}` : ''}`
                                 : '—'}
                             </td>
-                            <td className="py-1.5 whitespace-nowrap">
+                            <td className="py-1.5 border border-slate-100 px-2">
                               {!r.invoice_match ? (
                                 <span className="text-slate-300">—</span>
                               ) : r.invoice_match.status === 'matched' ? (
                                 <span
-                                  className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-700"
+                                  className="inline-block text-xs rounded-full px-2 py-0.5 break-words max-w-[140px] bg-emerald-100 text-emerald-700"
                                   title={`Invoice ${r.invoice_match.invoice_no} dated ${r.invoice_match.invoice_date}`}
                                 >
                                   ✓ Matched · {r.invoice_match.method}
                                 </span>
                               ) : (
-                                <span className="text-xs rounded-full px-2 py-0.5 bg-rose-100 text-rose-700" title="No invoice found under this patient's ID, phone, or hospital ID within the visit window.">
+                                <span className="inline-block text-xs rounded-full px-2 py-0.5 bg-rose-100 text-rose-700" title="No invoice found under this patient's ID, phone, or hospital ID within the visit window.">
                                   ✕ Missing
                                 </span>
                               )}
