@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
-import MiniCalendar from '@/components/callkpis/MiniCalendar'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 
@@ -115,6 +114,9 @@ type CallLogRow = {
   agent: string | null
   outcome: string | null
   notes: string | null
+  hospital_id: string | null
+  location: string | null
+  doctor_service: string | null
   appointment_date: string | null
   appointment_time: string | null
   invoice_match: InvoiceMatch
@@ -190,23 +192,6 @@ export default function CallKpisPage() {
   const [directionFilter, setDirectionFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date())
-  const selectedDate = rangeKey === 'custom' && customStart === customEnd ? customStart : null
-
-  function selectDate(iso: string) {
-    setRangeKey('custom')
-    setCustomStart(iso)
-    setCustomEnd(iso)
-    setCalendarMonth(new Date(iso + 'T00:00:00'))
-  }
-
-  const countsByDate = useMemo(() => {
-    const map: Record<string, number> = {}
-    for (const d of metrics?.daily_trend || []) {
-      map[d.date] = (d.incoming || 0) + (d.outgoing || 0) + (d.confirmation || 0)
-    }
-    return map
-  }, [metrics])
 
   useEffect(() => {
     if (!isAdmin) return
@@ -436,16 +421,7 @@ export default function CallKpisPage() {
             )}
           </Panel>
 
-          <div className="flex flex-col lg:flex-row gap-4 items-start">
-            <MiniCalendar
-              month={calendarMonth}
-              onMonthChange={setCalendarMonth}
-              selectedDate={selectedDate}
-              onSelectDate={selectDate}
-              countsByDate={countsByDate}
-            />
-            <div className="flex-1 w-full min-w-0">
-              <Panel title="Call Log" subtitle={selectedDate ? `Calls on ${new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} — click a column header to sort` : 'Every incoming, outgoing, and confirmation call in this period, with patient details — click a column header to sort'}>
+          <Panel title="Call Log" subtitle="Every incoming, outgoing, and confirmation call in this period, with patient details — click a column header to sort">
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <input
                 type="text"
@@ -481,8 +457,11 @@ export default function CallKpisPage() {
                       <SortHeader label="Patient" k="patient_name" />
                       <th className="text-left py-1">Old/New</th>
                       <th className="text-left py-1">Phone</th>
+                      <th className="text-left py-1">Hospital ID</th>
+                      <th className="text-left py-1">Location</th>
                       <SortHeader label="Agent" k="agent" />
                       <SortHeader label="Outcome" k="outcome" />
+                      <th className="text-left py-1">Doctor / Service</th>
                       <th className="text-left py-1">Appointment</th>
                       <th className="text-left py-1">Invoice Match</th>
                     </tr>
@@ -518,6 +497,8 @@ export default function CallKpisPage() {
                               </span>
                             </td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.phone || '—'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap font-mono text-xs">{r.hospital_id || '—'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap">{r.location || '—'}</td>
                             <td className="py-1.5">{r.agent || '—'}</td>
                             <td className="py-1.5">
                               {r.outcome ? (
@@ -526,6 +507,7 @@ export default function CallKpisPage() {
                                 </span>
                               ) : '—'}
                             </td>
+                            <td className="py-1.5 text-slate-600 max-w-[140px] truncate" title={r.doctor_service || ''}>{r.doctor_service || '—'}</td>
                             <td className="py-1.5 text-slate-600 whitespace-nowrap">
                               {r.appointment_date
                                 ? `${new Date(r.appointment_date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}${r.appointment_time ? ` · ${r.appointment_time}` : ''}`
@@ -550,7 +532,7 @@ export default function CallKpisPage() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={11} className="px-4 py-3">
+                              <td colSpan={14} className="px-4 py-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
@@ -579,9 +561,7 @@ export default function CallKpisPage() {
                 </table>
               </div>
             )}
-              </Panel>
-            </div>
-          </div>
+          </Panel>
         </div>
       )}
     </div>
