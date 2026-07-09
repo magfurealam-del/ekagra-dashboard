@@ -336,20 +336,20 @@ export default function ConfirmationCallSheet({
         ) : paginated.length === 0 ? (
           <p className="p-4 text-sm text-slate-400">No appointments match this tab.</p>
         ) : (
-          <table className="w-full text-sm min-w-[900px]">
+          <table className="w-full text-sm min-w-[900px] border-collapse">
             <thead className="bg-slate-50 sticky top-0 z-10">
-              <tr className="text-left text-slate-500 border-b border-slate-200">
-                <th className="px-2 py-2.5 font-medium whitespace-nowrap">Time</th>
-                <th className="px-2 py-2.5 font-medium">Patient</th>
-                <th className="px-2 py-2.5 font-medium">Phone</th>
-                <th className="px-2 py-2.5 font-medium">Hosp. ID</th>
-                <th className="px-2 py-2.5 font-medium">Doctor</th>
-                <th className="px-2 py-2.5 font-medium">Service Type</th>
-                <th className="px-2 py-2.5 font-medium">Reason</th>
-                <th className="px-2 py-2.5 font-medium">Status</th>
-                <th className="px-2 py-2.5 font-medium">Doctor Availability</th>
-                <th className="px-2 py-2.5 font-medium">Confirmation Calls</th>
-                <th className="px-2 py-2.5 font-medium"></th>
+              <tr className="text-left text-slate-500">
+                <th className="px-2 py-2.5 font-medium whitespace-nowrap border border-slate-200">Time</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Patient</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Phone</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Hosp. ID</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Doctor</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Service Type</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Reason</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Status</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Doctor Availability</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200">Confirmation Calls</th>
+                <th className="px-2 py-2.5 font-medium border border-slate-200"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -504,8 +504,8 @@ function AppointmentRow({
 
   return (
     <tr className="hover:bg-slate-50">
-      <td className="px-2 py-2.5 font-medium text-slate-700 whitespace-nowrap align-top">{r.appointment_time || '—'}</td>
-      <td className="px-2 py-2.5 align-top">
+      <td className="px-2 py-2.5 font-medium text-slate-700 whitespace-nowrap align-top border border-slate-100">{r.appointment_time || '—'}</td>
+      <td className="px-2 py-2.5 align-top border border-slate-100">
         {patientLocked && (
           <div className="text-[10px] font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 mb-1 inline-flex items-center gap-1" title="Patient name, phone, and Hospital ID were corrected from a matched invoice and are locked — the invoice is the source of truth.">
             🧾 Invoice found — locked
@@ -532,7 +532,7 @@ function AppointmentRow({
         </div>
         <Attribution by={r.patient_updated_by} at={r.patient_updated_at} />
       </td>
-      <td className="px-2 py-2.5 align-top text-slate-600 whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top text-slate-600 whitespace-nowrap border border-slate-100">
         <div className="flex items-center gap-1">
           <input
             className={`input w-28 text-sm ${patientLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
@@ -553,7 +553,7 @@ function AppointmentRow({
           )}
         </div>
       </td>
-      <td className="px-2 py-2.5 align-top">
+      <td className="px-2 py-2.5 align-top border border-slate-100">
         {hasRealHn ? (
           <span className="text-slate-700 text-xs font-mono">{r.hn}</span>
         ) : (
@@ -579,19 +579,19 @@ function AppointmentRow({
         )}
         <Attribution by={r.patient_updated_by} at={r.patient_updated_at} />
       </td>
-      <td className="px-2 py-2.5 text-slate-600 align-top max-w-[110px] truncate" title={r.doctor_service || ''}>
+      <td className="px-2 py-2.5 text-slate-600 align-top max-w-[110px] break-words border border-slate-100" title={r.doctor_service || ''}>
         {(r.doctor_service || '—')}
       </td>
-      <td className="px-2 py-2.5 align-top">
-        <span className={`inline-flex items-center gap-1 text-xs rounded-full pl-1.5 pr-2 py-0.5 whitespace-nowrap ${serviceColor.chip}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${serviceColor.dot}`} />
+      <td className="px-2 py-2.5 align-top border border-slate-100">
+        <span className={`inline-flex items-center gap-1 text-xs rounded-full pl-1.5 pr-2 py-0.5 break-words ${serviceColor.chip}`}>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${serviceColor.dot}`} />
           {r.service_type || 'Unspecified'}
         </span>
       </td>
-      <td className="px-2 py-2.5 align-top text-slate-600 max-w-[140px] truncate" title={displayReason || ''}>
+      <td className="px-2 py-2.5 align-top text-slate-600 max-w-[140px] break-words border border-slate-100" title={displayReason || ''}>
         {displayReason || '—'}
       </td>
-      <td className="px-2 py-2.5 align-top">
+      <td className="px-2 py-2.5 align-top border border-slate-100">
         <div className="flex items-center gap-1">
           <select
             className={`input text-xs py-1 ${statusLocked ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
@@ -632,10 +632,10 @@ function AppointmentRow({
           </div>
         )}
       </td>
-      <td className="px-2 py-2.5 align-top max-w-[160px]">
+      <td className="px-2 py-2.5 align-top max-w-[160px] border border-slate-100">
         {r.doctor_availability_conflict ? (
           <span
-            className="text-xs rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 inline-block"
+            className="text-xs rounded px-1.5 py-0.5 bg-amber-100 text-amber-800 inline-block break-words"
             title="Front desk changed this doctor's availability for this date — reschedule this patient."
           >
             ⚠ {r.doctor_availability_conflict}
@@ -644,13 +644,13 @@ function AppointmentRow({
           <span className="text-xs text-slate-300">—</span>
         )}
       </td>
-      <td className="px-2 py-2.5 align-top min-w-[170px]">
+      <td className="px-2 py-2.5 align-top min-w-[170px] border border-slate-100">
         <div className="space-y-1">
           <CallOutcomeRow row={r} callType="night_before" outcome={r.nb_outcome} agentVal={r.nb_agent} calledAt={r.nb_called_at} />
           <CallOutcomeRow row={r} callType="morning_of" outcome={r.mo_outcome} agentVal={r.mo_agent} calledAt={r.mo_called_at} />
         </div>
       </td>
-      <td className="px-2 py-2.5 align-top whitespace-nowrap">
+      <td className="px-2 py-2.5 align-top whitespace-nowrap border border-slate-100">
         <button
           onClick={onReschedule}
           title="Reschedule"
