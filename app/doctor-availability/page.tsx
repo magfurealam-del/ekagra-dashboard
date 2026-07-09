@@ -6,10 +6,15 @@ import { supabase } from '@/lib/supabase'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+// The clinic has no doctors on duty Friday (day_of_week 5) at all, so
+// "tomorrow" on a Thursday should skip straight to Saturday rather than
+// showing a day with nothing to mark — there's nothing for front desk to
+// manage on a day no one is scheduled.
 function tomorrowDhaka() {
   const now = new Date()
   const dhaka = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
   dhaka.setDate(dhaka.getDate() + 1)
+  if (dhaka.getDay() === 5) dhaka.setDate(dhaka.getDate() + 1)
   return dhaka
 }
 
