@@ -68,6 +68,44 @@ export const CATEGORY_BADGE_LABEL: Record<string, string> = {
   screening_no_appt_old:'Screening (28d+)',
 }
 
+// ─── Call type: lead generation vs. patient recovery/no-show ──────────────
+// Wound/screening leads never had an appointment — the agent is chasing a
+// new booking. Everything else (no-show, surgery no-show, healing overdue)
+// is about recovering a patient who already has a relationship with us.
+export type CallType = 'lead_gen' | 'patient_recovery'
+
+export const CALL_TYPE_FOR_CATEGORY: Record<string, CallType> = {
+  no_show_7: 'patient_recovery',
+  no_show_14: 'patient_recovery',
+  no_show_28: 'patient_recovery',
+  surgery_no_show: 'patient_recovery',
+  healing_overdue_4w: 'patient_recovery',
+  healing_overdue_8w: 'patient_recovery',
+  healing_overdue_old: 'patient_recovery',
+  wound_no_appt_7: 'lead_gen',
+  wound_no_appt_14: 'lead_gen',
+  wound_no_appt_28: 'lead_gen',
+  wound_no_appt_old: 'lead_gen',
+  screening_no_appt_7: 'lead_gen',
+  screening_no_appt_14: 'lead_gen',
+  screening_no_appt_28: 'lead_gen',
+  screening_no_appt_old: 'lead_gen',
+}
+
+export const CALL_TYPE_LABEL: Record<CallType, string> = {
+  lead_gen: 'Lead Gen',
+  patient_recovery: 'Patient Recovery',
+}
+
+export const CALL_TYPE_TONE: Record<CallType, string> = {
+  lead_gen: 'bg-violet-100 text-violet-700',
+  patient_recovery: 'bg-cyan-100 text-cyan-700',
+}
+
+export function callTypeForCategory(category: string): CallType {
+  return CALL_TYPE_FOR_CATEGORY[category] ?? 'patient_recovery'
+}
+
 export const CATEGORY_BADGE_TONE: Record<string, string> = {
   no_show_7:            'bg-rose-100 text-rose-700',
   no_show_14:           'bg-amber-100 text-amber-700',
@@ -103,6 +141,8 @@ export const QUICK_FILTERS: { key: string; label: string; categories?: string[] 
 
 export function priorityBadges(row: any): { label: string; tone: string }[] {
   const badges: { label: string; tone: string }[] = []
+  const callType = callTypeForCategory(row.category)
+  badges.push({ label: CALL_TYPE_LABEL[callType], tone: CALL_TYPE_TONE[callType] })
   badges.push({
     label: CATEGORY_BADGE_LABEL[row.category] ?? row.category,
     tone:  CATEGORY_BADGE_TONE[row.category]  ?? 'bg-slate-100 text-slate-500',

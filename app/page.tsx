@@ -20,6 +20,7 @@ const blankForm = {
   gender: '',
   location: '',
   new_old_status: 'New',
+  call_direction: 'Incoming',
   source_channel: '',
   referral_name: '',
   agent_name: '',
@@ -85,6 +86,7 @@ export default function LeadIntakePage() {
   const branchOpts = useDropdownOptions('branch')
   const genderOpts = useDropdownOptions('gender')
   const sourceChannelOpts = useDropdownOptions('intake_source_channel')
+  const callDirectionOpts = useDropdownOptions('intake_call_direction')
   const leadBucketOpts = useDropdownOptions('intake_lead_bucket')
   const mainConcernOpts = useDropdownOptions('intake_main_concern')
   const urgencyOpts = useDropdownOptions('intake_urgency')
@@ -231,6 +233,7 @@ export default function LeadIntakePage() {
         gender: form.gender,
         location: form.location,
         new_old_status: form.new_old_status,
+        call_direction: form.call_direction,
         source_channel: form.source_channel,
         referral_name: form.referral_name,
         agent_name: form.agent_name,
@@ -376,6 +379,9 @@ export default function LeadIntakePage() {
               </Field>
               <Field label="New / Old / Unknown *">
                 <SearchableSelect options={newOldStatusOpts.options} value={form.new_old_status} onChange={(v) => set('new_old_status', v)} />
+              </Field>
+              <Field label="Incoming / Outgoing *">
+                <SearchableSelect options={callDirectionOpts.options} value={form.call_direction} onChange={(v) => set('call_direction', v)} />
               </Field>
               <Field label="Source channel *">
                 <SearchableSelect options={sourceChannelOpts.options} value={form.source_channel} onChange={(v) => set('source_channel', v)} />

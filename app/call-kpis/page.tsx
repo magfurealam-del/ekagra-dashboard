@@ -2,9 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/AuthContext'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
 
@@ -171,13 +169,6 @@ const DETAIL_FIELD_LABEL: Record<string, string> = {
 type SortKey = 'call_date' | 'patient_name' | 'direction' | 'source' | 'agent' | 'outcome'
 
 export default function CallKpisPage() {
-  const router = useRouter()
-  const { profile, isAdmin, loading: authLoading } = useAuth()
-
-  useEffect(() => {
-    if (!authLoading && profile && !isAdmin) router.replace('/')
-  }, [authLoading, profile, isAdmin, router])
-
   const [rangeKey, setRangeKey] = useState<RangeKey>('today')
   const [customStart, setCustomStart] = useState(toISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))
   const [customEnd, setCustomEnd] = useState(toISO(new Date()))
@@ -194,7 +185,6 @@ export default function CallKpisPage() {
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!isAdmin) return
     let cancelled = false
     setLoading(true)
     setError('')
@@ -205,7 +195,7 @@ export default function CallKpisPage() {
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [start, end, isAdmin])
+  }, [start, end])
 
   const outgoingOutcomeItems = (metrics?.by_outgoing_outcome || []).map((s: any) => ({
     label: OUTGOING_OUTCOME_LABEL[s.outcome] || s.outcome,
@@ -260,8 +250,6 @@ export default function CallKpisPage() {
       </th>
     )
   }
-
-  if (!isAdmin) return null
 
   return (
     <div className="space-y-4 pb-20">

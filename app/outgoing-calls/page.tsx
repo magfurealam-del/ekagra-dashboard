@@ -7,7 +7,7 @@ import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
 import PatientDetailPanel from '@/components/outgoing-calls/PatientDetailPanel'
 import OutcomePanel from '@/components/outgoing-calls/OutcomePanel'
-import { CATEGORY_LABEL, QUICK_FILTERS } from '@/components/outgoing-calls/types'
+import { CATEGORY_LABEL, QUICK_FILTERS, CALL_TYPE_LABEL, callTypeForCategory } from '@/components/outgoing-calls/types'
 
 function todayDhaka() {
   const now = new Date()
@@ -26,6 +26,7 @@ export default function OutgoingCallsPage() {
   const [search, setSearch] = useState('')
   const [quickFilter, setQuickFilter] = useState('all')
   const [leadTypeFilter, setLeadTypeFilter] = useState('all')
+  const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('')
 
@@ -82,10 +83,11 @@ export default function OutgoingCallsPage() {
       }
       if (qf?.categories && !qf.categories.includes(r.category)) return false
       if (leadTypeFilter !== 'all' && r.category !== leadTypeFilter) return false
+      if (callTypeFilter !== 'all' && callTypeForCategory(r.category) !== callTypeFilter) return false
       if (agentFilter !== 'all' && r.assigned_agent !== agentFilter) return false
       return true
     })
-  }, [rows, search, quickFilter, leadTypeFilter, agentFilter])
+  }, [rows, search, quickFilter, leadTypeFilter, callTypeFilter, agentFilter])
 
   function handleSaved() {
     setSelected(null)
@@ -97,7 +99,7 @@ export default function OutgoingCallsPage() {
       <div className="flex-shrink-0 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Outgoing Calls</h1>
+            <h1 className="text-2xl font-semibold">Outbound Call Sheet</h1>
             <p className="text-sm text-slate-500">
               Agent-first outbound follow-up workflow · {date} · On duty:{' '}
               <span className="font-medium text-slate-700">{agent || '—'}</span>
@@ -114,6 +116,16 @@ export default function OutgoingCallsPage() {
         <SummaryBar metrics={metrics} />
 
         <div className="flex flex-wrap gap-2 items-center text-sm">
+          <select
+            className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
+            value={callTypeFilter}
+            onChange={(e) => setCallTypeFilter(e.target.value)}
+          >
+            <option value="all">All call types</option>
+            {Object.entries(CALL_TYPE_LABEL).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
           <select
             className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
             value={leadTypeFilter}

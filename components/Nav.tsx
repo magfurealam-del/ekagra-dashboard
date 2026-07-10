@@ -7,9 +7,9 @@ const links = [
   { href: '/', label: 'Lead Intake & Appointment' },
   { href: '/patients', label: 'Patient List' },
   { href: '/calendar', label: 'Calendar' },
-  { href: '/outgoing-calls', label: 'Outgoing Call Sheet' },
+  { href: '/outgoing-calls', label: 'Outbound Call Sheet' },
   { href: '/doctor-availability', label: 'Doctor Availability' },
-  { href: '/call-kpis', label: 'Call KPIs', adminOnly: true },
+  { href: '/call-kpis', label: 'Call KPIs' },
   { href: '/admin-dashboard', label: 'Dashboard', adminOnly: true },
   { href: '/settings', label: 'Settings', adminOnly: true },
 ]

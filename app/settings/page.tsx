@@ -11,6 +11,7 @@ const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[
     section: 'Lead Intake',
     items: [
       { key: 'intake_source_channel', label: 'Source Channel' },
+      { key: 'intake_call_direction', label: 'Call Direction (Incoming/Outgoing)' },
       { key: 'intake_lead_bucket', label: 'Lead Bucket' },
       { key: 'intake_main_concern', label: 'Main Concern' },
       { key: 'intake_urgency', label: 'Urgency' },
