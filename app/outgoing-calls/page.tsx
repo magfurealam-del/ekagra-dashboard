@@ -19,6 +19,7 @@ export default function OutgoingCallsPage() {
   const date = todayDhaka()
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [metrics, setMetrics] = useState<any | null>(null)
   const [agent, setAgent] = useState<string>('')
   const [selected, setSelected] = useState<any | null>(null)
@@ -32,6 +33,7 @@ export default function OutgoingCallsPage() {
 
   async function load() {
     setLoading(true)
+    setLoadError('')
     const view = statusFilter === '' ? 'outgoing_call_sheet_view' : 'outgoing_call_all_attempts_view'
     let q = supabase.from(view).select('*').order('category_rank').order('relevant_date', { ascending: false }).range(0, 9999)
     if (statusFilter === '') {
@@ -39,11 +41,17 @@ export default function OutgoingCallsPage() {
     } else if (statusFilter !== 'all') {
       q = q.eq('outcome_code', statusFilter)
     }
-    const { data } = await q
-    setRows(data || [])
+    const { data, error } = await q
+    if (error) {
+      console.error('[outgoing-calls] queue load failed', error)
+      setRows([])
+      setLoadError(`Could not load the outbound queue: ${error.message}`)
+    } else {
+      setRows(data || [])
+    }
 
-    const { data: m } = await supabase.from('outgoing_call_today_metrics').select('*').single()
-    setMetrics(m)
+    const { data: m, error: metricsError } = await supabase.from('outgoing_call_today_metrics').select('*').single()
+    if (!metricsError) setMetrics(m)
 
     const { data: agentRow } = await supabase.rpc('get_scheduled_agent', { p_date: date })
     setAgent((agentRow as unknown as string) || '')
@@ -64,8 +72,13 @@ export default function OutgoingCallsPage() {
 
   async function runPopulateNow() {
     setLoading(true)
-    await supabase.rpc('populate_outgoing_call_queue', { p_date: date })
-    load()
+    const { error } = await supabase.rpc('populate_outgoing_call_queue', { p_date: date })
+    if (error) {
+      setLoading(false)
+      setLoadError(`Could not refresh the outbound queue: ${error.message}`)
+      return
+    }
+    await load()
   }
 
   const agentOptions = useMemo(() => {
@@ -114,6 +127,12 @@ export default function OutgoingCallsPage() {
         </div>
 
         <SummaryBar metrics={metrics} />
+
+        {loadError && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {loadError} Please contact an administrator if this continues.
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2 items-center text-sm">
           <select
