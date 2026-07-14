@@ -17,6 +17,7 @@ const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[
       { key: 'intake_urgency', label: 'Urgency' },
       { key: 'intake_new_old_status', label: 'New / Old Status' },
       { key: 'intake_outcome', label: 'Intake Outcome' },
+      { key: 'intake_no_appointment_reason', label: 'No Appointment Reason' },
       { key: 'diabetes_status', label: 'Diabetes Status' },
     ],
   },

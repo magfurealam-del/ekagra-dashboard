@@ -32,12 +32,12 @@ const blankForm = {
   notes: '',
 
   intake_outcome: 'no_appointment_yet',
+  no_appointment_reasons: [],
   doctor: '',
   service_type: '',
   branch: 'Dhanmondi',
   appointment_date: '',
   appointment_time: '',
-  call_status_note: '',
   internal_note: '',
 }
 
@@ -92,6 +92,7 @@ export default function LeadIntakePage() {
   const urgencyOpts = useDropdownOptions('intake_urgency')
   const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
+  const noAppointmentReasonOpts = useDropdownOptions('intake_no_appointment_reason')
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
   const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
   const { profile } = useAuth()
@@ -114,13 +115,7 @@ export default function LeadIntakePage() {
 
   // Suggest a call-status note whenever intake outcome changes, unless the agent already typed one
   function handleOutcomeChange(outcome: string) {
-    setForm((f: any) => ({
-      ...f,
-      intake_outcome: outcome,
-      call_status_note: f.call_status_note && f.call_status_note !== CALL_STATUS_DEFAULTS[f.intake_outcome]
-        ? f.call_status_note
-        : CALL_STATUS_DEFAULTS[outcome] || '',
-    }))
+    setForm((f: any) => ({ ...f, intake_outcome: outcome }))
   }
 
   async function runPhoneSearch() {
@@ -198,6 +193,7 @@ export default function LeadIntakePage() {
   function validate(effectiveOutcome: string): string | null {
     if (!form.patient_name) return 'Patient name is required.'
     if (!form.phone) return 'Phone number is required.'
+    if (!form.lead_bucket) return 'Lead bucket is required.'
     if (effectiveOutcome === 'appointment_booked') {
       if (!form.doctor || !form.service_type || !form.branch || !form.appointment_date || !form.appointment_time) {
         return 'Doctor, service type, branch, date, and time are required to book an appointment.'
@@ -243,6 +239,7 @@ export default function LeadIntakePage() {
         diabetes_status: form.diabetes_status,
         notes: form.notes,
         intake_outcome: effectiveOutcome,
+        no_appointment_reasons: effectiveOutcome === 'no_appointment_yet' ? form.no_appointment_reasons : [],
         doctor: form.doctor,
         service_type: form.service_type,
         branch: form.branch,
@@ -250,7 +247,7 @@ export default function LeadIntakePage() {
         appointment_time: form.appointment_time || null,
         follow_up_due_at: null,
         follow_up_priority: autoPriority,
-        internal_note: form.internal_note || form.call_status_note,
+        internal_note: form.internal_note,
       },
     })
     setSaving(false)
@@ -488,15 +485,26 @@ export default function LeadIntakePage() {
             </div>
           )}
 
-          {(form.intake_outcome !== 'appointment_booked') && (
+          {form.intake_outcome === 'no_appointment_yet' && (
             <div className="border-t border-slate-100 pt-3">
-              <Field label="Call status">
-                <input
-                  className="input"
-                  value={form.call_status_note}
-                  onChange={(e) => set('call_status_note', e.target.value)}
-                  placeholder="e.g. উনি কল দিয়েছেন"
-                />
+              <Field label="Why no appointment yet?">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {noAppointmentReasonOpts.options.map((reason) => {
+                    const checked = form.no_appointment_reasons.includes(reason.value)
+                    return (
+                      <label key={reason.value} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => set('no_appointment_reasons', e.target.checked
+                            ? [...form.no_appointment_reasons, reason.value]
+                            : form.no_appointment_reasons.filter((v: string) => v !== reason.value))}
+                        />
+                        {reason.label}
+                      </label>
+                    )
+                  })}
+                </div>
               </Field>
             </div>
           )}
