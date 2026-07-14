@@ -191,9 +191,20 @@ export default function LeadIntakePage() {
   const isSuppressed = SUPPRESSED_OUTCOMES.includes(form.intake_outcome)
 
   function validate(effectiveOutcome: string): string | null {
-    if (!form.patient_name) return 'Patient name is required.'
-    if (!form.phone) return 'Phone number is required.'
-    if (!form.lead_bucket) return 'Lead bucket is required.'
+    const requiredFields: Array<[string, string]> = [
+      ['lead_date', 'Lead date'],
+      ['patient_name', 'Patient name'],
+      ['phone', 'Phone number'],
+      ['new_old_status', 'New / Old / Unknown'],
+      ['call_direction', 'Incoming / Outgoing'],
+      ['source_channel', 'Source channel'],
+      ['lead_bucket', 'Lead bucket'],
+      ['main_concern', 'Main concern'],
+      ['urgency', 'Urgency'],
+      ['intake_outcome', 'Intake outcome'],
+    ]
+    const missing = requiredFields.find(([key]) => !String(form[key] ?? '').trim())
+    if (missing) return `${missing[1]} is required.`
     if (effectiveOutcome === 'appointment_booked') {
       if (!form.doctor || !form.service_type || !form.branch || !form.appointment_date || !form.appointment_time) {
         return 'Doctor, service type, branch, date, and time are required to book an appointment.'
