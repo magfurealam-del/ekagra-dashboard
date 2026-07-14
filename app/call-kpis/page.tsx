@@ -121,6 +121,59 @@ type CallLogRow = {
   details: Record<string, string | number | null> | null
 }
 
+function MiniCallCalendar({
+  trend,
+  selectedDate,
+  onSelect,
+}: {
+  trend: { date: string; incoming?: number; outgoing?: number; confirmation?: number }[]
+  selectedDate: string | null
+  onSelect: (date: string) => void
+}) {
+  const [month, setMonth] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay()
+  const trendByDate = new Map(trend.map(d => [d.date, (d.incoming || 0) + (d.outgoing || 0) + (d.confirmation || 0)]))
+  const cells = Array.from({ length: firstDay + daysInMonth }, (_, i) => i < firstDay ? null : i - firstDay + 1)
+  const dateForDay = (day: number) => `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  return (
+    <div className="border border-slate-200 rounded-xl bg-white p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">Call calendar</h2>
+          <p className="text-[11px] text-slate-400">Click a day to filter the dashboard</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button>
+          <span className="text-xs font-medium min-w-[105px] text-center">{month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</span>
+          <button className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="text-[10px] text-slate-400 py-1">{d}</div>)}
+        {cells.map((day, i) => {
+          if (!day) return <div key={`blank-${i}`} />
+          const date = dateForDay(day)
+          const count = trendByDate.get(date) || 0
+          const isSelected = selectedDate === date
+          const isToday = date === toISO(new Date())
+          return (
+            <button key={date} onClick={() => onSelect(date)} className={`min-h-[38px] rounded-md border text-xs transition-colors ${isSelected ? 'bg-teal-600 text-white border-teal-600' : isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-100 hover:bg-slate-50'}`}>
+              <div>{day}</div>
+              {count > 0 && <div className={`text-[10px] font-semibold ${isSelected ? 'text-white' : 'text-indigo-600'}`}>{count}</div>}
+            </button>
+          )
+        })}
+      </div>
+      <div className="mt-2 text-[10px] text-slate-400">Numbers show total calls logged that day.</div>
+    </div>
+  )
+}
+
 // Merges every outcome-color map into one lookup so a single Outcome cell
 // can be colored regardless of which direction (incoming/outgoing/
 // confirmation) it came from — falls back to a neutral badge otherwise.
@@ -183,6 +236,7 @@ export default function CallKpisPage() {
   const [directionFilter, setDirectionFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const selectedDate = rangeKey === 'custom' && customStart === customEnd ? customStart : null
 
   useEffect(() => {
     let cancelled = false
@@ -253,6 +307,11 @@ export default function CallKpisPage() {
 
   return (
     <div className="space-y-4 pb-20">
+      <MiniCallCalendar
+        trend={metrics?.daily_trend || []}
+        selectedDate={selectedDate}
+        onSelect={(date) => { setCustomStart(date); setCustomEnd(date); setRangeKey('custom') }}
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Call Center KPIs</h1>
@@ -442,6 +501,7 @@ export default function CallKpisPage() {
                       <SortHeader label="Date" k="call_date" />
                       <SortHeader label="Direction" k="direction" />
                       <SortHeader label="Source" k="source" />
+                      <th className="text-left py-1 border border-slate-200 px-2">Lead Bucket</th>
                       <SortHeader label="Patient" k="patient_name" />
                       <th className="text-left py-1 border border-slate-200 px-2">Old/New</th>
                       <th className="text-left py-1 border border-slate-200 px-2">Phone</th>
@@ -476,6 +536,11 @@ export default function CallKpisPage() {
                             <td className="py-1.5 border border-slate-100 px-2">
                               <span className={`inline-block text-xs rounded-md px-2 py-0.5 leading-tight w-full text-center break-words ${SOURCE_BADGE[r.source || ''] || 'bg-slate-100 text-slate-500'}`}>
                                 {r.source || '—'}
+                              </span>
+                            </td>
+                            <td className="py-1.5 border border-slate-100 px-2">
+                              <span className="inline-block text-xs rounded-md px-2 py-0.5 leading-tight break-words bg-sky-50 text-sky-700 max-w-[130px]">
+                                {r.details?.lead_bucket || '—'}
                               </span>
                             </td>
                             <td className="py-1.5 break-words max-w-[140px] border border-slate-100 px-2">{r.patient_name || '—'}</td>
@@ -520,7 +585,7 @@ export default function CallKpisPage() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={14} className="px-4 py-3">
+                              <td colSpan={15} className="px-4 py-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
