@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
 import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/calendar/CalendarGrid'
 import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
@@ -28,14 +29,20 @@ export default function CalendarPage() {
   const end   = useMemo(() => new Date(year, month + 1, 0).toISOString().slice(0, 10), [year, month])
 
   async function loadCalendarData() {
-    const { data } = await supabase
-      .from('crm_appointments')
-      .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, no_show_risk')
-      .gte('appointment_date', start)
-      .lte('appointment_date', end)
-      .neq('appointment_status', 'Cancelled')
-    setMonthRows(data || [])
-    return data
+    try {
+      const { data } = await withRetry(() => supabase
+        .from('crm_appointments')
+        .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, no_show_risk')
+        .gte('appointment_date', start)
+        .lte('appointment_date', end)
+        .neq('appointment_status', 'Cancelled'), 10000, 1)
+      setMonthRows(data || [])
+      return data
+    } catch (error) {
+      console.error('[calendar] load failed', error)
+      setMonthRows([])
+      return []
+    }
   }
 
   // Load the month's appointments once; doctor filtering is applied client-side

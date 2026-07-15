@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
 
 const CATEGORY_STYLES: Record<string, string> = {
   'Wound Care': 'bg-rose-100 text-rose-700',
@@ -46,12 +47,17 @@ export default function PatientListPage() {
 
   async function load() {
     setLoading(true)
-    let q = supabase.from('patient_master_view').select('*')
+    let q = supabase.from('patient_master_view').select('patient_id, patient_name, phone, hospital_id, patient_category, area, dhaka_status, first_visit_date, last_visit_date, total_visits')
     if (query) {
       q = q.or(`patient_name.ilike.%${query}%,phone.ilike.%${query}%,hospital_id.ilike.%${query}%`)
     }
-    const { data, error } = await q.limit(200)
-    if (!error && data) setRows(data)
+    try {
+      const { data, error } = await withRetry(() => q.limit(200), 10000, 1)
+      if (!error && data) setRows(data)
+    } catch (error) {
+      console.error('[patients] load failed', error)
+      setRows([])
+    }
     setLoading(false)
   }
 
