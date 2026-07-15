@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import SummaryBar from '@/components/outgoing-calls/SummaryBar'
@@ -31,6 +31,7 @@ export default function OutgoingCallsPage() {
   const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('')
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function load() {
     setLoading(true)
@@ -70,10 +71,19 @@ export default function OutgoingCallsPage() {
     load()
     const channel = supabase
       .channel('outgoing-calls')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, () => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => { load() }, 350)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, () => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => { load() }, 350)
+      })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+      supabase.removeChannel(channel)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter])
 

@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/calendar/CalendarGrid'
@@ -24,6 +24,7 @@ export default function CalendarPage() {
 
   // Doctor/patient filter
   const [doctorFilter, setDoctorFilter] = useState<string>('all')
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const start = useMemo(() => new Date(year, month, 1).toISOString().slice(0, 10), [year, month])
   const end   = useMemo(() => new Date(year, month + 1, 0).toISOString().slice(0, 10), [year, month])
@@ -73,9 +74,15 @@ export default function CalendarPage() {
   useEffect(() => {
     const channel = supabase
       .channel('calendar-grid')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => { loadCalendarData() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => { loadCalendarData() }, 350)
+      })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+      supabase.removeChannel(channel)
+    }
   }, [start, end])
 
   function changeMonth(delta: number) {

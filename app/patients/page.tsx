@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
@@ -44,6 +44,7 @@ export default function PatientListPage() {
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState('last_visit_date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function load() {
     setLoading(true)
@@ -65,10 +66,19 @@ export default function PatientListPage() {
     load()
     const channel = supabase
       .channel('patient-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => { load() }, 350)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => { load() }, 350)
+      })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+      supabase.removeChannel(channel)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
