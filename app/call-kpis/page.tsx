@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
 
@@ -242,10 +243,18 @@ export default function CallKpisPage() {
     let cancelled = false
     setLoading(true)
     setError('')
-    supabase.rpc('get_call_center_kpis', { p_start_date: start, p_end_date: end }).then(({ data, error }) => {
+    withRetry(
+      () => supabase.rpc('get_call_center_kpis', { p_start_date: start, p_end_date: end }),
+      15000,
+      1,
+    ).then(({ data, error }) => {
       if (cancelled) return
       if (error) { setError(error.message); setLoading(false); return }
       setMetrics(data)
+      setLoading(false)
+    }).catch((err) => {
+      if (cancelled) return
+      setError(err instanceof Error ? err.message : 'Could not load KPI data. Please retry.')
       setLoading(false)
     })
     return () => { cancelled = true }

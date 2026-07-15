@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
 import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
 import PatientDetailPanel from '@/components/outgoing-calls/PatientDetailPanel'
@@ -41,7 +42,13 @@ export default function OutgoingCallsPage() {
     } else if (statusFilter !== 'all') {
       q = q.eq('outcome_code', statusFilter)
     }
-    const { data, error } = await q
+    let data: any[] | null = null
+    let error: any = null
+    try {
+      ({ data, error } = await withRetry(() => q, 15000, 1))
+    } catch (err) {
+      error = err
+    }
     if (error) {
       console.error('[outgoing-calls] queue load failed', error)
       setRows([])

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
@@ -37,25 +37,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const profileUserId = useRef<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
 
   async function loadProfile(userId: string) {
-    const { data } = await supabase.from('user_profiles').select('*').eq('id', userId).single()
-    setProfile(data as UserProfile | null)
+    if (profileUserId.current === userId && profile) return
+    profileUserId.current = userId
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, email, role, is_active, must_change_password')
+      .eq('id', userId)
+      .single()
+    if (error) {
+      profileUserId.current = null
+      setProfile(null)
+      throw error
+    }
+    setProfile(data as UserProfile)
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        setSession(null)
+        setProfile(null)
+        setLoading(false)
+        return
+      }
       setSession(data.session)
-      if (data.session) loadProfile(data.session.user.id).finally(() => setLoading(false))
+      if (data.session) loadProfile(data.session.user.id).catch(() => {}).finally(() => setLoading(false))
       else setLoading(false)
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
-      if (newSession) loadProfile(newSession.user.id)
-      else setProfile(null)
+      if (newSession) {
+        loadProfile(newSession.user.id).catch(() => {})
+      } else {
+        profileUserId.current = null
+        setProfile(null)
+      }
     })
 
     return () => sub.subscription.unsubscribe()
