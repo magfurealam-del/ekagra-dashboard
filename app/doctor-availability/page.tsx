@@ -250,8 +250,11 @@ function DoctorRow({
           </button>
         ) : (
           <button onClick={() => onToggle(false)} className="text-xs px-2.5 py-1.5 rounded-md border border-rose-300 text-rose-700 hover:bg-rose-50">
-            Opt out
+            Unavailable
           </button>
+        )}
+        {override?.updated_by && (
+          <span className="text-[10px] text-slate-400">by {override.updated_by}</span>
         )}
       </div>
 
@@ -267,6 +270,9 @@ function DoctorRow({
           >
             Save hours
           </button>
+          {override?.updated_by && hasCustomHours && (
+            <span className="block text-[10px] text-slate-400">Changed by {override.updated_by}</span>
+          )}
         </div>
       )}
 
