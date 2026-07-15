@@ -230,6 +230,9 @@ function DoctorRow({
         <div className="text-xs text-slate-400">
           Normal hours: {fmtTime(normalStart)} – {fmtTime(normalEnd)}
         </div>
+        {!isOverridden && (
+          <div className="text-[11px] text-emerald-600 mt-0.5">Confirmed normal hours — no change recorded</div>
+        )}
         {isOverridden && (
           <div className="text-[11px] text-sky-600 mt-0.5">
             {isAvailable
