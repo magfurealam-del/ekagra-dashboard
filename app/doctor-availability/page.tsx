@@ -38,6 +38,7 @@ type OverrideRow = {
   updated_by: string | null
   updated_at: string | null
 }
+type AuditRow = { doctor_name: string; action: string; changed_by: string; changed_at: string; start_time: string | null; end_time: string | null; note: string | null }
 
 export default function DoctorAvailabilityPage() {
   const date = tomorrowDhaka()
@@ -46,6 +47,7 @@ export default function DoctorAvailabilityPage() {
 
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
   const [overrides, setOverrides] = useState<Record<string, OverrideRow>>({})
+  const [audit, setAudit] = useState<AuditRow[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
 
@@ -66,6 +68,13 @@ export default function DoctorAvailabilityPage() {
     const map: Record<string, OverrideRow> = {}
     ;(ov || []).forEach(r => { map[r.doctor_name] = r as OverrideRow })
     setOverrides(map)
+    const { data: auditRows } = await supabase
+      .from('doctor_availability_audit')
+      .select('doctor_name, action, changed_by, changed_at, start_time, end_time, note')
+      .eq('avail_date', dateIso)
+      .order('changed_at', { ascending: false })
+      .limit(100)
+    setAudit((auditRows || []) as AuditRow[])
     setLoading(false)
   }
 
@@ -170,6 +179,22 @@ export default function DoctorAvailabilityPage() {
         </div>
       )}
 
+      {audit.length > 0 && (
+        <section className="bg-white rounded-xl border border-slate-200 p-4">
+          <h2 className="text-sm font-semibold text-slate-700">Change history for {formattedDate}</h2>
+          <div className="mt-2 divide-y divide-slate-100">
+            {audit.map((entry, i) => (
+              <div key={`${entry.changed_at}-${i}`} className="py-2 text-xs text-slate-600 flex flex-wrap gap-x-3 gap-y-1">
+                <span className="font-medium text-slate-800">{entry.doctor_name}</span>
+                <span>{entry.action.replaceAll('_', ' ')}</span>
+                <span>by {entry.changed_by}</span>
+                <span className="text-slate-400">{new Date(entry.changed_at).toLocaleString('en-GB')}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {toast && (
         <div className="fixed bottom-4 right-4 bg-slate-900 text-white text-xs px-3 py-2 rounded-md shadow-lg z-20">
           {toast}
@@ -210,24 +235,21 @@ function DoctorRow({
             {isAvailable
               ? hasCustomHours ? `Custom hours tomorrow: ${fmtTime(override!.start_time)} – ${fmtTime(override!.end_time)}` : 'Confirmed — normal hours'
               : 'Marked unavailable tomorrow'}
-            {override?.updated_by ? ` · by ${override.updated_by}` : ''}
+            {override?.updated_by ? ` · changed by ${override.updated_by}${override.updated_at ? ` on ${new Date(override.updated_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}` : ''}
           </div>
         )}
       </div>
 
       <div className="flex items-center gap-1.5">
-        <button
-          onClick={() => onToggle(true)}
-          className={`text-xs px-2.5 py-1.5 rounded-md transition-colors ${isAvailable ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-        >
-          Available
-        </button>
-        <button
-          onClick={() => onToggle(false)}
-          className={`text-xs px-2.5 py-1.5 rounded-md transition-colors ${!isAvailable ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-        >
-          Unavailable
-        </button>
+        {isOverridden && !isAvailable ? (
+          <button onClick={() => onToggle(true)} className="text-xs px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200">
+            Restore normal hours
+          </button>
+        ) : (
+          <button onClick={() => onToggle(false)} className="text-xs px-2.5 py-1.5 rounded-md border border-rose-300 text-rose-700 hover:bg-rose-50">
+            Opt out
+          </button>
+        )}
       </div>
 
       {isAvailable && (
