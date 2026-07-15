@@ -34,6 +34,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
   const [visitSummary, setVisitSummary] = useState<any | null>(null)
   const [lead, setLead] = useState<any | null>(null)
   const [lastAppt, setLastAppt] = useState<any | null>(null)
+  const [originalAppt, setOriginalAppt] = useState<any | null>(null)
   const [history, setHistory] = useState<any[]>([])
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       setVisitSummary(null)
       setLead(null)
       setLastAppt(null)
+      setOriginalAppt(null)
       setHistory([])
       return
     }
@@ -65,10 +67,21 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
           .order('appointment_date', { ascending: false })
           .limit(1)
         if (!cancelled) setLastAppt((va && va[0]) || null)
+
+        const { data: original } = await supabase
+          .from('crm_appointments')
+          .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, notes, created_by, created_at')
+          .eq('patient_id', row.patient_id)
+          .lte('appointment_date', row.relevant_date || new Date().toISOString().slice(0, 10))
+          .order('appointment_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(1)
+        if (!cancelled) setOriginalAppt((original && original[0]) || null)
       } else {
         setPatient(null)
         setVisitSummary(null)
         setLastAppt(null)
+        setOriginalAppt(null)
       }
 
       if (row.source_table === 'crm_leads' && row.source_id) {
@@ -171,6 +184,20 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
           <div className="mt-2 text-xs text-slate-600 bg-sky-50 border border-sky-100 rounded-md p-2">
             <span className="font-medium">No-appointment reasons:</span> {lead.no_appointment_reasons.join(', ')}
           </div>
+        )}
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-slate-600 mb-1.5">Original Booking Context</h4>
+        {originalAppt ? (
+          <div className="bg-indigo-50 border border-indigo-100 rounded-md p-2.5 text-xs text-slate-700 space-y-1">
+            <div><span className="font-medium">Booked:</span> {originalAppt.appointment_date} {originalAppt.appointment_time || ''} · {originalAppt.doctor_service || 'Doctor not recorded'}</div>
+            <div><span className="font-medium">Status:</span> {originalAppt.appointment_status || 'Not recorded'} · <span className="font-medium">Type:</span> {originalAppt.appointment_type || 'Not recorded'}</div>
+            <div><span className="font-medium">Booking comment:</span> {originalAppt.notes || 'No CRM comment recorded'}</div>
+            {originalAppt.created_by && <div className="text-slate-500">Booked by {originalAppt.created_by}</div>}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">No original CRM booking record found.</p>
         )}
       </div>
 
