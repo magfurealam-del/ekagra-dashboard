@@ -118,7 +118,9 @@ type CallLogRow = {
   doctor_service: string | null
   appointment_date: string | null
   appointment_time: string | null
-  invoice_match: InvoiceMatch
+  patient_id?: number | null
+  invoice_check_date?: string | null
+  invoice_match?: InvoiceMatch
   details: Record<string, string | number | null> | null
 }
 
@@ -237,6 +239,8 @@ export default function CallKpisPage() {
   const [directionFilter, setDirectionFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [invoiceMatches, setInvoiceMatches] = useState<Record<number, InvoiceMatch | null>>({})
+  const [invoiceLoading, setInvoiceLoading] = useState<number | null>(null)
   const selectedDate = rangeKey === 'custom' && customStart === customEnd ? customStart : null
 
   useEffect(() => {
@@ -244,7 +248,7 @@ export default function CallKpisPage() {
     setLoading(true)
     setError('')
     withRetry(
-      () => supabase.rpc('get_call_center_kpis', { p_start_date: start, p_end_date: end }),
+      () => supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }),
       15000,
       1,
     ).then(({ data, error }) => {
@@ -259,6 +263,31 @@ export default function CallKpisPage() {
     })
     return () => { cancelled = true }
   }, [start, end])
+
+  async function expandCallRow(index: number, row: CallLogRow) {
+    const isOpen = expandedRow === index
+    setExpandedRow(isOpen ? null : index)
+    if (isOpen || invoiceMatches[index] !== undefined || !row.patient_id || !row.invoice_check_date) return
+
+    setInvoiceLoading(index)
+    try {
+      const { data, error } = await withRetry(
+        () => supabase.rpc('get_call_kpi_invoice_match', {
+          p_patient_id: row.patient_id,
+          p_appointment_date: row.invoice_check_date,
+        }),
+        10000,
+        1,
+      )
+      if (error) throw error
+      setInvoiceMatches((current) => ({ ...current, [index]: data as InvoiceMatch }))
+    } catch (error) {
+      setInvoiceMatches((current) => ({ ...current, [index]: null }))
+      console.error('[call-kpis] invoice match load failed', error)
+    } finally {
+      setInvoiceLoading(null)
+    }
+  }
 
   const outgoingOutcomeItems = (metrics?.by_outgoing_outcome || []).map((s: any) => ({
     label: OUTGOING_OUTCOME_LABEL[s.outcome] || s.outcome,
@@ -526,12 +555,13 @@ export default function CallKpisPage() {
                   <tbody className="divide-y divide-slate-100">
                     {callLog.map((r, i) => {
                       const isOpen = expandedRow === i
+                      const invoiceMatch = invoiceMatches[i]
                       const detailEntries = Object.entries(r.details || {}).filter(([, v]) => v !== null && v !== '')
                       return (
                         <Fragment key={i}>
                           <tr
                             className="cursor-pointer hover:bg-slate-50 align-top"
-                            onClick={() => setExpandedRow(isOpen ? null : i)}
+                            onClick={() => expandCallRow(i, r)}
                           >
                             <td className="py-1.5 text-slate-400 text-center border border-slate-100 px-2">{isOpen ? '▾' : '▸'}</td>
                             <td className="py-1.5 whitespace-nowrap text-slate-500 border border-slate-100 px-2">
@@ -576,14 +606,14 @@ export default function CallKpisPage() {
                                 : '—'}
                             </td>
                             <td className="py-1.5 border border-slate-100 px-2">
-                              {!r.invoice_match ? (
+                              {invoiceLoading === i ? <span className="text-xs text-slate-400">Checking...</span> : invoiceMatch === undefined ? <span className="text-xs text-slate-400">Expand to check</span> : !invoiceMatch ? (
                                 <span className="text-slate-300">—</span>
-                              ) : r.invoice_match.status === 'matched' ? (
+                              ) : invoiceMatch.status === 'matched' ? (
                                 <span
                                   className="inline-block text-xs rounded-full px-2 py-0.5 break-words max-w-[140px] bg-emerald-100 text-emerald-700"
-                                  title={`Invoice ${r.invoice_match.invoice_no} dated ${r.invoice_match.invoice_date}`}
+                                  title={`Invoice ${invoiceMatch.invoice_no} dated ${invoiceMatch.invoice_date}`}
                                 >
-                                  ✓ Matched · {r.invoice_match.method}
+                                  ✓ Matched · {invoiceMatch.method}
                                 </span>
                               ) : (
                                 <span className="inline-block text-xs rounded-full px-2 py-0.5 bg-rose-100 text-rose-700" title="No invoice found under this patient's ID, phone, or hospital ID within the visit window.">
