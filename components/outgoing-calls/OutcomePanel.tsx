@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import SearchableSelect from '@/components/SearchableSelect'
+import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { BRANCHES, OUTCOMES, OutcomeCode } from './types'
 
 type SaveState = 'idle' | 'saving' | 'success' | 'failed' | 'stale'
@@ -25,13 +27,13 @@ export default function OutcomePanel({
   const [apptTime, setApptTime] = useState('')
   const [serviceType, setServiceType] = useState('')
   const [branch, setBranch] = useState(BRANCHES[0])
+  const [doctor, setDoctor] = useState('')
+  const [doctors, setDoctors] = useState<{ label: string; value: string }[]>([])
+  const [reasonValues, setReasonValues] = useState<string[]>([])
+  const reasonOptions = useDropdownOptions('intake_no_appointment_reason')
+  const serviceOptions = useDropdownOptions('service_type')
+  const branchOptions = useDropdownOptions('branch')
 
-  // Call later fields
-  const [callbackDate, setCallbackDate] = useState('')
-  const [callbackTime, setCallbackTime] = useState('')
-
-  // Confirmation fields
-  const [confirmed, setConfirmed] = useState(false)
 
   useEffect(() => {
     setSelected(null)
@@ -41,10 +43,15 @@ export default function OutcomePanel({
     setApptDate('')
     setApptTime('')
     setServiceType('')
-    setCallbackDate('')
-    setCallbackTime('')
-    setConfirmed(false)
+    setDoctor('')
+    setReasonValues([])
   }, [row?.attempt_id])
+
+  useEffect(() => {
+    supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
+      setDoctors((data || []).map((d) => ({ label: d.name, value: d.name })))
+    })
+  }, [])
 
   if (!row) {
     return (
@@ -60,18 +67,14 @@ export default function OutcomePanel({
     if (!def) return
     setErrorMsg('')
 
-    if (def.code === 'booked_appointment' && (!apptDate || !apptTime || !serviceType || !branch)) {
-      setErrorMsg('Date, time, service type, and branch are all required to book an appointment.')
+    if (def.code === 'booked_appointment' && (!doctor || !apptDate || !apptTime || !serviceType || !branch)) {
+      setErrorMsg('Doctor, date, time, service type, and branch are all required to book an appointment.')
       return
     }
-    if (def.code === 'call_later' && (!callbackDate || !callbackTime)) {
-      setErrorMsg('A callback date and time are required.')
-      return
-    }
-    if ((def.code === 'wrong_number' || def.code === 'do_not_call') && !confirmed) {
-      setErrorMsg('Please confirm before saving this outcome.')
-      return
-    }
+    const reasonNote = selected === 'reached' && reasonValues.length > 0
+      ? `No appointment reasons: ${reasonValues.join(', ')}`
+      : ''
+    const savedNotes = [notes.trim(), reasonNote].filter(Boolean).join('\n') || null
 
     setSaveState('saving')
 
@@ -91,25 +94,10 @@ export default function OutcomePanel({
           p_attempt_id: row.attempt_id,
           p_appointment_date: apptDate,
           p_appointment_time: apptTime,
-          p_doctor_service: serviceType,
+          p_doctor_service: `${doctor} — ${serviceType}`,
           p_branch: branch,
-          p_notes: notes || null,
+          p_notes: savedNotes,
           p_agent_name: agentName,
-        })
-        if (error) throw error
-      } else if (def.code === 'call_later') {
-        const callbackIso = new Date(`${callbackDate}T${callbackTime}:00+06:00`).toISOString()
-        const { error } = await supabase.rpc('record_call_attempt_outcome', {
-          p_attempt_id: row.attempt_id,
-          p_outcome: def.label,
-          p_status: 'called',
-          p_notes: notes || null,
-          p_resolve: false,
-          p_wait_days: 3,
-          p_outcome_code: def.code,
-          p_agent_name: agentName,
-          p_callback_at: callbackIso,
-          p_confirmed: false,
         })
         if (error) throw error
       } else {
@@ -117,13 +105,13 @@ export default function OutcomePanel({
           p_attempt_id: row.attempt_id,
           p_outcome: def.label,
           p_status: def.code === 'not_reached' ? 'no_answer' : 'called',
-          p_notes: notes || null,
+          p_notes: savedNotes,
           p_resolve: def.resolve,
           p_wait_days: 3,
           p_outcome_code: def.code,
           p_agent_name: agentName,
           p_callback_at: null,
-          p_confirmed: def.code === 'wrong_number' || def.code === 'do_not_call' ? confirmed : false,
+          p_confirmed: false,
         })
         if (error) throw error
       }
@@ -160,6 +148,7 @@ export default function OutcomePanel({
       {selected === 'booked_appointment' && (
         <div className="space-y-2 border-t border-slate-100 pt-3">
           <div className="text-xs font-medium text-slate-600">Booked Appointment Details</div>
+          <label className="text-xs text-slate-500 block">Doctor *<SearchableSelect options={doctors} value={doctor} onChange={setDoctor} /></label>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-slate-500">
               Appointment date *
@@ -180,66 +169,25 @@ export default function OutcomePanel({
               />
             </label>
           </div>
-          <label className="text-xs text-slate-500 block">
-            Service type *
-            <input
-              className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-              placeholder="e.g. Orthopedic Consultation"
-              value={serviceType}
-              onChange={(e) => setServiceType(e.target.value)}
-            />
-          </label>
+          <label className="text-xs text-slate-500 block">Service type *<SearchableSelect options={serviceOptions.options} value={serviceType} onChange={setServiceType} /></label>
           <label className="text-xs text-slate-500 block">
             Branch *
-            <select
-              className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white"
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-            >
-              {BRANCHES.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect options={branchOptions.options.length ? branchOptions.options : BRANCHES.map((b) => ({ label: b, value: b }))} value={branch} onChange={setBranch} />
           </label>
         </div>
       )}
 
-      {selected === 'call_later' && (
-        <div className="space-y-2 border-t border-slate-100 pt-3">
-          <div className="text-xs font-medium text-slate-600">Callback Details</div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-slate-500">
-              Callback date *
-              <input
-                type="date"
-                className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                value={callbackDate}
-                onChange={(e) => setCallbackDate(e.target.value)}
-              />
-            </label>
-            <label className="text-xs text-slate-500">
-              Time *
-              <input
-                type="time"
-                className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                value={callbackTime}
-                onChange={(e) => setCallbackTime(e.target.value)}
-              />
-            </label>
-          </div>
-        </div>
-      )}
-
-      {(selected === 'wrong_number' || selected === 'do_not_call') && (
+      {selected === 'reached' && (
         <div className="border-t border-slate-100 pt-3">
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-            {selected === 'wrong_number'
-              ? 'Confirm this number is wrong — patient will be removed from the active queue.'
-              : 'Confirm this patient should never be called again.'}
-          </label>
+          <div className="text-xs font-medium text-slate-600 mb-2">Why no appointment yet?</div>
+          <div className="grid grid-cols-2 gap-2">
+            {reasonOptions.options.map((reason) => (
+              <label key={reason.value} className="flex items-center gap-2 text-xs text-slate-600">
+                <input type="checkbox" checked={reasonValues.includes(reason.value)} onChange={(e) => setReasonValues((current) => e.target.checked ? [...current, reason.value] : current.filter((v) => v !== reason.value))} />
+                {reason.label}
+              </label>
+            ))}
+          </div>
         </div>
       )}
 

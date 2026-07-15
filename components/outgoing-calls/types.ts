@@ -1,6 +1,6 @@
 export type OutcomeCode =
-  | 'reached' | 'not_reached' | 'busy' | 'switched_off' | 'wrong_number'
-  | 'booked_appointment' | 'already_visited' | 'not_interested' | 'call_later' | 'do_not_call'
+  | 'reached' | 'not_reached' | 'busy'
+  | 'booked_appointment' | 'already_visited' | 'not_interested'
 
 export type OutcomeDef = {
   code: OutcomeCode
@@ -13,13 +13,9 @@ export const OUTCOMES: OutcomeDef[] = [
   { code: 'reached',            label: 'Reached',            resolve: false, tone: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
   { code: 'not_reached',        label: 'Not Reached',        resolve: false, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
   { code: 'busy',               label: 'Busy',               resolve: false, tone: 'border-amber-300 bg-amber-50 text-amber-700' },
-  { code: 'switched_off',       label: 'Switched Off',       resolve: false, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
-  { code: 'wrong_number',       label: 'Wrong Number',       resolve: true,  tone: 'border-rose-300 bg-rose-50 text-rose-700' },
   { code: 'booked_appointment', label: 'Booked Appointment', resolve: true,  tone: 'border-teal-400 bg-teal-50 text-teal-700' },
   { code: 'already_visited',    label: 'Already Visited',    resolve: true,  tone: 'border-slate-300 bg-slate-50 text-slate-600' },
   { code: 'not_interested',     label: 'Not Interested',     resolve: true,  tone: 'border-slate-300 bg-slate-50 text-slate-600' },
-  { code: 'call_later',         label: 'Call Later',         resolve: false, tone: 'border-sky-300 bg-sky-50 text-sky-700' },
-  { code: 'do_not_call',        label: 'Do Not Call',        resolve: true,  tone: 'border-rose-300 bg-rose-50 text-rose-700' },
 ]
 
 // ─── Priority bucket metadata ──────────────────────────────────────────────
