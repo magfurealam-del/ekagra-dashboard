@@ -33,7 +33,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
   const [patient, setPatient] = useState<any | null>(null)
   const [visitSummary, setVisitSummary] = useState<any | null>(null)
   const [lead, setLead] = useState<any | null>(null)
-  const [lastAppt, setLastAppt] = useState<any | null>(null)
+  const [appointments, setAppointments] = useState<any[]>([])
   const [originalAppt, setOriginalAppt] = useState<any | null>(null)
   const [history, setHistory] = useState<any[]>([])
 
@@ -42,7 +42,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       setPatient(null)
       setVisitSummary(null)
       setLead(null)
-      setLastAppt(null)
+      setAppointments([])
       setOriginalAppt(null)
       setHistory([])
       return
@@ -62,11 +62,11 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
 
         const { data: va } = await supabase
           .from('validated_appointments')
-          .select('appointment_date, appointment_time, doctor_service, validated_status')
+          .select('appointment_id, appointment_date, appointment_time, doctor_service, appointment_status, confirmation_status, validated_status, invoice_validated, matched_admission_an, matched_admission_date, notes')
           .eq('resolved_patient_id', row.patient_id)
           .order('appointment_date', { ascending: false })
-          .limit(1)
-        if (!cancelled) setLastAppt((va && va[0]) || null)
+          .limit(8)
+        if (!cancelled) setAppointments(va || [])
 
         const { data: original } = await supabase
           .from('crm_appointments')
@@ -80,7 +80,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       } else {
         setPatient(null)
         setVisitSummary(null)
-        setLastAppt(null)
+        setAppointments([])
         setOriginalAppt(null)
       }
 
@@ -216,25 +216,22 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
 
       <div>
         <h4 className="text-xs font-semibold text-slate-600 mb-1.5">① Appointment History</h4>
-        {lastAppt ? (
-          <div className="bg-slate-50 rounded-md p-2.5 text-xs flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <div className="text-slate-700 font-medium">
-                {lastAppt.appointment_date} {lastAppt.appointment_time}
+        {appointments.length > 0 ? (
+          <div className="space-y-1.5">
+            {appointments.map((appointment) => (
+              <div key={appointment.appointment_id} className="bg-slate-50 rounded-md p-2.5 text-xs flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-slate-700 font-medium">{appointment.appointment_date} {appointment.appointment_time || ''} · {appointment.doctor_service || 'Service not specified'}</div>
+                  <div className="text-slate-500">{appointment.notes || appointment.confirmation_status || 'No appointment comment'}</div>
+                  {appointment.invoice_validated && (
+                    <div className="text-emerald-700 mt-0.5">Attended — invoice matched{appointment.matched_admission_an ? ` · AN ${appointment.matched_admission_an}` : ''}{appointment.matched_admission_date ? ` · ${new Date(appointment.matched_admission_date).toLocaleDateString('en-GB')}` : ''}</div>
+                  )}
+                </div>
+                <span className={`shrink-0 text-[10px] rounded px-1.5 py-0.5 ${appointment.invoice_validated ? 'bg-emerald-100 text-emerald-700' : appointment.validated_status === 'No-show' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'}`}>
+                  {appointment.invoice_validated ? 'Attended' : appointment.validated_status || appointment.appointment_status || 'Scheduled'}
+                </span>
               </div>
-              <div className="text-slate-500">{lastAppt.doctor_service || 'Service not specified'}</div>
-            </div>
-            <span
-              className={`text-[10px] rounded px-1.5 py-0.5 ${
-                lastAppt.validated_status === 'No-show'
-                  ? 'bg-amber-100 text-amber-700'
-                  : lastAppt.validated_status === 'Completed'
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-slate-200 text-slate-600'
-              }`}
-            >
-              {lastAppt.validated_status}
-            </span>
+            ))}
           </div>
         ) : (
           <p className="text-xs text-slate-400">No prior appointment on record.</p>
