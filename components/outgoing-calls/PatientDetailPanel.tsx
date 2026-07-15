@@ -74,7 +74,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       if (row.source_table === 'crm_leads' && row.source_id) {
         const { data: l } = await supabase
           .from('crm_leads')
-          .select('source, campaign_name, lead_status, main_problem, agent_name')
+          .select('source, campaign_name, lead_status, main_problem, agent_name, lead_bucket, urgency, notes, referral_name, created_at, intake_outcome, no_appointment_reasons')
           .eq('id', row.source_id)
           .maybeSingle()
         if (!cancelled) setLead(l)
@@ -105,6 +105,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
   }
 
   const age = ageFromDob(patient?.dob)
+  const lastReached = history.find((h) => h.called_at || h.outcome || h.status === 'called')
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 h-full overflow-y-auto p-4 space-y-4">
@@ -126,6 +127,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
           <div>Patient type: {patient?.patient_type || '—'}</div>
           <div>Diabetes status: {patient?.diabetes_status || '—'}</div>
           <div>Healing status: {patient?.healing_status || 'Not marked'}</div>
+          <div className="col-span-2">Initial call reason: {row.reason || lead?.main_problem || 'Not recorded'}</div>
           {patient?.address && <div className="col-span-2">Address: {patient.address}</div>}
           {patient?.created_at && (
             <div className="col-span-2">
@@ -137,6 +139,8 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
               Lead source: {[lead?.source, lead?.campaign_name].filter(Boolean).join(' · ')}
             </div>
           )}
+          <div>Lead bucket: {lead?.lead_bucket || 'Not recorded'}</div>
+          <div>Urgency: {lead?.urgency || 'Not recorded'}</div>
           {visitSummary && (
             <>
               <div>Total visits: {visitSummary.total_visits ?? 0}</div>
@@ -157,6 +161,29 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         </div>
         {patient?.crm_notes && (
           <div className="mt-2 text-xs text-slate-500 bg-slate-50 rounded-md p-2">{patient.crm_notes}</div>
+        )}
+        {lead?.notes && (
+          <div className="mt-2 text-xs text-slate-600 bg-amber-50 border border-amber-100 rounded-md p-2">
+            <span className="font-medium">Original lead notes:</span> {lead.notes}
+          </div>
+        )}
+        {lead?.no_appointment_reasons?.length > 0 && (
+          <div className="mt-2 text-xs text-slate-600 bg-sky-50 border border-sky-100 rounded-md p-2">
+            <span className="font-medium">No-appointment reasons:</span> {lead.no_appointment_reasons.join(', ')}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-slate-600 mb-1.5">Last Contact</h4>
+        {lastReached ? (
+          <div className="bg-amber-50 border border-amber-100 rounded-md p-2.5 text-xs text-slate-700 space-y-1">
+            <div><span className="font-medium">Last reached:</span> {lastReached.called_at || lastReached.scheduled_date || 'Date not recorded'} · {lastReached.assigned_agent || 'Agent not recorded'}</div>
+            <div><span className="font-medium">Outcome/reason:</span> {lastReached.outcome || lastReached.outcome_code || lastReached.status || 'Not recorded'}</div>
+            <div><span className="font-medium">Comment:</span> {lastReached.notes || lastReached.attempt_notes || 'No comment recorded'}</div>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">No previous reached call recorded.</p>
         )}
       </div>
 
