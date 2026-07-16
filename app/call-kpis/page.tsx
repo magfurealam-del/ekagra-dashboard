@@ -279,7 +279,7 @@ export default function CallKpisPage() {
     setTimeout(() => {
       setCorrectingRow(null)
       // Refetch metrics to reflect the corrected outcome in the log
-      supabase.rpc('get_call_center_kpis', { p_start_date: start, p_end_date: end }).then(({ data }) => {
+      supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }).then(({ data }) => {
         if (data) setMetrics(data)
       })
     }, 800)
