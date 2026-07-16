@@ -30,6 +30,7 @@ export default function OutcomePanel({
   const [doctor, setDoctor] = useState('')
   const [doctors, setDoctors] = useState<{ label: string; value: string }[]>([])
   const [reasonValues, setReasonValues] = useState<string[]>([])
+  const [waitDays, setWaitDays] = useState(3)
   const reasonOptions = useDropdownOptions('intake_no_appointment_reason')
   const serviceOptions = useDropdownOptions('service_type')
   const branchOptions = useDropdownOptions('branch')
@@ -45,6 +46,7 @@ export default function OutcomePanel({
     setServiceType('')
     setDoctor('')
     setReasonValues([])
+    setWaitDays(3)
   }, [row?.attempt_id])
 
   useEffect(() => {
@@ -107,7 +109,7 @@ export default function OutcomePanel({
           p_status: def.code === 'not_reached' ? 'no_answer' : 'called',
           p_notes: savedNotes,
           p_resolve: def.resolve,
-          p_wait_days: 3,
+          p_wait_days: selected === 'reached' ? waitDays : 3,
           p_outcome_code: def.code,
           p_agent_name: agentName,
           p_callback_at: null,
@@ -178,15 +180,47 @@ export default function OutcomePanel({
       )}
 
       {selected === 'reached' && (
-        <div className="border-t border-slate-100 pt-3">
-          <div className="text-xs font-medium text-slate-600 mb-2">Why no appointment yet?</div>
-          <div className="grid grid-cols-2 gap-2">
-            {reasonOptions.options.map((reason) => (
-              <label key={reason.value} className="flex items-center gap-2 text-xs text-slate-600">
-                <input type="checkbox" checked={reasonValues.includes(reason.value)} onChange={(e) => setReasonValues((current) => e.target.checked ? [...current, reason.value] : current.filter((v) => v !== reason.value))} />
-                {reason.label}
-              </label>
-            ))}
+        <div className="border-t border-slate-100 pt-3 space-y-3">
+          <div>
+            <div className="text-xs font-medium text-slate-600 mb-2">Why no appointment yet?</div>
+            <div className="grid grid-cols-2 gap-2">
+              {reasonOptions.options.map((reason) => (
+                <label key={reason.value} className="flex items-center gap-2 text-xs text-slate-600">
+                  <input type="checkbox" checked={reasonValues.includes(reason.value)} onChange={(e) => setReasonValues((current) => e.target.checked ? [...current, reason.value] : current.filter((v) => v !== reason.value))} />
+                  {reason.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-slate-600 mb-1">Call back in</div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: '3 days', days: 3 },
+                { label: '1 week', days: 7 },
+                { label: '2 weeks', days: 14 },
+                { label: '3 weeks', days: 21 },
+                { label: '4 weeks', days: 28 },
+              ].map(({ label, days }) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => setWaitDays(days)}
+                  className={`text-xs px-2.5 py-1 rounded-md border font-medium ${
+                    waitDays === days
+                      ? 'border-teal-500 bg-teal-50 text-teal-700 ring-1 ring-teal-400'
+                      : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {waitDays >= 14 && (
+              <p className="text-xs text-amber-700 mt-1.5">
+                Patient will be snoozed for {waitDays} days — next call scheduled {waitDays === 14 ? '2 weeks' : waitDays === 21 ? '3 weeks' : '4 weeks'} out.
+              </p>
+            )}
           </div>
         </div>
       )}
