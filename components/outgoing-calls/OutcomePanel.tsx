@@ -30,7 +30,7 @@ export default function OutcomePanel({
   const [doctor, setDoctor] = useState('')
   const [doctors, setDoctors] = useState<{ label: string; value: string }[]>([])
   const [reasonValues, setReasonValues] = useState<string[]>([])
-  const [waitDays, setWaitDays] = useState(3)
+  const [waitDays, setWaitDays] = useState(14)
   const reasonOptions = useDropdownOptions('intake_no_appointment_reason')
   const serviceOptions = useDropdownOptions('service_type')
   const branchOptions = useDropdownOptions('branch')
@@ -46,7 +46,7 @@ export default function OutcomePanel({
     setServiceType('')
     setDoctor('')
     setReasonValues([])
-    setWaitDays(3)
+    setWaitDays(14)
   }, [row?.attempt_id])
 
   useEffect(() => {
