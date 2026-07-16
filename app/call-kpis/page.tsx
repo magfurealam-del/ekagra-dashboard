@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
+import { OUTCOMES } from '@/components/outgoing-calls/types'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 
@@ -104,6 +105,7 @@ const PATIENT_TYPE_BADGE: Record<string, string> = {
 }
 
 type CallLogRow = {
+  attempt_id: number | null
   call_date: string
   direction: string
   source: string | null
@@ -112,6 +114,7 @@ type CallLogRow = {
   phone: string | null
   agent: string | null
   outcome: string | null
+  outcome_code: string | null
   notes: string | null
   hospital_id: string | null
   location: string | null
@@ -242,6 +245,45 @@ export default function CallKpisPage() {
   const [invoiceMatches, setInvoiceMatches] = useState<Record<number, InvoiceMatch | null>>({})
   const [invoiceLoading, setInvoiceLoading] = useState<number | null>(null)
   const selectedDate = rangeKey === 'custom' && customStart === customEnd ? customStart : null
+
+  // Outcome correction state (per-row index in current callLog)
+  const [correctingRow, setCorrectingRow] = useState<number | null>(null)
+  const [correctCode, setCorrectCode] = useState('')
+  const [correctNotes, setCorrectNotes] = useState('')
+  const [correctState, setCorrectState] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+  const [correctError, setCorrectError] = useState('')
+
+  function openCorrection(i: number, currentCode: string | null, currentNotes: string | null) {
+    setCorrectingRow(i)
+    setCorrectCode(currentCode || '')
+    setCorrectNotes(currentNotes || '')
+    setCorrectState('idle')
+    setCorrectError('')
+  }
+
+  async function saveCorrection(attemptId: number) {
+    if (!correctCode) { setCorrectError('Please select an outcome.'); return }
+    setCorrectState('saving')
+    setCorrectError('')
+    const { data, error } = await supabase.rpc('correct_call_attempt_outcome', {
+      p_attempt_id: attemptId,
+      p_outcome_code: correctCode,
+      p_notes: correctNotes || null,
+    })
+    if (error || data?.error) {
+      setCorrectState('error')
+      setCorrectError(error?.message || data?.error || 'Save failed.')
+      return
+    }
+    setCorrectState('success')
+    setTimeout(() => {
+      setCorrectingRow(null)
+      // Refetch metrics to reflect the corrected outcome in the log
+      supabase.rpc('get_call_center_kpis', { p_start_date: start, p_end_date: end }).then(({ data }) => {
+        if (data) setMetrics(data)
+      })
+    }, 800)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -624,7 +666,7 @@ export default function CallKpisPage() {
                           </tr>
                           {isOpen && (
                             <tr className="bg-slate-50">
-                              <td colSpan={15} className="px-4 py-3">
+                              <td colSpan={15} className="px-4 py-3 space-y-3">
                                 {detailEntries.length === 0 && !r.notes ? (
                                   <p className="text-xs text-slate-400">No additional details recorded.</p>
                                 ) : (
@@ -639,6 +681,61 @@ export default function CallKpisPage() {
                                       <div className="col-span-2 md:col-span-4">
                                         <div className="text-[10px] uppercase text-slate-400">Notes</div>
                                         <div className="text-xs text-slate-700">{r.notes}</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {r.direction === 'Outgoing' && r.attempt_id != null && (
+                                  <div className="border-t border-slate-200 pt-3">
+                                    {correctingRow !== i ? (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); openCorrection(i, r.outcome_code, r.notes) }}
+                                        className="text-xs px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100"
+                                      >
+                                        Correct outcome (patient called back)
+                                      </button>
+                                    ) : (
+                                      <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                                        <p className="text-xs font-medium text-slate-600">Correct the recorded outcome</p>
+                                        <div className="flex flex-wrap gap-2 items-end">
+                                          <div>
+                                            <label className="text-[10px] uppercase text-slate-400 block mb-1">New outcome</label>
+                                            <select
+                                              className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
+                                              value={correctCode}
+                                              onChange={e => setCorrectCode(e.target.value)}
+                                            >
+                                              <option value="">— select —</option>
+                                              {OUTCOMES.map(o => (
+                                                <option key={o.code} value={o.code}>{o.label}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] uppercase text-slate-400 block mb-1">Notes (optional)</label>
+                                            <input
+                                              className="border border-slate-300 rounded-md px-2 py-1.5 text-xs w-56"
+                                              placeholder="Add or update notes…"
+                                              value={correctNotes}
+                                              onChange={e => setCorrectNotes(e.target.value)}
+                                            />
+                                          </div>
+                                          <button
+                                            onClick={() => saveCorrection(r.attempt_id!)}
+                                            disabled={correctState === 'saving' || correctState === 'success'}
+                                            className="text-xs px-3 py-1.5 rounded-md bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                                          >
+                                            {correctState === 'saving' ? 'Saving…' : correctState === 'success' ? 'Saved ✓' : 'Save correction'}
+                                          </button>
+                                          <button
+                                            onClick={() => setCorrectingRow(null)}
+                                            className="text-xs px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                        {correctError && <p className="text-xs text-rose-600">{correctError}</p>}
                                       </div>
                                     )}
                                   </div>
