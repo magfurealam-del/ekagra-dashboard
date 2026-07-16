@@ -36,6 +36,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
   const [appointments, setAppointments] = useState<any[]>([])
   const [originalAppt, setOriginalAppt] = useState<any | null>(null)
   const [history, setHistory] = useState<any[]>([])
+  const [activity, setActivity] = useState<any[]>([])
 
   useEffect(() => {
     if (!row) {
@@ -45,6 +46,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       setAppointments([])
       setOriginalAppt(null)
       setHistory([])
+      setActivity([])
       return
     }
     let cancelled = false
@@ -84,6 +86,14 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         setOriginalAppt(null)
       }
 
+      const { data: unifiedActivity } = await supabase
+        .from('v_unified_call_center_activity')
+        .select('source_table, source_id, event_date, agent_name, lead_bucket, main_reason, outcome, notes, details, possible_cross_source_duplicate')
+        .or(row.patient_id ? `patient_id.eq.${row.patient_id},phone.eq.${row.phone}` : `phone.eq.${row.phone}`)
+        .order('event_date', { ascending: false })
+        .limit(12)
+      if (!cancelled) setActivity(unifiedActivity || [])
+
       if (row.source_table === 'crm_leads' && row.source_id) {
         const { data: l } = await supabase
           .from('crm_leads')
@@ -118,7 +128,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
   }
 
   const age = ageFromDob(patient?.dob)
-  const lastReached = history.find((h) => h.called_at || h.outcome || h.status === 'called')
+      const lastReached = history.find((h) => h.called_at || h.outcome || h.status === 'called')
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 h-full overflow-y-auto p-4 space-y-4">
@@ -211,6 +221,27 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
           </div>
         ) : (
           <p className="text-xs text-slate-400">No previous reached call recorded.</p>
+        )}
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-slate-600 mb-1.5">Unified Call & Lead History</h4>
+        {activity.length > 0 ? (
+          <div className="space-y-1.5">
+            {activity.map((item) => (
+              <div key={`${item.source_table}-${item.source_id}`} className="bg-slate-50 rounded-md p-2 text-xs text-slate-700">
+                <div className="flex justify-between gap-2">
+                  <span className="font-medium">{item.event_date || 'Date not recorded'} · {item.source_table === 'crm_leads' ? 'CRM lead' : 'Call log'}</span>
+                  <span className="text-slate-500">{item.agent_name || 'Agent not recorded'}</span>
+                </div>
+                <div>Bucket: {item.lead_bucket || 'Not recorded'} · Reason: {item.main_reason || 'Not recorded'}</div>
+                <div>Outcome: {item.outcome || 'Not recorded'} · Comment: {item.notes || 'No comment recorded'}</div>
+                {item.possible_cross_source_duplicate && <div className="text-amber-700 mt-0.5">Possible matching record in the other source — review before treating as a new interaction.</div>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">No unified call or lead history found.</p>
         )}
       </div>
 
