@@ -65,6 +65,9 @@ function money(n: number) {
   return `৳${Math.round(n).toLocaleString()}`
 }
 
+const adminCache: { key: string; data: any; prevData: any; fetchedAt: number } = { key: '', data: null, prevData: null, fetchedAt: 0 }
+const ADMIN_TTL_MS = 30 * 60 * 1000
+
 export default function AdminDashboardPage() {
   const router = useRouter()
   const { profile, isAdmin, loading: authLoading } = useAuth()
@@ -91,6 +94,13 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     if (!isAdmin) return
     let cancelled = false
+    const cacheKey = `${start}|${end}|${compare}|${prevRange.start}|${prevRange.end}`
+    if (adminCache.key === cacheKey && Date.now() - adminCache.fetchedAt < ADMIN_TTL_MS) {
+      setMetrics(adminCache.data)
+      setPrevMetrics(adminCache.prevData)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError('')
     Promise.all([
@@ -99,6 +109,10 @@ export default function AdminDashboardPage() {
     ]).then(([curr, prev]) => {
       if (cancelled) return
       if (curr.error) { setError(curr.error.message); setLoading(false); return }
+      adminCache.key = cacheKey
+      adminCache.data = curr.data
+      adminCache.prevData = prev.data
+      adminCache.fetchedAt = Date.now()
       setMetrics(curr.data)
       setPrevMetrics(prev.data)
       setLoading(false)
@@ -108,7 +122,10 @@ export default function AdminDashboardPage() {
 
   async function reloadMetrics() {
     const { data } = await supabase.rpc('get_admin_dashboard_metrics', { p_start_date: start, p_end_date: end })
-    setMetrics(data)
+    if (data) {
+      adminCache.key = ''  // invalidate so next mount re-fetches
+      setMetrics(data)
+    }
   }
 
   // Recomputes appointment_status from the invoice source of truth for

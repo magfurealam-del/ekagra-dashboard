@@ -8,6 +8,9 @@ import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/cale
 import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
 
+const calendarCache: { key: string; data: any[]; fetchedAt: number } = { key: '', data: [], fetchedAt: 0 }
+const CALENDAR_TTL_MS = 30 * 60 * 1000
+
 export default function CalendarPage() {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -29,14 +32,22 @@ export default function CalendarPage() {
   const start = useMemo(() => new Date(year, month, 1).toISOString().slice(0, 10), [year, month])
   const end   = useMemo(() => new Date(year, month + 1, 0).toISOString().slice(0, 10), [year, month])
 
-  async function loadCalendarData() {
+  async function loadCalendarData(force = false) {
+    const cacheKey = `${start}|${end}`
+    if (!force && calendarCache.key === cacheKey && Date.now() - calendarCache.fetchedAt < CALENDAR_TTL_MS) {
+      setMonthRows(calendarCache.data)
+      return calendarCache.data
+    }
     try {
       const { data } = await withRetry(() => supabase
         .from('crm_appointments')
         .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, no_show_risk')
         .gte('appointment_date', start)
         .lte('appointment_date', end)
-        .neq('appointment_status', 'Cancelled'), 10000, 1)
+        .neq('appointment_status', 'Cancelled'), 8000, 0)
+      calendarCache.key = cacheKey
+      calendarCache.data = data || []
+      calendarCache.fetchedAt = Date.now()
       setMonthRows(data || [])
       return data
     } catch (error) {
@@ -76,7 +87,7 @@ export default function CalendarPage() {
       .channel('calendar-grid')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => {
         if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { loadCalendarData() }, 350)
+        refreshTimer.current = setTimeout(() => { loadCalendarData(true) }, 350)
       })
       .subscribe()
     return () => {

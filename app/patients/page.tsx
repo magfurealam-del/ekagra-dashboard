@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 
+const patientsCache: { data: any[]; fetchedAt: number } = { data: [], fetchedAt: 0 }
+const PATIENTS_TTL_MS = 30 * 60 * 1000
+
 const CATEGORY_STYLES: Record<string, string> = {
   'Wound Care': 'bg-rose-100 text-rose-700',
   'Screening': 'bg-amber-100 text-amber-700',
@@ -46,15 +49,28 @@ export default function PatientListPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function load() {
+  async function load(force = false) {
+    // Only cache the unfiltered list; search queries always hit the DB
+    const useCache = !query && !force && patientsCache.fetchedAt > 0 && Date.now() - patientsCache.fetchedAt < PATIENTS_TTL_MS
+    if (useCache) {
+      setRows(patientsCache.data)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     let q = supabase.from('patient_master_view').select('patient_id, patient_name, phone, hospital_id, patient_category, area, dhaka_status, first_visit_date, last_visit_date, total_visits')
     if (query) {
       q = q.or(`patient_name.ilike.%${query}%,phone.ilike.%${query}%,hospital_id.ilike.%${query}%`)
     }
     try {
-      const { data, error } = await withRetry(() => q.limit(200), 10000, 1)
-      if (!error && data) setRows(data)
+      const { data, error } = await withRetry(() => q.limit(200), 8000, 0)
+      if (!error && data) {
+        setRows(data)
+        if (!query) {
+          patientsCache.data = data
+          patientsCache.fetchedAt = Date.now()
+        }
+      }
     } catch (error) {
       console.error('[patients] load failed', error)
       setRows([])
@@ -68,11 +84,11 @@ export default function PatientListPage() {
       .channel('patient-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
         if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { load() }, 350)
+        refreshTimer.current = setTimeout(() => { load(true) }, 350)
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
         if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { load() }, 350)
+        refreshTimer.current = setTimeout(() => { load(true) }, 350)
       })
       .subscribe()
     return () => {
