@@ -142,7 +142,7 @@ export default function PatientListPage() {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && load()}
         />
-        <button onClick={load} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Search</button>
+        <button onClick={() => load()} className="bg-teal-600 text-white px-4 py-2 rounded-md text-sm font-medium">Search</button>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
