@@ -30,23 +30,28 @@ export default function OutgoingCallsPage() {
   const [leadTypeFilter, setLeadTypeFilter] = useState('all')
   const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function load() {
     setLoading(true)
     setLoadError('')
-    const view = statusFilter === '' ? 'outgoing_call_sheet_view' : 'outgoing_call_all_attempts_view'
-    let q = supabase.from(view).select('*').order('category_rank').order('followup_number', { ascending: true }).order('relevant_date', { ascending: true }).range(0, 9999)
-    if (statusFilter === '') {
-      q = q.lte('scheduled_date', date).eq('attempt_status', 'pending')
-    } else if (statusFilter !== 'all') {
-      q = q.eq('outcome_code', statusFilter)
-    }
     let data: any[] | null = null
     let error: any = null
     try {
-      ({ data, error } = await withRetry(() => q, 15000, 1))
+      ({ data, error } = await withRetry(
+        () =>
+          supabase
+            .from('outgoing_call_sheet_view')
+            .select('*')
+            .lte('scheduled_date', date)
+            .eq('attempt_status', 'pending')
+            .order('category_rank')
+            .order('followup_number', { ascending: true })
+            .order('relevant_date', { ascending: true })
+            .limit(100),
+        8000,
+        0,
+      ))
     } catch (err) {
       error = err
     }
@@ -85,7 +90,7 @@ export default function OutgoingCallsPage() {
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter])
+  }, [])
 
   async function runPopulateNow() {
     setLoading(true)
@@ -185,19 +190,6 @@ export default function OutgoingCallsPage() {
                 {a}
               </option>
             ))}
-          </select>
-          <select
-            className="border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">Open Queue</option>
-            <option value="all">All History</option>
-            <option value="reached">Reached</option>
-            <option value="booked_appointment">Booked</option>
-            <option value="not_interested">Not interested</option>
-            <option value="call_later">Call later</option>
-            <option value="do_not_call">Do not call</option>
           </select>
         </div>
       </div>

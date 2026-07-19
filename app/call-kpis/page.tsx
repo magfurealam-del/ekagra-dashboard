@@ -10,6 +10,10 @@ import { OUTCOMES } from '@/components/outgoing-calls/types'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 
+// Module-level cache so switching tabs doesn't re-fetch if data is fresh
+const kpiCache: { key: string; data: any; fetchedAt: number } = { key: '', data: null, fetchedAt: 0 }
+const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
+
 function toISO(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
 function rangeFor(key: RangeKey, customStart: string, customEnd: string) {
@@ -236,6 +240,7 @@ export default function CallKpisPage() {
   const [metrics, setMetrics] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null)
 
   const [sortKey, setSortKey] = useState<SortKey>('call_date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -278,31 +283,73 @@ export default function CallKpisPage() {
     setCorrectState('success')
     setTimeout(() => {
       setCorrectingRow(null)
-      // Refetch metrics to reflect the corrected outcome in the log
-      supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }).then(({ data }) => {
-        if (data) setMetrics(data)
-      })
+      fetchKpis(start, end, true)
     }, 800)
+  }
+
+  async function fetchKpis(start: string, end: string, force = false) {
+    const cacheKey = `${start}|${end}`
+    if (!force && kpiCache.key === cacheKey && Date.now() - kpiCache.fetchedAt < CACHE_TTL_MS) {
+      setMetrics(kpiCache.data)
+      setLastFetchedAt(kpiCache.fetchedAt)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const { data, error } = await withRetry(
+        () => supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }),
+        8000,
+        0,
+      )
+      if (error) { setError(error.message); setLoading(false); return }
+      kpiCache.key = cacheKey
+      kpiCache.data = data
+      kpiCache.fetchedAt = Date.now()
+      setMetrics(data)
+      setLastFetchedAt(kpiCache.fetchedAt)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load KPI data. Please retry.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError('')
-    withRetry(
-      () => supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }),
-      15000,
-      1,
-    ).then(({ data, error }) => {
-      if (cancelled) return
-      if (error) { setError(error.message); setLoading(false); return }
-      setMetrics(data)
-      setLoading(false)
-    }).catch((err) => {
-      if (cancelled) return
-      setError(err instanceof Error ? err.message : 'Could not load KPI data. Please retry.')
-      setLoading(false)
-    })
+    const run = async () => {
+      const cacheKey = `${start}|${end}`
+      if (kpiCache.key === cacheKey && Date.now() - kpiCache.fetchedAt < CACHE_TTL_MS) {
+        if (!cancelled) {
+          setMetrics(kpiCache.data)
+          setLastFetchedAt(kpiCache.fetchedAt)
+          setLoading(false)
+        }
+        return
+      }
+      setLoading(true)
+      setError('')
+      try {
+        const { data, error } = await withRetry(
+          () => supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }),
+          8000,
+          0,
+        )
+        if (cancelled) return
+        if (error) { setError(error.message); setLoading(false); return }
+        kpiCache.key = cacheKey
+        kpiCache.data = data
+        kpiCache.fetchedAt = Date.now()
+        setMetrics(data)
+        setLastFetchedAt(kpiCache.fetchedAt)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load KPI data. Please retry.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
     return () => { cancelled = true }
   }, [start, end])
 
@@ -396,6 +443,17 @@ export default function CallKpisPage() {
         <div>
           <h1 className="text-2xl font-semibold">Call Center KPIs</h1>
           <p className="text-sm text-slate-500">Incoming (lead intake) and outgoing (follow-up) call volume and outcomes, per agent</p>
+          {lastFetchedAt && (
+            <p className="text-xs text-slate-400 mt-0.5">
+              Last updated {Math.round((Date.now() - lastFetchedAt) / 60000) || '<1'} min ago ·{' '}
+              <button
+                className="underline hover:text-slate-600"
+                onClick={() => fetchKpis(start, end, true)}
+              >
+                Refresh
+              </button>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {([
