@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
-import { KPICard, BarList, TrendChart, Panel, FunnelChart } from '@/components/admin/DashboardCharts'
+import { KPICard, BarList, TrendChart, Panel, FunnelChart, DonutChart, GaugeMeter, AgentTable, DoctorTable } from '@/components/admin/DashboardCharts'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 type Tab = 'overview' | 'funnel' | 'revenue' | 'sources' | 'quality'
@@ -235,21 +235,36 @@ export default function AdminDashboardPage() {
                   tooltip="Snapshot right now (not date-range filtered): open items in the Outgoing Calls queue." />
               </div>
 
+              {/* Gauge row — headline rates at a glance */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <GaugeMeter
+                  value={bookingRate}
+                  label="Booking Rate"
+                  sublabel="Booked ÷ Total Leads"
+                  good={60} warn={30}
+                />
+                <GaugeMeter
+                  value={metrics.show_rate ?? 0}
+                  label="Show Rate"
+                  sublabel="Invoice-validated"
+                  good={70} warn={45}
+                />
+                <div className="col-span-2 hidden md:block" />
+              </div>
+
               <Panel title="Daily Trend" subtitle="Leads received vs appointments scheduled, per day">
                 <TrendChart data={metrics.daily_trend || []} />
               </Panel>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Panel title="Intake Call Outcomes" subtitle="What happened on the intake call itself">
-                  <BarList
+                  <DonutChart
                     items={(metrics.by_intake_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
-                    colorFor={(label) => OUTCOME_COLORS[label] || 'bg-slate-400'}
                   />
                 </Panel>
                 <Panel title="New vs Returning Patients">
-                  <BarList
+                  <DonutChart
                     items={(metrics.by_patient_type || []).map((s: any) => ({ label: s.type, count: s.count }))}
-                    colorFor={(label) => label === 'New' ? 'bg-teal-500' : label === 'Old' ? 'bg-indigo-500' : 'bg-slate-400'}
                   />
                 </Panel>
               </div>
@@ -307,10 +322,9 @@ export default function AdminDashboardPage() {
 
           {tab === 'sources' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Panel title="Lead Source" subtitle="Facebook vs referral vs phone vs unknown">
-                <BarList
+              <Panel title="Lead Source" subtitle="Where patients come from — Facebook, referral, phone, walk-in">
+                <DonutChart
                   items={(metrics.by_source || []).map((s: any) => ({ label: s.source, count: s.count }))}
-                  colorFor={(label) => SOURCE_COLORS[label] || 'bg-slate-400'}
                 />
               </Panel>
               <Panel title="Patient Location" subtitle="Top areas among leads this period">
@@ -322,64 +336,21 @@ export default function AdminDashboardPage() {
                   colorFor={(label) => appointmentTypeColor(label).dot}
                 />
               </Panel>
-              <Panel title="Doctor Performance" subtitle="Appointments, invoice-validated no-show rate, and revenue per doctor">
-                {(metrics.by_doctor_performance || []).length === 0 ? (
-                  <p className="text-sm text-slate-400">No appointments this period.</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-slate-400 uppercase">
-                      <tr>
-                        <th className="text-left py-1">Doctor</th>
-                        <th className="text-right py-1">Appts</th>
-                        <th className="text-right py-1">No-Show Rate</th>
-                        <th className="text-right py-1">Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(metrics.by_doctor_performance || []).map((d: any) => (
-                        <tr key={d.doctor}>
-                          <td className="py-1.5 truncate max-w-[160px]">{d.doctor}</td>
-                          <td className="py-1.5 text-right">{d.appointments}</td>
-                          <td className={`py-1.5 text-right font-medium ${d.no_show_rate > 40 ? 'text-rose-600' : d.no_show_rate > 20 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {d.no_show_rate != null ? `${d.no_show_rate}%` : '—'}
-                          </td>
-                          <td className="py-1.5 text-right text-slate-700">{money(d.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                <p className="text-xs text-slate-400 mt-2">
-                  No-show rate is invoice-validated: an appointment counts as attended only if a matching invoice
-                  exists for that patient nearby, across all invoice types (daycare, pathology, pharmacy, IPD) —
-                  not admissions-only.
-                </p>
+              <Panel title="Doctor Performance" subtitle="Appointments, no-show rate, and revenue per doctor">
+                <DoctorTable rows={(metrics.by_doctor_performance || []).map((d: any) => ({
+                  doctor: d.doctor,
+                  appointments: d.appointments,
+                  no_show_rate: d.no_show_rate,
+                  revenue: d.revenue,
+                }))} />
               </Panel>
-              <Panel title="Agent Performance" subtitle="Leads handled and booking rate per agent">
-                {(metrics.by_agent || []).length === 0 ? (
-                  <p className="text-sm text-slate-400">No agent-attributed leads this period.</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="text-xs text-slate-400 uppercase">
-                      <tr>
-                        <th className="text-left py-1">Agent</th>
-                        <th className="text-right py-1">Leads</th>
-                        <th className="text-right py-1">Booked</th>
-                        <th className="text-right py-1">Rate</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(metrics.by_agent || []).map((a: any) => (
-                        <tr key={a.agent}>
-                          <td className="py-1.5">{a.agent}</td>
-                          <td className="py-1.5 text-right">{a.leads}</td>
-                          <td className="py-1.5 text-right">{a.booked}</td>
-                          <td className="py-1.5 text-right font-medium text-teal-600">{a.booking_rate != null ? `${a.booking_rate}%` : '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+              <Panel title="Agent Performance" subtitle="Leads vs bookings per agent — bar shows leads (grey) and booked (teal)">
+                <AgentTable rows={(metrics.by_agent || []).map((a: any) => ({
+                  agent: a.agent,
+                  leads: a.leads,
+                  booked: a.booked,
+                  booking_rate: a.booking_rate,
+                }))} />
               </Panel>
             </div>
           )}
