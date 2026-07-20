@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
 import PatientDetailPanel from '@/components/outgoing-calls/PatientDetailPanel'
@@ -49,7 +50,7 @@ export default function OutgoingCallsPage() {
             .order('followup_number', { ascending: true })
             .order('relevant_date', { ascending: true })
             .limit(100),
-        8000,
+        15000,
         0,
       ))
     } catch (err) {
@@ -71,6 +72,8 @@ export default function OutgoingCallsPage() {
 
     setLoading(false)
   }
+
+  useVisibilityReload(load)
 
   useEffect(() => {
     load()

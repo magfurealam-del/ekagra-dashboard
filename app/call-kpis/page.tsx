@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
@@ -300,8 +301,8 @@ export default function CallKpisPage() {
     try {
       const { data, error } = await withRetry(
         () => supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }),
-        8000,
-        0,
+        15000,
+        2,
       )
       if (error) { setError(error.message); setLoading(false); return }
       kpiCache.key = cacheKey
@@ -352,6 +353,8 @@ export default function CallKpisPage() {
     run()
     return () => { cancelled = true }
   }, [start, end])
+
+  useVisibilityReload(() => fetchKpis(start, end, true))
 
   async function expandCallRow(index: number, row: CallLogRow) {
     const isOpen = expandedRow === index

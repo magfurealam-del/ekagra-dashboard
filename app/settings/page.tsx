@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[] }[] = [
   {
@@ -92,6 +93,11 @@ export default function SettingsPage() {
   }
 
   useEffect(() => { if (selection.kind === 'auditLog') loadAuditLog() }, [selection]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useVisibilityReload(() => {
+    if (selection.kind === 'auditLog') loadAuditLog()
+    else if (selection.kind === 'dropdown') load(selection.category)
+  })
 
   function showToast(msg: string) {
     setToast(msg)

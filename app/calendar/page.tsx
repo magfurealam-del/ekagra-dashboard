@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/calendar/CalendarGrid'
 import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
@@ -45,7 +46,7 @@ export default function CalendarPage() {
         .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, no_show_risk')
         .gte('appointment_date', start)
         .lte('appointment_date', end)
-        .neq('appointment_status', 'Cancelled'), 8000, 0)
+        .neq('appointment_status', 'Cancelled'), 15000, 2)
       calendarCache.key = cacheKey
       calendarCache.data = data || []
       calendarCache.fetchedAt = Date.now()
@@ -57,6 +58,8 @@ export default function CalendarPage() {
       return []
     }
   }
+
+  useVisibilityReload(() => loadCalendarData(true))
 
   // Load the month's appointments once; doctor filtering is applied client-side
   useEffect(() => {

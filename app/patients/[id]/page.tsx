@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 export default function PatientProfilePage() {
   const params = useParams()
@@ -36,6 +37,8 @@ export default function PatientProfilePage() {
     setFollowUps(f || [])
     setCalls(c || [])
   }
+
+  useVisibilityReload(() => { if (id) load() })
 
   useEffect(() => {
     if (id) load()

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const patientsCache: { data: any[]; fetchedAt: number } = { data: [], fetchedAt: 0 }
 const PATIENTS_TTL_MS = 30 * 60 * 1000
@@ -64,7 +65,7 @@ export default function PatientListPage() {
       q = q.or(`full_name.ilike.%${query}%,phone.ilike.%${query}%,hn.ilike.%${query}%,hospital_patient_id.ilike.%${query}%`)
     }
     try {
-      const { data, error } = await withRetry(() => q.order('created_at', { ascending: false }).limit(300), 8000, 0)
+      const { data, error } = await withRetry(() => q.order('created_at', { ascending: false }).limit(300), 15000, 2)
       if (!error && data) {
         const mapped = data.map((r: any) => ({
           ...r,
@@ -83,6 +84,8 @@ export default function PatientListPage() {
     }
     setLoading(false)
   }
+
+  useVisibilityReload(() => load(true))
 
   useEffect(() => {
     load()

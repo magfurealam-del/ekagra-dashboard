@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -77,6 +78,8 @@ export default function DoctorAvailabilityPage() {
     setAudit((auditRows || []) as AuditRow[])
     setLoading(false)
   }
+
+  useVisibilityReload(load)
 
   useEffect(() => {
     load()
