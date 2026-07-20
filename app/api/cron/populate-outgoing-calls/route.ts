@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   // If CRON_SECRET isn't configured yet, allow the call through (matches other
   // cron routes in this repo's fallback pattern) rather than locking everyone out.
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (!secret || authHeader !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {

@@ -66,8 +66,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
       setSession(data.session)
-      if (data.session) loadProfile(data.session.user.id).catch(() => {}).finally(() => setLoading(false))
-      else setLoading(false)
+      if (data.session) {
+        loadProfile(data.session.user.id).catch(() => {
+          setSession(null)
+          setProfile(null)
+          router.replace('/login')
+        }).finally(() => setLoading(false))
+      } else setLoading(false)
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {

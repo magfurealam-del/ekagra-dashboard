@@ -258,7 +258,7 @@ export default function OutcomePanel({
 
           <button
             onClick={save}
-            disabled={saveState === 'saving' || saveState === 'success'}
+            disabled={saveState === 'saving' || saveState === 'success' || saveState === 'stale'}
             className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-sm font-medium rounded-md py-2"
           >
             {saveState === 'saving' ? 'Saving…' : 'Save Outcome'}

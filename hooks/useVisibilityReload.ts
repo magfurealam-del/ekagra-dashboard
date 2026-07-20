@@ -12,14 +12,21 @@ import { useEffect, useRef } from 'react'
  * Uses a ref so the listener always calls the latest `load` closure,
  * not the stale one captured at mount (important when load reads state).
  */
-export function useVisibilityReload(load: () => void, delayMs = 400) {
+export function useVisibilityReload(load: () => void, delayMs = 400, minStaleMs = 60_000) {
   const loadRef = useRef(load)
-  // Keep ref current on every render without re-running the listener effect
+  const lastLoadedAt = useRef(Date.now())
+
   useEffect(() => { loadRef.current = load })
+
+  // Let callers signal a fresh load completed so we reset the staleness clock
+  useEffect(() => {
+    lastLoadedAt.current = Date.now()
+  })
 
   useEffect(() => {
     function onVisibilityChange() {
       if (document.visibilityState === 'visible') {
+        if (Date.now() - lastLoadedAt.current < minStaleMs) return
         setTimeout(() => loadRef.current(), delayMs)
       }
     }
