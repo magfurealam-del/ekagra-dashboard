@@ -70,7 +70,7 @@ export default function OutgoingCallsPage() {
     if (!queueRes || queueRes.error) {
       console.error('[outgoing-calls] queue load failed', queueRes?.error)
       setRows([])
-      setLoadError(`Could not load the outbound queue: ${queueRes?.error?.message ?? 'Request timed out'}`)
+      setLoadError('Could not load the outbound queue — please refresh or contact admin.')
     } else {
       setRows(queueRes.data || [])
     }

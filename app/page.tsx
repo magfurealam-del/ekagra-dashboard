@@ -122,7 +122,7 @@ export default function LeadIntakePage() {
     if (phone.replace(/\D/g, '').length < 7) return
     setLookupState('searching')
     const { data, error } = await supabase.rpc('search_patient_by_phone', { phone_input: phone })
-    if (error) { showToast('Search failed: ' + error.message); setLookupState('idle'); return }
+    if (error) { showToast('Search failed — please retry.'); console.error('[patient-search]', error); setLookupState('idle'); return }
     const result = data as any
     const foundPatients = result.patients || []
     if (foundPatients.length > 1) {
@@ -262,7 +262,7 @@ export default function LeadIntakePage() {
       },
     })
     setSaving(false)
-    if (error) { showToast('Save failed: ' + error.message); return }
+    if (error) { showToast('Save failed — please try again or contact admin.'); console.error('[save-lead]', error); return }
 
     if (effectiveOutcome === 'appointment_booked') showToast('Lead saved and appointment booked.')
     else if (FOLLOWUP_QUEUE_OUTCOMES.includes(effectiveOutcome) || CALLBACK_OUTCOMES.includes(effectiveOutcome)) showToast('Lead saved and added to follow-up queue.')

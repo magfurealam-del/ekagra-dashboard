@@ -304,14 +304,14 @@ export default function CallKpisPage() {
         15000,
         2,
       )
-      if (error) { setError(error.message); setLoading(false); return }
+      if (error) { setError('Could not load KPI data — please retry.'); setLoading(false); return }
       kpiCache.key = cacheKey
       kpiCache.data = data
       kpiCache.fetchedAt = Date.now()
       setMetrics(data)
       setLastFetchedAt(kpiCache.fetchedAt)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load KPI data. Please retry.')
+      setError('Could not load KPI data — please retry.')
     } finally {
       setLoading(false)
     }
@@ -338,14 +338,14 @@ export default function CallKpisPage() {
           0,
         )
         if (cancelled) return
-        if (error) { setError(error.message); setLoading(false); return }
+        if (error) { setError('Could not load KPI data — please retry.'); setLoading(false); return }
         kpiCache.key = cacheKey
         kpiCache.data = data
         kpiCache.fetchedAt = Date.now()
         setMetrics(data)
         setLastFetchedAt(kpiCache.fetchedAt)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load KPI data. Please retry.')
+        if (!cancelled) setError('Could not load KPI data — please retry.')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -629,7 +629,12 @@ export default function CallKpisPage() {
                   </button>
                 ))}
               </div>
-              <span className="text-xs text-slate-400 ml-auto">{callLog.length} call{callLog.length === 1 ? '' : 's'}</span>
+              <span className="text-xs text-slate-400 ml-auto">
+                {callLog.length} call{callLog.length === 1 ? '' : 's'}
+                {(metrics?.call_log?.length ?? 0) >= 1000 && (
+                  <span className="ml-2 text-amber-600 font-medium">· capped at 1,000 — narrow the date range to see all</span>
+                )}
+              </span>
             </div>
             {callLog.length === 0 ? (
               <p className="text-sm text-slate-400">No calls match this filter.</p>
