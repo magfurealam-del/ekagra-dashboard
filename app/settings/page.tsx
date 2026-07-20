@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { withRetry, parallelFetch } from '@/lib/withTimeout'
 import { useAuth } from '@/lib/AuthContext'
 import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
@@ -84,12 +85,12 @@ export default function SettingsPage() {
   const [changeHistory, setChangeHistory] = useState<any[]>([])
 
   async function loadAuditLog() {
-    const [{ data: logins }, { data: changes }] = await Promise.all([
-      supabase.rpc('get_login_history', { p_limit: 100 }),
-      supabase.from('data_change_audit_log').select('*').order('changed_at', { ascending: false }).limit(100),
-    ])
-    setLoginHistory(logins || [])
-    setChangeHistory(changes || [])
+    const [loginsRes, changesRes] = await parallelFetch([
+      { work: () => supabase.rpc('get_login_history', { p_limit: 100 }), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('data_change_audit_log').select('*').order('changed_at', { ascending: false }).limit(100), timeoutMs: 15000, retries: 2 },
+    ] as const)
+    setLoginHistory(loginsRes?.data || [])
+    setChangeHistory(changesRes?.data || [])
   }
 
   useEffect(() => { if (selection.kind === 'auditLog') loadAuditLog() }, [selection]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,8 +107,11 @@ export default function SettingsPage() {
 
   // --- Dropdown options ---
   async function load(category: string) {
-    const { data } = await supabase.from('dropdown_options').select('*').eq('category', category).order('sort_order')
-    setOptions(data || [])
+    const res = await withRetry(
+      () => supabase.from('dropdown_options').select('*').eq('category', category).order('sort_order'),
+      12000, 2,
+    )
+    setOptions(res?.data || [])
   }
 
   useEffect(() => {

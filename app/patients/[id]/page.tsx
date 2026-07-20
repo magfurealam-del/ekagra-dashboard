@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { parallelFetch } from '@/lib/withTimeout'
 import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 export default function PatientProfilePage() {
@@ -14,6 +15,7 @@ export default function PatientProfilePage() {
   const [appointments, setAppointments] = useState<any[]>([])
   const [followUps, setFollowUps] = useState<any[]>([])
   const [calls, setCalls] = useState<any[]>([])
+  const [loadError, setLoadError] = useState('')
   const [hospitalId, setHospitalId] = useState('')
   const [toast, setToast] = useState('')
 
@@ -23,19 +25,21 @@ export default function PatientProfilePage() {
   }
 
   async function load() {
-    const [{ data: p }, { data: l }, { data: a }, { data: f }, { data: c }] = await Promise.all([
-      supabase.from('patients').select('*').eq('id', id).single(),
-      supabase.from('crm_leads').select('*').eq('patient_id', id).order('created_at', { ascending: false }),
-      supabase.from('crm_appointments').select('*').eq('patient_id', id).order('appointment_date', { ascending: false }),
-      supabase.from('crm_follow_ups').select('*').eq('patient_id', id).order('call_date', { ascending: false }),
-      supabase.from('crm_call_interactions').select('*').eq('patient_id', id).order('call_started_at', { ascending: false }),
-    ])
-    setPatient(p)
-    setHospitalId(p?.hospital_patient_id || '')
-    setLeads(l || [])
-    setAppointments(a || [])
-    setFollowUps(f || [])
-    setCalls(c || [])
+    setLoadError('')
+    const [pRes, lRes, aRes, fRes, cRes] = await parallelFetch([
+      { work: () => supabase.from('patients').select('*').eq('id', id).single(), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('crm_leads').select('*').eq('patient_id', id).order('created_at', { ascending: false }), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('crm_appointments').select('*').eq('patient_id', id).order('appointment_date', { ascending: false }), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('crm_follow_ups').select('*').eq('patient_id', id).order('call_date', { ascending: false }), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('crm_call_interactions').select('*').eq('patient_id', id).order('call_started_at', { ascending: false }), timeoutMs: 15000, retries: 2 },
+    ] as const)
+    if (!pRes || pRes.error) { setLoadError('Could not load patient profile. Please refresh.'); return }
+    setPatient(pRes.data)
+    setHospitalId(pRes.data?.hospital_patient_id || '')
+    setLeads(lRes?.data || [])
+    setAppointments(aRes?.data || [])
+    setFollowUps(fRes?.data || [])
+    setCalls(cRes?.data || [])
   }
 
   useVisibilityReload(() => { if (id) load() })
@@ -52,6 +56,7 @@ export default function PatientProfilePage() {
     load()
   }
 
+  if (loadError) return <p className="text-sm text-rose-600 p-4">{loadError}</p>
   if (!patient) return <p className="text-sm text-slate-500">Loading…</p>
 
   return (

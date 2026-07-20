@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { parallelFetch } from '@/lib/withTimeout'
 import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -54,28 +55,16 @@ export default function DoctorAvailabilityPage() {
 
   async function load() {
     setLoading(true)
-    const { data: sched } = await supabase
-      .from('doctor_schedules')
-      .select('doctor_name, start_time, end_time')
-      .eq('day_of_week', dow)
-      .eq('is_active', true)
-      .order('doctor_name')
-    setSchedule(sched || [])
-
-    const { data: ov } = await supabase
-      .from('doctor_daily_availability')
-      .select('doctor_name, is_available, start_time, end_time, note, updated_by, updated_at')
-      .eq('avail_date', dateIso)
+    const [schedRes, ovRes, auditRes] = await parallelFetch([
+      { work: () => supabase.from('doctor_schedules').select('doctor_name, start_time, end_time').eq('day_of_week', dow).eq('is_active', true).order('doctor_name'), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('doctor_daily_availability').select('doctor_name, is_available, start_time, end_time, note, updated_by, updated_at').eq('avail_date', dateIso), timeoutMs: 15000, retries: 2 },
+      { work: () => supabase.from('doctor_availability_audit').select('doctor_name, action, changed_by, changed_at, start_time, end_time, note').eq('avail_date', dateIso).order('changed_at', { ascending: false }).limit(100), timeoutMs: 10000, retries: 1 },
+    ] as const)
+    setSchedule(schedRes?.data || [])
     const map: Record<string, OverrideRow> = {}
-    ;(ov || []).forEach(r => { map[r.doctor_name] = r as OverrideRow })
+    ;(ovRes?.data || []).forEach(r => { map[r.doctor_name] = r as OverrideRow })
     setOverrides(map)
-    const { data: auditRows } = await supabase
-      .from('doctor_availability_audit')
-      .select('doctor_name, action, changed_by, changed_at, start_time, end_time, note')
-      .eq('avail_date', dateIso)
-      .order('changed_at', { ascending: false })
-      .limit(100)
-    setAudit((auditRows || []) as AuditRow[])
+    setAudit((auditRes?.data || []) as AuditRow[])
     setLoading(false)
   }
 
