@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 type StatusChange = {
   id: number
@@ -75,25 +77,35 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('appointment_status_changes')
-      .select(`
-        id, appointment_id, appointment_date, appointment_time,
-        doctor_service, field_changed, old_value, new_value, changed_by, changed_at,
-        patients ( full_name )
-      `)
-      .gte('appointment_date', start)
-      .lte('appointment_date', end)
-      .order('changed_at', { ascending: false })
-      .limit(300)
-    setRows(
-      (data || []).map((r: any) => ({
-        ...r,
-        patient_name: r.patients?.full_name ?? null,
-      }))
-    )
+    try {
+      const { data } = await withRetry(
+        () => supabase
+          .from('appointment_status_changes')
+          .select(`
+            id, appointment_id, appointment_date, appointment_time,
+            doctor_service, field_changed, old_value, new_value, changed_by, changed_at,
+            patients ( full_name )
+          `)
+          .gte('appointment_date', start)
+          .lte('appointment_date', end)
+          .order('changed_at', { ascending: false })
+          .limit(300),
+        12000,
+        2,
+      )
+      setRows(
+        (data || []).map((r: any) => ({
+          ...r,
+          patient_name: r.patients?.full_name ?? null,
+        }))
+      )
+    } catch (err) {
+      console.error('[appt-status-changes] load failed', err)
+    }
     setLoading(false)
   }
+
+  useVisibilityReload(load)
 
   useEffect(() => {
     load()

@@ -6,6 +6,8 @@ import RescheduleModal from './RescheduleModal'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 import { useAuth } from '@/lib/AuthContext'
+import { withRetry } from '@/lib/withTimeout'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -69,13 +71,21 @@ export default function ConfirmationCallSheet({
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('calendar_appointment_detail')
-      .select('*')
-      .eq('appointment_date', date)
-      .neq('appointment_status', 'Cancelled')
-      .order('appointment_time')
-    setAllRows(data || [])
+    try {
+      const { data } = await withRetry(
+        () => supabase
+          .from('calendar_appointment_detail')
+          .select('*')
+          .eq('appointment_date', date)
+          .neq('appointment_status', 'Cancelled')
+          .order('appointment_time'),
+        12000,
+        2,
+      )
+      setAllRows(data || [])
+    } catch (err) {
+      console.error('[confirmation-call-sheet] load failed', err)
+    }
     setLoading(false)
   }, [date])
 
@@ -85,6 +95,8 @@ export default function ConfirmationCallSheet({
     () => (!doctorFilter || doctorFilter === 'all' ? allRows : allRows.filter(r => r.doctor_service === doctorFilter)),
     [allRows, doctorFilter]
   )
+
+  useVisibilityReload(load)
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(1) }, [doctorFilter])

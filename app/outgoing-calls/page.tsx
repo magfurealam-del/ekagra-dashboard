@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { withRetry } from '@/lib/withTimeout'
+import { withRetry, parallelFetch } from '@/lib/withTimeout'
 import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
@@ -36,11 +36,13 @@ export default function OutgoingCallsPage() {
   async function load() {
     setLoading(true)
     setLoadError('')
-    let data: any[] | null = null
-    let error: any = null
-    try {
-      ({ data, error } = await withRetry(
-        () =>
+
+    // All three queries are independent — run them in parallel so total wait
+    // is max(each), not sum(each). Each has its own timeout so a slow metrics
+    // query can never freeze the loading spinner.
+    const [queueRes, metricsRes, agentRes] = await parallelFetch([
+      {
+        work: () =>
           supabase
             .from('outgoing_call_sheet_view')
             .select('*')
@@ -50,25 +52,30 @@ export default function OutgoingCallsPage() {
             .order('followup_number', { ascending: true })
             .order('relevant_date', { ascending: true })
             .limit(100),
-        15000,
-        0,
-      ))
-    } catch (err) {
-      error = err
-    }
-    if (error) {
-      console.error('[outgoing-calls] queue load failed', error)
+        timeoutMs: 15000,
+        retries: 2,
+      },
+      {
+        work: () => supabase.from('outgoing_call_today_metrics').select('*').single(),
+        timeoutMs: 8000,
+        retries: 1,
+      },
+      {
+        work: () => supabase.rpc('get_scheduled_agent', { p_date: date }),
+        timeoutMs: 8000,
+        retries: 1,
+      },
+    ] as const)
+
+    if (!queueRes || queueRes.error) {
+      console.error('[outgoing-calls] queue load failed', queueRes?.error)
       setRows([])
-      setLoadError(`Could not load the outbound queue: ${error.message}`)
+      setLoadError(`Could not load the outbound queue: ${queueRes?.error?.message ?? 'Request timed out'}`)
     } else {
-      setRows(data || [])
+      setRows(queueRes.data || [])
     }
-
-    const { data: m, error: metricsError } = await supabase.from('outgoing_call_today_metrics').select('*').single()
-    if (!metricsError) setMetrics(m)
-
-    const { data: agentRow } = await supabase.rpc('get_scheduled_agent', { p_date: date })
-    setAgent((agentRow as unknown as string) || '')
+    if (metricsRes && !metricsRes.error) setMetrics(metricsRes.data)
+    if (agentRes && !agentRes.error) setAgent((agentRes.data as unknown as string) || '')
 
     setLoading(false)
   }
