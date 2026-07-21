@@ -76,6 +76,7 @@ export default function LeadIntakePage() {
   const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'found' | 'multiple' | 'new'>('idle')
   const [matches, setMatches] = useState<any[]>([])
   const [patientCard, setPatientCard] = useState<any | null>(null)
+  const [outboundQueueWarning, setOutboundQueueWarning] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
   const [copyLabel, setCopyLabel] = useState('Copy Message')
@@ -139,9 +140,20 @@ export default function LeadIntakePage() {
   }
 
   async function loadPatientCard(patientId: number) {
-    const { data } = await supabase.from('patient_master_view').select('*').eq('patient_id', patientId).single()
+    const todayDhaka = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Dhaka' }).slice(0, 10)
+    const [{ data }, { data: queueRows }] = await Promise.all([
+      supabase.from('patient_master_view').select('*').eq('patient_id', patientId).single(),
+      supabase
+        .from('outgoing_call_queue')
+        .select('id')
+        .eq('patient_id', patientId)
+        .eq('status', 'open')
+        .lte('scheduled_date', todayDhaka)
+        .limit(1),
+    ])
     if (data) {
       setPatientCard(data)
+      setOutboundQueueWarning((queueRows?.length ?? 0) > 0)
       setForm((f: any) => ({
         ...f,
         patient_name: data.patient_name || '',
@@ -182,6 +194,7 @@ export default function LeadIntakePage() {
 
   function markNewPatient() {
     setPatientCard(null)
+    setOutboundQueueWarning(false)
     setMatches([])
     setLookupState('new')
     set('new_old_status', 'New')
@@ -274,6 +287,7 @@ export default function LeadIntakePage() {
     setPatientIdQuery('')
     setNameQuery('')
     setPatientCard(null)
+    setOutboundQueueWarning(false)
     setMatches([])
     setLookupState('idle')
     setCopyLabel('Copy Message')
@@ -351,6 +365,16 @@ export default function LeadIntakePage() {
             <MiniInfo label="No-show count" v={patientCard.no_show_count} />
             <MiniInfo label="Last call status" v={patientCard.last_call_status || patientCard.last_call_outcome} />
             <button onClick={markNewPatient} className="ml-auto text-xs text-slate-500 underline">Not this patient</button>
+          </div>
+        )}
+
+        {outboundQueueWarning && (
+          <div className="border border-amber-300 bg-amber-50 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-start gap-3">
+            <span className="mt-0.5 text-base leading-none">⚠</span>
+            <div>
+              <span className="font-semibold">This patient has an open outbound follow-up today.</span>
+              {' '}If you are calling them from the <span className="font-medium">Outbound Call Sheet</span>, log the outcome there — saving here will create a duplicate record in the call log.
+            </div>
           </div>
         )}
 
