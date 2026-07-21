@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
@@ -70,6 +70,7 @@ function formatTime12h(t: string): string {
 }
 
 export default function LeadIntakePage() {
+  const savingRef = useRef(false)  // synchronous guard — prevents rapid double-submit before React re-render
   const [phone, setPhone] = useState('')
   const [patientIdQuery, setPatientIdQuery] = useState('')
   const [nameQuery, setNameQuery] = useState('')
@@ -227,9 +228,14 @@ export default function LeadIntakePage() {
   }
 
   async function save() {
+    // Synchronous guard: refs update immediately, unlike setState which is batched.
+    // This stops a second click from proceeding even before React re-renders the disabled button.
+    if (savingRef.current) return
+    savingRef.current = true
+
     const effectiveOutcome = form.intake_outcome
     const err = validate(effectiveOutcome)
-    if (err) { showToast(err); return }
+    if (err) { savingRef.current = false; showToast(err); return }
 
     // Warn before creating a second lead for the same phone number within
     // 30 minutes — catches accidental double-submits (e.g. resubmitting
@@ -240,7 +246,7 @@ export default function LeadIntakePage() {
       const proceed = window.confirm(
         `${dup.lead_name || 'A lead'} for this phone number was already saved ${minutesAgo} minute${minutesAgo === 1 ? '' : 's'} ago by ${dup.agent_name || 'someone'}.\n\nSave this as a new, separate lead anyway?`
       )
-      if (!proceed) return
+      if (!proceed) { savingRef.current = false; return }
     }
 
     setSaving(true)
@@ -275,6 +281,7 @@ export default function LeadIntakePage() {
       },
     })
     setSaving(false)
+    savingRef.current = false
     if (error) { showToast('Save failed — please try again or contact admin.'); console.error('[save-lead]', error); return }
 
     if (effectiveOutcome === 'appointment_booked') showToast('Lead saved and appointment booked.')
