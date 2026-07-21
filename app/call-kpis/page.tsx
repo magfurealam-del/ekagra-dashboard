@@ -74,6 +74,7 @@ const CONFIRMATION_OUTCOME_COLORS: Record<string, string> = {
 const DIRECTION_BADGE: Record<string, string> = {
   'Incoming': 'bg-teal-100 text-teal-700',
   'Outgoing': 'bg-indigo-100 text-indigo-700',
+  'Outbound': 'bg-orange-100 text-orange-700',
   'Confirmation - Night Before': 'bg-purple-100 text-purple-700',
   'Confirmation - Morning Of': 'bg-sky-100 text-sky-700',
 }
@@ -147,7 +148,7 @@ function MiniCallCalendar({
   })
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay()
-  const trendByDate = new Map(trend.map(d => [d.date, (d.incoming || 0) + (d.outgoing || 0) + (d.confirmation || 0)]))
+  const trendByDate = new Map(trend.map(d => [d.date, (d.incoming || 0) + (d.outgoing_leads || 0) + (d.outbound || 0) + (d.confirmation || 0)]))
   const cells = Array.from({ length: firstDay + daysInMonth }, (_, i) => i < firstDay ? null : i - firstDay + 1)
   const dateForDay = (day: number) => `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 
@@ -381,7 +382,7 @@ export default function CallKpisPage() {
     }
   }
 
-  const outgoingOutcomeItems = (metrics?.by_outgoing_outcome || []).map((s: any) => ({
+  const outboundOutcomeItems = (metrics?.by_outbound_outcome || []).map((s: any) => ({
     label: OUTGOING_OUTCOME_LABEL[s.outcome] || s.outcome,
     count: s.count,
   }))
@@ -389,9 +390,9 @@ export default function CallKpisPage() {
   // Per-agent tally with a blended conversion rate across every call type
   // that can lead to a booking (incoming intake + outgoing follow-up).
   const agentTally = (metrics?.by_agent || []).map((a: any) => {
-    const totalCalls = a.incoming + a.outgoing + a.confirmation
-    const bookableCalls = a.incoming + a.outgoing
-    const bookings = (a.incoming_booked || 0) + (a.outgoing_booked || 0)
+    const totalCalls = a.incoming + (a.outgoing_leads || 0) + a.outbound + a.confirmation
+    const bookableCalls = a.incoming + (a.outgoing_leads || 0) + a.outbound
+    const bookings = (a.incoming_booked || 0) + (a.outgoing_leads_booked || 0) + (a.outbound_booked || 0)
     const conversionRate = bookableCalls > 0 ? Math.round((bookings / bookableCalls) * 100) : null
     const confirmationRate = a.confirmation > 0 ? Math.round((a.confirmation_confirmed / a.confirmation) * 100) : null
     return { ...a, totalCalls, bookings, conversionRate, confirmationRate }
@@ -492,31 +493,39 @@ export default function CallKpisPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <KPICard label="Incoming Calls" value={metrics.incoming_total} tone="text-teal-600"
-              tooltip="Calls received and logged via Lead Intake during this period." />
-            <KPICard label="Outgoing Calls Made" value={metrics.outgoing_total} tone="text-indigo-600"
-              tooltip="Outbound follow-up calls actually attempted (outcome recorded) in this period, from the Outgoing Call Sheet." />
+              tooltip="Calls received via Lead Intake where the patient called in." />
+            <KPICard label="Outgoing Calls" value={metrics.outgoing_leads_total} tone="text-indigo-600"
+              tooltip="Calls logged via Lead Intake where the agent called out (not from the Outbound queue)." />
+            <KPICard label="Outbound Calls Made" value={metrics.outbound_total} tone="text-orange-600"
+              tooltip="Queue-based outbound follow-up calls actually attempted (outcome recorded) from the Outbound Call Sheet." />
             <KPICard label="Confirmation Calls" value={metrics.confirmation_total} tone="text-purple-600"
               tooltip="Night-before and morning-of appointment confirmation calls logged from the Calendar during this period." />
-            <KPICard label="Outgoing Pending" value={metrics.outgoing_pending} tone="text-amber-600"
-              tooltip="Snapshot right now (not date-range filtered): open items still waiting in the outgoing call queue." />
+            <KPICard label="Outbound Pending" value={metrics.outbound_pending} tone="text-amber-600"
+              tooltip="Snapshot right now (not date-range filtered): open items still waiting in the outbound call queue." />
           </div>
 
-          <Panel title="Daily Call Volume" subtitle="Incoming, outgoing, and confirmation calls, per day">
+          <Panel title="Daily Call Volume" subtitle="Incoming, outgoing (lead tab), outbound (queue), per day">
             <CallTrendChart data={metrics.daily_trend || []} />
           </Panel>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Panel title="Incoming Call Outcomes" subtitle="What happened on the intake call itself">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <Panel title="Incoming Call Outcomes" subtitle="Intake calls where patient called in">
               <BarList
                 items={(metrics.by_incoming_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
                 colorFor={(label) => INCOMING_OUTCOME_COLORS[label] || 'bg-slate-400'}
               />
             </Panel>
-            <Panel title="Outgoing Call Outcomes" subtitle="Result of each attempted follow-up call">
+            <Panel title="Outgoing Call Outcomes" subtitle="Intake calls where agent called out">
               <BarList
-                items={outgoingOutcomeItems}
+                items={(metrics.by_outgoing_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
+                colorFor={(label) => INCOMING_OUTCOME_COLORS[label] || 'bg-slate-400'}
+              />
+            </Panel>
+            <Panel title="Outbound Call Outcomes" subtitle="Result of each queue-based outbound call">
+              <BarList
+                items={outboundOutcomeItems}
                 colorFor={(label) => OUTGOING_OUTCOME_COLORS[label] || 'bg-slate-400'}
               />
             </Panel>
@@ -539,22 +548,26 @@ export default function CallKpisPage() {
                       <span className="font-medium text-slate-800 text-sm">{a.agent}</span>
                       <span className="text-xs text-slate-400">{a.totalCalls} call{a.totalCalls === 1 ? '' : 's'}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                    <div className="grid grid-cols-4 gap-2 text-center mb-2">
                       <div>
                         <div className="text-base font-bold text-teal-600">{a.incoming}</div>
                         <div className="text-[10px] text-slate-400">Incoming</div>
                       </div>
                       <div>
-                        <div className="text-base font-bold text-indigo-600">{a.outgoing}</div>
+                        <div className="text-base font-bold text-indigo-600">{a.outgoing_leads || 0}</div>
                         <div className="text-[10px] text-slate-400">Outgoing</div>
                       </div>
                       <div>
+                        <div className="text-base font-bold text-orange-500">{a.outbound}</div>
+                        <div className="text-[10px] text-slate-400">Outbound</div>
+                      </div>
+                      <div>
                         <div className="text-base font-bold text-purple-600">{a.confirmation}</div>
-                        <div className="text-[10px] text-slate-400">Confirmation</div>
+                        <div className="text-[10px] text-slate-400">Confirm</div>
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
-                      <span className="text-slate-500" title="Bookings (incoming + outgoing) ÷ incoming + outgoing calls">
+                      <span className="text-slate-500" title="Bookings (incoming + outgoing + outbound) ÷ bookable calls">
                         Conversion: <strong className="text-emerald-600">{a.conversionRate != null ? `${a.conversionRate}%` : '—'}</strong>
                       </span>
                       {a.confirmation > 0 && (
@@ -569,7 +582,7 @@ export default function CallKpisPage() {
             )}
           </Panel>
 
-          <Panel title="Agent Performance" subtitle="Incoming, outgoing, and confirmation call volume, per agent">
+          <Panel title="Agent Performance" subtitle="Incoming, outgoing, outbound, and confirmation call volume, per agent">
             {(metrics.by_agent || []).length === 0 ? (
               <p className="text-sm text-slate-400">No agent-attributed calls this period.</p>
             ) : (
@@ -578,10 +591,13 @@ export default function CallKpisPage() {
                   <tr>
                     <th className="text-left py-1" rowSpan={2}>Agent</th>
                     <th className="text-center py-1 border-l border-slate-100" colSpan={2}>Incoming</th>
-                    <th className="text-center py-1 border-l border-slate-100" colSpan={3}>Outgoing</th>
+                    <th className="text-center py-1 border-l border-slate-100" colSpan={2}>Outgoing</th>
+                    <th className="text-center py-1 border-l border-slate-100" colSpan={3}>Outbound</th>
                     <th className="text-center py-1 border-l border-slate-100" colSpan={2}>Confirmation</th>
                   </tr>
                   <tr>
+                    <th className="text-right py-1 border-l border-slate-100 font-normal">Total</th>
+                    <th className="text-right py-1 font-normal">Booked</th>
                     <th className="text-right py-1 border-l border-slate-100 font-normal">Total</th>
                     <th className="text-right py-1 font-normal">Booked</th>
                     <th className="text-right py-1 border-l border-slate-100 font-normal">Total</th>
@@ -597,9 +613,11 @@ export default function CallKpisPage() {
                       <td className="py-1.5">{a.agent}</td>
                       <td className="py-1.5 text-right border-l border-slate-100">{a.incoming}</td>
                       <td className="py-1.5 text-right text-teal-600 font-medium">{a.incoming_booked}</td>
-                      <td className="py-1.5 text-right border-l border-slate-100">{a.outgoing}</td>
-                      <td className="py-1.5 text-right">{a.outgoing_reached}</td>
-                      <td className="py-1.5 text-right text-teal-600 font-medium">{a.outgoing_booked}</td>
+                      <td className="py-1.5 text-right border-l border-slate-100">{a.outgoing_leads || 0}</td>
+                      <td className="py-1.5 text-right text-teal-600 font-medium">{a.outgoing_leads_booked || 0}</td>
+                      <td className="py-1.5 text-right border-l border-slate-100">{a.outbound}</td>
+                      <td className="py-1.5 text-right">{a.outbound_reached}</td>
+                      <td className="py-1.5 text-right text-teal-600 font-medium">{a.outbound_booked}</td>
                       <td className="py-1.5 text-right border-l border-slate-100">{a.confirmation}</td>
                       <td className="py-1.5 text-right text-teal-600 font-medium">{a.confirmation_confirmed}</td>
                     </tr>
@@ -609,7 +627,7 @@ export default function CallKpisPage() {
             )}
           </Panel>
 
-          <Panel title="Call Log" subtitle="Every incoming, outgoing, and confirmation call in this period, with patient details — click a column header to sort">
+          <Panel title="Call Log" subtitle="Every incoming, outgoing, outbound, and confirmation call in this period — click a column header to sort">
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <input
                 type="text"
@@ -619,7 +637,7 @@ export default function CallKpisPage() {
                 onChange={e => setSearch(e.target.value)}
               />
               <div className="flex items-center gap-1 flex-wrap">
-                {(['all', 'Incoming', 'Outgoing', 'Confirmation - Night Before', 'Confirmation - Morning Of'] as const).map(d => (
+                {(['all', 'Incoming', 'Outgoing', 'Outbound', 'Confirmation - Night Before', 'Confirmation - Morning Of'] as const).map(d => (
                   <button
                     key={d}
                     onClick={() => setDirectionFilter(d)}
@@ -752,7 +770,7 @@ export default function CallKpisPage() {
                                   </div>
                                 )}
 
-                                {r.direction === 'Outgoing' && r.attempt_id != null && (
+                                {r.direction === 'Outbound' && r.attempt_id != null && (
                                   <div className="border-t border-slate-200 pt-3">
                                     {correctingRow !== i ? (
                                       <button

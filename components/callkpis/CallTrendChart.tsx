@@ -12,17 +12,18 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
   )
 }
 
-export default function CallTrendChart({ data }: { data: { date: string; incoming: number; outgoing: number }[] }) {
+export default function CallTrendChart({ data }: { data: { date: string; incoming: number; outgoing_leads: number; outbound: number }[] }) {
   if (data.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
-  const max = Math.max(1, ...data.map(d => Math.max(d.incoming, d.outgoing)))
+  const max = Math.max(1, ...data.map(d => Math.max(d.incoming, d.outgoing_leads, d.outbound)))
   return (
     <div>
       <div className="flex items-end gap-1 h-32">
         {data.map(d => (
-          <Tooltip key={d.date} text={`${d.date} — ${d.incoming} incoming, ${d.outgoing} outgoing`}>
+          <Tooltip key={d.date} text={`${d.date} — ${d.incoming} incoming, ${d.outgoing_leads} outgoing, ${d.outbound} outbound`}>
             <div className="flex-1 flex items-end justify-center gap-0.5 h-32 cursor-default">
-              <div className="w-1/2 bg-teal-400 rounded-t-sm hover:bg-teal-500 transition-colors" style={{ height: `${(d.incoming / max) * 100}%` }} />
-              <div className="w-1/2 bg-indigo-300 rounded-t-sm hover:bg-indigo-400 transition-colors" style={{ height: `${(d.outgoing / max) * 100}%` }} />
+              <div className="w-1/3 bg-teal-400 rounded-t-sm hover:bg-teal-500 transition-colors" style={{ height: `${(d.incoming / max) * 100}%` }} />
+              <div className="w-1/3 bg-indigo-300 rounded-t-sm hover:bg-indigo-400 transition-colors" style={{ height: `${(d.outgoing_leads / max) * 100}%` }} />
+              <div className="w-1/3 bg-orange-300 rounded-t-sm hover:bg-orange-400 transition-colors" style={{ height: `${(d.outbound / max) * 100}%` }} />
             </div>
           </Tooltip>
         ))}
@@ -34,6 +35,7 @@ export default function CallTrendChart({ data }: { data: { date: string; incomin
       <div className="flex gap-3 mt-2 text-[10px] text-slate-500">
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-teal-400" />Incoming</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-indigo-300" />Outgoing</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-orange-300" />Outbound</span>
       </div>
     </div>
   )
