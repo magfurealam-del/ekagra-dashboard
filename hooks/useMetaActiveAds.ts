@@ -25,7 +25,9 @@ export function useMetaActiveAds() {
 
   useEffect(() => {
     let cancelled = false
-    const key = `meta-active-ads:${windowKey()}`
+    // Bump this version when an operator requests an immediate pull so an
+    // already-open browser cannot keep yesterday's localStorage snapshot.
+    const key = `meta-active-ads:v2:${windowKey()}`
 
     async function load() {
       try {
@@ -42,6 +44,8 @@ export function useMetaActiveAds() {
         .from('meta_active_ads')
         .select('ad_id, ad_name, campaign_name')
         .eq('is_current', true)
+        .eq('ad_effective_status', 'ACTIVE')
+        .gt('spend_amount', 0)
         .order('campaign_name')
         .order('ad_name')
 
