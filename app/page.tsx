@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
+import { useMetaActiveAds } from '@/hooks/useMetaActiveAds'
 import { useAuth } from '@/lib/AuthContext'
 import {
   FOLLOWUP_QUEUE_OUTCOMES, CALLBACK_OUTCOMES, SUPPRESSED_OUTCOMES,
@@ -96,6 +97,7 @@ export default function LeadIntakePage() {
   const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
   const noAppointmentReasonOpts = useDropdownOptions('intake_no_appointment_reason')
+  const metaAdOptions = useMetaActiveAds()
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
   const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
   const { profile } = useAuth()
@@ -428,13 +430,13 @@ export default function LeadIntakePage() {
                 <SearchableSelect options={sourceChannelOpts.options} value={form.source_channel} onChange={(v) => set('source_channel', v)} />
               </Field>
           <Field label="Facebook Ad ID">
-            <input
-              className="input"
-              placeholder="Optional Facebook/Meta ad ID"
-                  value={form.meta_ad_id}
-                  onChange={(e) => set('meta_ad_id', e.target.value)}
-                />
-              </Field>
+            <SearchableSelect
+              options={metaAdOptions}
+              value={form.meta_ad_id}
+              onChange={(v) => set('meta_ad_id', v)}
+              placeholder={metaAdOptions.length ? 'Select active ad' : 'No active ads loaded'}
+            />
+          </Field>
               <Field label="Doctor / referral name">
                 <input
                   className="input"
