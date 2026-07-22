@@ -16,6 +16,22 @@ function todayDhaka() {
   return dhaka.toISOString().slice(0, 10)
 }
 
+function outboundWindowKey() {
+  const now = new Date()
+  const dhaka = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
+  if (dhaka.getHours() < 6) dhaka.setDate(dhaka.getDate() - 1)
+  return `${dhaka.getFullYear()}-${String(dhaka.getMonth() + 1).padStart(2, '0')}-${String(dhaka.getDate()).padStart(2, '0')}`
+}
+
+function millisecondsUntilNextDhakaSix() {
+  const now = new Date()
+  const dhaka = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
+  const next = new Date(dhaka)
+  next.setHours(6, 0, 0, 0)
+  if (dhaka >= next) next.setDate(next.getDate() + 1)
+  return Math.max(1000, next.getTime() - dhaka.getTime())
+}
+
 export default function OutgoingCallsPage() {
   const date = todayDhaka()
   const [rows, setRows] = useState<any[]>([])
@@ -31,8 +47,7 @@ export default function OutgoingCallsPage() {
   const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const CACHE_TTL_MS = 60 * 60 * 1000
-  const cacheKey = `ekagra-outbound-sheet:${date}`
+  const cacheKey = `ekagra-outbound-sheet:${outboundWindowKey()}`
 
   async function load(force = false) {
     setLoading(true)
@@ -41,7 +56,7 @@ export default function OutgoingCallsPage() {
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
-        if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) {
+        if (cached && cached.windowKey === outboundWindowKey()) {
           setRows(cached.rows || [])
           setMetrics(cached.metrics || null)
           setAgent(cached.agent || '')
@@ -94,7 +109,7 @@ export default function OutgoingCallsPage() {
       setRows(nextRows)
       setMetrics(nextMetrics)
       setAgent(nextAgent)
-      localStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
+      localStorage.setItem(cacheKey, JSON.stringify({ windowKey: outboundWindowKey(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
     }
 
     setLoading(false)
@@ -102,7 +117,7 @@ export default function OutgoingCallsPage() {
 
   useEffect(() => {
     load()
-    refreshTimer.current = setTimeout(() => load(true), CACHE_TTL_MS)
+    refreshTimer.current = setTimeout(() => load(true), millisecondsUntilNextDhakaSix())
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
     }
