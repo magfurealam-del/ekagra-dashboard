@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabase'
 export default function RescheduleModal({
   appointment, onClose, onDone,
 }: {
-  appointment: { appointment_id: number; patient_name?: string; appointment_date?: string; appointment_time?: string; doctor_service?: string }
+  appointment: { appointment_id: number; patient_name?: string; phone?: string; appointment_date?: string; appointment_time?: string; doctor_service?: string }
   onClose: () => void
   onDone: () => void
 }) {
   const [newDate, setNewDate] = useState(appointment.appointment_date || '')
+  const [patientName, setPatientName] = useState(appointment.patient_name || '')
+  const [phone, setPhone] = useState(appointment.phone || '')
   const [slots, setSlots] = useState<string[]>([])
   const [newTime, setNewTime] = useState('')
   const [saving, setSaving] = useState(false)
@@ -72,6 +74,13 @@ export default function RescheduleModal({
     if (!newDate || !newTime) { setError('Pick a new date and time.'); return }
     setSaving(true)
     setError('')
+    const { error: patientError } = await supabase.rpc('link_or_update_appointment_patient', {
+      p_appointment_id: appointment.appointment_id,
+      p_full_name: patientName.trim(),
+      p_phone: phone.trim(),
+      p_hn: null,
+    })
+    if (patientError) { setSaving(false); setError(patientError.message); return }
     const { error: rpcError } = await supabase.rpc('reschedule_appointment', {
       old_appointment_id: appointment.appointment_id,
       new_date: newDate,
@@ -90,6 +99,17 @@ export default function RescheduleModal({
           <p className="text-xs text-slate-500 mt-0.5">
             {appointment.patient_name || 'Patient'} · currently {appointment.appointment_date} {appointment.appointment_time}
           </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs font-medium text-slate-500">
+            Patient name
+            <input className="input w-full mt-1" value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+          </label>
+          <label className="block text-xs font-medium text-slate-500">
+            Phone number
+            <input className="input w-full mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </label>
         </div>
 
         <label className="block">
