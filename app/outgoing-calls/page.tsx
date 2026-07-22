@@ -3,8 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { withRetry, parallelFetch } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
+import { parallelFetch } from '@/lib/withTimeout'
 import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
 import PatientDetailPanel from '@/components/outgoing-calls/PatientDetailPanel'
@@ -32,10 +31,27 @@ export default function OutgoingCallsPage() {
   const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const CACHE_TTL_MS = 60 * 60 * 1000
+  const cacheKey = `ekagra-outbound-sheet:${date}`
 
-  async function load() {
+  async function load(force = false) {
     setLoading(true)
     setLoadError('')
+
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
+        if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) {
+          setRows(cached.rows || [])
+          setMetrics(cached.metrics || null)
+          setAgent(cached.agent || '')
+          setLoading(false)
+          return
+        }
+      } catch {
+        localStorage.removeItem(cacheKey)
+      }
+    }
 
     // All three queries are independent — run them in parallel so total wait
     // is max(each), not sum(each). Each has its own timeout so a slow metrics
@@ -72,46 +88,25 @@ export default function OutgoingCallsPage() {
       setRows([])
       setLoadError('Could not load the outbound queue — please refresh or contact admin.')
     } else {
-      setRows(queueRes.data || [])
+      const nextRows = queueRes.data || []
+      const nextMetrics = metricsRes && !metricsRes.error ? metricsRes.data : null
+      const nextAgent = agentRes && !agentRes.error ? (agentRes.data as unknown as string) || '' : ''
+      setRows(nextRows)
+      setMetrics(nextMetrics)
+      setAgent(nextAgent)
+      localStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
     }
-    if (metricsRes && !metricsRes.error) setMetrics(metricsRes.data)
-    if (agentRes && !agentRes.error) setAgent((agentRes.data as unknown as string) || '')
 
     setLoading(false)
   }
 
-  useVisibilityReload(load)
-
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('outgoing-calls')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, () => {
-        if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { load() }, 350)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, () => {
-        if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { load() }, 350)
-      })
-      .subscribe()
+    refreshTimer.current = setTimeout(() => load(true), CACHE_TTL_MS)
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
-      supabase.removeChannel(channel)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  async function runPopulateNow() {
-    setLoading(true)
-    const { error } = await supabase.rpc('populate_outgoing_call_queue', { p_date: date })
-    if (error) {
-      setLoading(false)
-      setLoadError(`Could not refresh the outbound queue: ${error.message}`)
-      return
-    }
-    await load()
-  }
 
   const agentOptions = useMemo(() => {
     const set = new Set(rows.map((r) => r.assigned_agent).filter(Boolean))
@@ -150,12 +145,6 @@ export default function OutgoingCallsPage() {
               <span className="font-medium text-slate-700">{agent || '—'}</span>
             </p>
           </div>
-          <button
-            onClick={runPopulateNow}
-            className="px-3 py-1.5 border border-slate-300 rounded-md text-sm text-slate-600 hover:bg-slate-50"
-          >
-            Refresh queue
-          </button>
         </div>
 
         <SummaryBar metrics={metrics} />
