@@ -51,7 +51,7 @@ export default function OutgoingCallsPage() {
             .order('category_rank')
             .order('followup_number', { ascending: true })
             .order('relevant_date', { ascending: true })
-            .limit(100),
+            .range(0, 999),
         timeoutMs: 15000,
         retries: 2,
       },

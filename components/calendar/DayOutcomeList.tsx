@@ -17,6 +17,7 @@ export default function DayOutcomeList({ date }: Props) {
   const [queueStatus, setQueueStatus] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [message, setMessage] = useState('')
 
   async function load() {
     setLoading(true)
@@ -54,6 +55,27 @@ export default function DayOutcomeList({ date }: Props) {
 
   async function addToQueue(row: any) {
     setBusyId(row.appointment_id)
+    setMessage('')
+    if (!row.patient_id) {
+      setBusyId(null)
+      setMessage('This appointment has no linked patient, so invoice validation cannot be completed.')
+      return
+    }
+    const { data: invoiceMatch, error: invoiceError } = await supabase.rpc('get_call_kpi_invoice_match', {
+      p_patient_id: row.patient_id,
+      p_appointment_date: row.appointment_date,
+    })
+    if (invoiceError) {
+      setBusyId(null)
+      setMessage(`Invoice validation failed: ${invoiceError.message}`)
+      return
+    }
+    if (invoiceMatch?.status === 'matched') {
+      setBusyId(null)
+      setMessage('Invoice found for this appointment, so the patient was not added as a no-show.')
+      load()
+      return
+    }
     const daysAgo = Math.floor(
       (Date.now() - new Date(row.appointment_date + 'T00:00:00').getTime()) / 86400000
     )
@@ -87,6 +109,7 @@ export default function DayOutcomeList({ date }: Props) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+      {message && <p className="p-3 text-xs text-amber-700 bg-amber-50 border-b border-amber-200">{message}</p>}
       {rows.map((r) => {
         const q = queueStatus[String(r.appointment_id)]
         return (
