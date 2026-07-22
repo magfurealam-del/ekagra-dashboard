@@ -71,7 +71,6 @@ function timingLabel(changedAt: string, apptDate: string, apptTime: string | nul
 export default function AppointmentStatusChanges({ start, end }: { start: string; end: string }) {
   const [rows, setRows] = useState<StatusChange[]>([])
   const [loading, setLoading] = useState(true)
-  const [fieldFilter, setFieldFilter] = useState('all')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function load() {
@@ -87,6 +86,7 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
           `)
           .gte('appointment_date', start)
           .lte('appointment_date', end)
+          .eq('field_changed', 'appointment_status')
           .order('changed_at', { ascending: false })
           .limit(300),
         12000,
@@ -111,7 +111,7 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
     }
   }, [start, end])
 
-  const filtered = fieldFilter === 'all' ? rows : rows.filter(r => r.field_changed === fieldFilter)
+  const filtered = rows
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -119,26 +119,6 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
         <div>
           <h2 className="text-base font-semibold text-slate-800">Status Change Log</h2>
           <p className="text-xs text-slate-400 mt-0.5">Every status update this month — who changed what, and when relative to the appointment</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {Object.entries(FIELD_LABEL).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => setFieldFilter(fieldFilter === k ? 'all' : k)}
-              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-                fieldFilter === k
-                  ? 'bg-teal-600 border-teal-600 text-white'
-                  : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {v}
-            </button>
-          ))}
-          {fieldFilter !== 'all' && (
-            <button onClick={() => setFieldFilter('all')} className="text-xs text-slate-400 hover:text-slate-600">
-              Clear
-            </button>
-          )}
         </div>
       </div>
 
