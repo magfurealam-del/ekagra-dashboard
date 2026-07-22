@@ -32,6 +32,30 @@ function millisecondsUntilNextDhakaSix() {
   return Math.max(1000, next.getTime() - dhaka.getTime())
 }
 
+// Keep the daily 100-patient sheet representative instead of allowing the
+// largest low-priority bucket to consume the entire slice. Higher-priority
+// rows are always selected first; the remaining slots are distributed across
+// the next priority bands and then filled from the lower-priority backlog.
+function selectBalancedQueue(rows: any[], limit = 100) {
+  const bands = [1, 2, 3, 5, 9, 13]
+  const quotas: Record<number, number> = { 1: 12, 2: 12, 3: 10, 5: 15, 9: 25, 13: 26 }
+  const selected: any[] = []
+  const remaining = [...rows]
+
+  for (const rank of bands) {
+    const matches = remaining.filter((row) => Number(row.category_rank) === rank)
+    const take = Math.min(quotas[rank] || 0, matches.length, limit - selected.length)
+    selected.push(...matches.slice(0, take))
+    for (const row of matches.slice(0, take)) {
+      const index = remaining.indexOf(row)
+      if (index >= 0) remaining.splice(index, 1)
+    }
+  }
+
+  if (selected.length < limit) selected.push(...remaining.slice(0, limit - selected.length))
+  return selected.slice(0, limit)
+}
+
 export default function OutgoingCallsPage() {
   const date = todayDhaka()
   const [rows, setRows] = useState<any[]>([])
@@ -82,7 +106,7 @@ export default function OutgoingCallsPage() {
             .order('category_rank')
             .order('followup_number', { ascending: true })
             .order('relevant_date', { ascending: true })
-            .limit(100),
+            .limit(250),
         timeoutMs: 15000,
         retries: 2,
       },
@@ -103,7 +127,7 @@ export default function OutgoingCallsPage() {
       setRows([])
       setLoadError('Could not load the outbound queue — please refresh or contact admin.')
     } else {
-      const nextRows = queueRes.data || []
+      const nextRows = selectBalancedQueue(queueRes.data || [])
       const nextMetrics = metricsRes && !metricsRes.error ? metricsRes.data : null
       const nextAgent = agentRes && !agentRes.error ? (agentRes.data as unknown as string) || '' : ''
       setRows(nextRows)
