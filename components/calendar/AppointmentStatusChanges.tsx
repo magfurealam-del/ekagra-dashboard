@@ -142,14 +142,7 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2, 3].map(i => <div key={i} className="h-10 bg-slate-100 rounded animate-pulse" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-slate-400 py-4 text-center">No status changes recorded this month yet.</p>
-      ) : (
-        <div className="overflow-x-auto">
+      <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
@@ -165,7 +158,15 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.map(r => {
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="py-6 text-center text-sm text-slate-400">Loading status changes…</td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-6 text-center text-sm text-slate-400">No status changes recorded this month yet.</td>
+                </tr>
+              ) : filtered.map(r => {
                 const timing = r.appointment_time
                   ? timingLabel(r.changed_at, r.appointment_date, r.appointment_time)
                   : null
@@ -216,8 +217,7 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
             </tbody>
           </table>
           <p className="text-xs text-slate-400 mt-2">Showing {filtered.length} change{filtered.length !== 1 ? 's' : ''} · Tracking starts from today</p>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
