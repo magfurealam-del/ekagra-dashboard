@@ -40,14 +40,17 @@ export function useMetaActiveAds() {
         localStorage.removeItem(key)
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('meta_active_ads')
         .select('ad_id, ad_name, campaign_name')
         .eq('is_current', true)
-        .eq('ad_effective_status', 'ACTIVE')
-        .gt('spend_amount', 0)
         .order('campaign_name')
         .order('ad_name')
+
+      if (error) {
+        console.error('[meta-active-ads] failed to load public.meta_active_ads', error)
+        return
+      }
 
       const next = (data || []).map((ad) => ({
         value: ad.ad_id,
