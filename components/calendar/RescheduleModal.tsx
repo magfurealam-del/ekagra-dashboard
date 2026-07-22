@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 export default function RescheduleModal({
   appointment, onClose, onDone,
 }: {
-  appointment: { appointment_id: number; patient_name?: string; phone?: string; appointment_date?: string; appointment_time?: string; doctor_service?: string }
+  appointment: { appointment_id: number; patient_name?: string; phone?: string; appointment_date?: string; appointment_time?: string; doctor_service?: string; service_type?: string; notes?: string }
   onClose: () => void
   onDone: () => void
 }) {
@@ -110,6 +110,13 @@ export default function RescheduleModal({
             Phone number
             <input className="input w-full mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </label>
+        </div>
+
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-1.5 text-xs">
+          <div className="font-medium text-slate-600">Appointment context</div>
+          <div><span className="text-slate-500">Doctor:</span> {appointment.doctor_service || 'Unassigned'}</div>
+          <div><span className="text-slate-500">Service type:</span> {appointment.service_type || 'Unspecified'}</div>
+          <div><span className="text-slate-500">Comments:</span> {appointment.notes || 'No comments recorded'}</div>
         </div>
 
         <label className="block">
