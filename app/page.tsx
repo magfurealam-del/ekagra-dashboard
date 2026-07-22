@@ -22,6 +22,7 @@ const blankForm = {
   new_old_status: 'New',
   call_direction: 'Incoming',
   source_channel: '',
+  meta_ad_id: '',
   referral_name: '',
   agent_name: '',
 
@@ -261,6 +262,7 @@ export default function LeadIntakePage() {
         new_old_status: form.new_old_status,
         call_direction: form.call_direction,
         source_channel: form.source_channel,
+        meta_ad_id: form.meta_ad_id,
         referral_name: form.referral_name,
         agent_name: form.agent_name,
         lead_bucket: form.lead_bucket,
@@ -424,6 +426,14 @@ export default function LeadIntakePage() {
               </Field>
               <Field label="Source channel *">
                 <SearchableSelect options={sourceChannelOpts.options} value={form.source_channel} onChange={(v) => set('source_channel', v)} />
+              </Field>
+          <Field label="Facebook Ad ID">
+            <input
+              className="input"
+              placeholder="Optional Facebook/Meta ad ID"
+                  value={form.meta_ad_id}
+                  onChange={(e) => set('meta_ad_id', e.target.value)}
+                />
               </Field>
               <Field label="Doctor / referral name">
                 <input

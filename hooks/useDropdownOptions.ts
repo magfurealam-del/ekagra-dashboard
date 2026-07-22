@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { subscribeDropdownOptionsChanges } from '@/lib/dropdownOptionsBus'
+import { CRM_POLL_INTERVAL_MS } from '@/lib/polling'
 
 export type DropdownOption = { label: string; value: string }
 
@@ -26,20 +26,13 @@ export function useDropdownOptions(category: string) {
         })
     }
 
-    setLoading(true)
     load()
 
-    // Pick up changes made from Settings (add/remove/activate) without
-    // requiring a page reload on whichever page is using this dropdown.
-    // Uses one shared Realtime channel for the whole table instead of a
-    // dedicated channel per category/hook instance.
-    const unsubscribe = subscribeDropdownOptionsChanges((changedCategory) => {
-      if (changedCategory === category) load()
-    })
+    const interval = window.setInterval(load, CRM_POLL_INTERVAL_MS)
 
     return () => {
       active = false
-      unsubscribe()
+      window.clearInterval(interval)
     }
   }, [category])
 

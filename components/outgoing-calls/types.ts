@@ -27,6 +27,7 @@ export type CategoryKey =
   | 'healing_overdue_4w' | 'healing_overdue_8w' | 'healing_overdue_old'
   | 'wound_no_appt_7' | 'wound_no_appt_14' | 'wound_no_appt_28' | 'wound_no_appt_old'
   | 'screening_no_appt_7' | 'screening_no_appt_14' | 'screening_no_appt_28' | 'screening_no_appt_old'
+  | 'general_no_appt'
 
 export const CATEGORY_LABEL: Record<string, string> = {
   no_show_7:            'No-show — last 7 days',
@@ -44,6 +45,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   screening_no_appt_14: 'Screening lead — called 8–14 days ago',
   screening_no_appt_28: 'Screening lead — called 15–28 days ago',
   screening_no_appt_old:'Screening lead — called 28+ days ago',
+  general_no_appt:     'General lead — no appointment yet',
 }
 
 export const CATEGORY_BADGE_LABEL: Record<string, string> = {
@@ -62,6 +64,7 @@ export const CATEGORY_BADGE_LABEL: Record<string, string> = {
   screening_no_appt_14: 'Screening (14d)',
   screening_no_appt_28: 'Screening (28d)',
   screening_no_appt_old:'Screening (28d+)',
+  general_no_appt:     'General (no appointment)',
 }
 
 // ─── Call type: lead generation vs. patient recovery/no-show ──────────────
@@ -86,6 +89,7 @@ export const CALL_TYPE_FOR_CATEGORY: Record<string, CallType> = {
   screening_no_appt_14: 'lead_gen',
   screening_no_appt_28: 'lead_gen',
   screening_no_appt_old: 'lead_gen',
+  general_no_appt: 'lead_gen',
 }
 
 export const CALL_TYPE_LABEL: Record<CallType, string> = {
@@ -118,6 +122,7 @@ export const CATEGORY_BADGE_TONE: Record<string, string> = {
   screening_no_appt_14: 'bg-indigo-50 text-indigo-600',
   screening_no_appt_28: 'bg-indigo-50 text-indigo-500',
   screening_no_appt_old:'bg-slate-100 text-slate-500',
+  general_no_appt:     'bg-violet-100 text-violet-700',
 }
 
 // ─── Quick-filter chips ────────────────────────────────────────────────────
@@ -132,6 +137,7 @@ export const QUICK_FILTERS: { key: string; label: string; categories?: string[] 
   { key: 'healing',       label: 'Healing',      categories: ['healing_overdue_4w','healing_overdue_8w','healing_overdue_old'] },
   { key: 'wound',         label: 'Wound',        categories: ['wound_no_appt_7','wound_no_appt_14','wound_no_appt_28','wound_no_appt_old'] },
   { key: 'screening',     label: 'Screening',    categories: ['screening_no_appt_7','screening_no_appt_14','screening_no_appt_28','screening_no_appt_old'] },
+  { key: 'general',       label: 'General',      categories: ['general_no_appt'] },
   { key: 'high_priority', label: 'High Priority',categories: ['no_show_7','no_show_14','surgery_no_show'] },
 ]
 
