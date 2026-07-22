@@ -160,20 +160,6 @@ export default function OutcomePanel({
   return (
     <div className="bg-white rounded-xl border border-slate-200 h-full overflow-y-auto p-4 space-y-4">
       <h3 className="text-sm font-semibold text-slate-700">Call Outcome</h3>
-      {selected === 'booked_appointment' && (
-        <div className="border border-emerald-200 bg-emerald-50/50 rounded-md p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-sm font-medium text-slate-700">WhatsApp Message</div>
-              <div className="text-[11px] text-emerald-700">Appointment group message for the confirmed outbound call</div>
-            </div>
-            <button onClick={copyWhatsAppMessage} className="bg-emerald-600 text-white px-2.5 py-1.5 rounded-md text-xs font-medium hover:bg-emerald-700">
-              {copyLabel}
-            </button>
-          </div>
-          <pre className="whitespace-pre-wrap break-words text-xs bg-white border border-emerald-100 rounded-md p-2.5 font-sans text-slate-700">{whatsappMessage}</pre>
-        </div>
-      )}
       <div>
         <div className="text-xs text-slate-500 mb-1.5">Select outcome (one-click)</div>
         <div className="grid grid-cols-2 gap-2">
@@ -307,6 +293,21 @@ export default function OutcomePanel({
           >
             {saveState === 'saving' ? 'Saving…' : 'Save Outcome'}
           </button>
+        </div>
+      )}
+
+      {selected === 'booked_appointment' && (
+        <div className="border border-emerald-200 bg-emerald-50/50 rounded-md p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-medium text-slate-700">WhatsApp Message</div>
+              <div className="text-[11px] text-emerald-700">Appointment group message for the confirmed outbound call</div>
+            </div>
+            <button onClick={copyWhatsAppMessage} className="bg-emerald-600 text-white px-2.5 py-1.5 rounded-md text-xs font-medium hover:bg-emerald-700">
+              {copyLabel}
+            </button>
+          </div>
+          <pre className="whitespace-pre-wrap break-words text-xs bg-white border border-emerald-100 rounded-md p-2.5 font-sans text-slate-700">{whatsappMessage}</pre>
         </div>
       )}
     </div>
