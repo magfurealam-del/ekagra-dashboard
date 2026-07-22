@@ -138,7 +138,7 @@ function MiniCallCalendar({
   selectedDate,
   onSelect,
 }: {
-  trend: { date: string; incoming?: number; outgoing?: number; confirmation?: number }[]
+  trend: { date: string; incoming?: number; outgoing?: number; outgoing_leads?: number; outbound?: number; confirmation?: number }[]
   selectedDate: string | null
   onSelect: (date: string) => void
 }) {
