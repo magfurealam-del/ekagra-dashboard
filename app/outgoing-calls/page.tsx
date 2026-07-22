@@ -169,8 +169,21 @@ export default function OutgoingCallsPage() {
   }, [rows, search, quickFilter, leadTypeFilter, callTypeFilter, agentFilter])
 
   function handleSaved() {
+    const completedAttemptId = selected?.attempt_id
+    if (completedAttemptId == null) return
+
+    // The outcome RPC has already resolved this attempt in Supabase. Remove
+    // it from the in-memory daily sheet immediately so the visible count drops
+    // from 100 to 99 (and so on) without waiting for the next 6 AM refresh.
+    const nextRows = rows.filter((row) => row.attempt_id !== completedAttemptId)
+    setRows(nextRows)
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
+      if (cached) localStorage.setItem(cacheKey, JSON.stringify({ ...cached, rows: nextRows }))
+    } catch {
+      // The live state is still updated even if localStorage is unavailable.
+    }
     setSelected(null)
-    load()
   }
 
   return (
