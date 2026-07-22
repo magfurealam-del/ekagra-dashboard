@@ -25,9 +25,7 @@ export function useMetaActiveAds() {
 
   useEffect(() => {
     let cancelled = false
-    // Bump this version when an operator requests an immediate pull so an
-    // already-open browser cannot keep yesterday's localStorage snapshot.
-    const key = `meta-active-ads:v2:${windowKey()}`
+    const key = `meta-active-ads:v3:${windowKey()}`
 
     async function load() {
       try {
@@ -42,20 +40,16 @@ export function useMetaActiveAds() {
 
       const { data, error } = await supabase
         .from('meta_active_ads')
-        .select('ad_id, ad_name, campaign_name')
+        .select('ad_id')
         .eq('is_current', true)
-        .order('campaign_name')
-        .order('ad_name')
+        .order('ad_id')
 
       if (error) {
         console.error('[meta-active-ads] failed to load public.meta_active_ads', error)
         return
       }
 
-      const next = (data || []).map((ad) => ({
-        value: ad.ad_id,
-        label: `${ad.campaign_name || 'Unnamed campaign'} · ${ad.ad_name || ad.ad_id}`,
-      }))
+      const next = (data || []).map((ad) => ({ value: ad.ad_id, label: ad.ad_id }))
       localStorage.setItem(key, JSON.stringify({ windowKey: windowKey(), options: next }))
       if (!cancelled) setOptions(next)
     }
