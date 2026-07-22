@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { parallelFetch } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -68,15 +67,10 @@ export default function DoctorAvailabilityPage() {
     setLoading(false)
   }
 
-  useVisibilityReload(load)
 
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('doctor-daily-availability')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'doctor_daily_availability' }, () => load())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return undefined
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateIso])
 

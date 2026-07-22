@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { CRM_POLL_INTERVAL_MS } from '@/lib/polling'
 
 export type DropdownOption = { label: string; value: string }
 
@@ -28,11 +27,15 @@ export function useDropdownOptions(category: string) {
 
     load()
 
-    const interval = window.setInterval(load, CRM_POLL_INTERVAL_MS)
+    const now = new Date()
+    const next = new Date(now)
+    next.setHours(6, 0, 0, 0)
+    if (next <= now) next.setDate(next.getDate() + 1)
+    const interval = window.setTimeout(load, next.getTime() - now.getTime())
 
     return () => {
       active = false
-      window.clearInterval(interval)
+      window.clearTimeout(interval)
     }
   }, [category])
 

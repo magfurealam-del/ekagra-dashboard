@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/calendar/CalendarGrid'
 import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
@@ -59,7 +58,6 @@ export default function CalendarPage() {
     }
   }
 
-  useVisibilityReload(() => loadCalendarData(true))
 
   // Load the month's appointments once; doctor filtering is applied client-side
   useEffect(() => {
@@ -82,23 +80,6 @@ export default function CalendarPage() {
     () => (doctorFilter === 'all' ? monthRows : monthRows.filter((r: any) => r.doctor_service === doctorFilter)),
     [monthRows, doctorFilter]
   )
-
-  // Live-sync the month grid with changes made from Lead Intake, another
-  // browser tab, or the appointment panel below (new bookings, reschedules,
-  // status/patient edits) instead of only refreshing on direct clicks here.
-  useEffect(() => {
-    const channel = supabase
-      .channel('calendar-grid')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => {
-        if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { loadCalendarData(true) }, 350)
-      })
-      .subscribe()
-    return () => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current)
-      supabase.removeChannel(channel)
-    }
-  }, [start, end])
 
   function changeMonth(delta: number) {
     let m = month + delta, y = year

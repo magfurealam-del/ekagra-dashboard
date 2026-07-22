@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const patientsCache: { data: any[]; fetchedAt: number } = { data: [], fetchedAt: 0 }
 const PATIENTS_TTL_MS = 30 * 60 * 1000
@@ -85,20 +84,11 @@ export default function PatientListPage() {
     setLoading(false)
   }
 
-  useVisibilityReload(() => load(true))
 
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('patient-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
-        if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(() => { load(true) }, 350)
-      })
-      .subscribe()
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
-      supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

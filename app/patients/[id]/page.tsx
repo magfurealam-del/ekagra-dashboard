@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { parallelFetch } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 export default function PatientProfilePage() {
   const params = useParams()
@@ -42,7 +41,6 @@ export default function PatientProfilePage() {
     setCalls(cRes?.data || [])
   }
 
-  useVisibilityReload(() => { if (id) load() })
 
   useEffect(() => {
     if (id) load()

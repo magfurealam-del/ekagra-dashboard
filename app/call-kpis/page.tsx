@@ -2,7 +2,6 @@
 export const dynamic = 'force-dynamic'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
@@ -355,7 +354,6 @@ export default function CallKpisPage() {
     return () => { cancelled = true }
   }, [start, end])
 
-  useVisibilityReload(() => fetchKpis(start, end, true))
 
   async function expandCallRow(index: number, row: CallLogRow) {
     const isOpen = expandedRow === index

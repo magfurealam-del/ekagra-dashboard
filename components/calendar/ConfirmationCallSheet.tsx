@@ -7,7 +7,6 @@ import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 import { useAuth } from '@/lib/AuthContext'
 import { withRetry } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -96,24 +95,8 @@ export default function ConfirmationCallSheet({
     [allRows, doctorFilter]
   )
 
-  useVisibilityReload(load)
-
   useEffect(() => { load() }, [load])
   useEffect(() => { setPage(1) }, [doctorFilter])
-
-  // Live-sync with changes from Lead Intake, another tab, or the Calendar
-  // grid itself (new bookings, reschedules, patient/status edits).
-  useEffect(() => {
-    const channel = supabase
-      .channel(`calendar-day-${date}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_appointments' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointment_confirmation_calls' }, () => load())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date])
 
   function showToast(msg: string) {
     setToast(msg)

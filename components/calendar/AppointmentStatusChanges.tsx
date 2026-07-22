@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
-import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 
 type StatusChange = {
   id: number
@@ -105,20 +104,10 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
     setLoading(false)
   }
 
-  useVisibilityReload(load)
-
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('appt-status-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointment_status_changes' }, () => {
-        if (refreshTimer.current) clearTimeout(refreshTimer.current)
-        refreshTimer.current = setTimeout(load, 500)
-      })
-      .subscribe()
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
-      supabase.removeChannel(channel)
     }
   }, [start, end])
 
