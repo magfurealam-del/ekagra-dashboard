@@ -601,6 +601,7 @@ function buildWhatsAppMessage(form: any): string {
   lines.push(`Patient Name: ${form.patient_name || '—'}`)
   lines.push(`Contact Number: ${form.phone || '—'}`)
   if (form.source_channel) lines.push(`Source: ${form.source_channel}`)
+  if (form.meta_ad_id) lines.push(`Facebook Ad ID: ${form.meta_ad_id}`)
   if (form.referral_name) lines.push(`Doctor/Referral: ${form.referral_name}`)
   if (form.appointment_date) lines.push(`Appointment Date: ${formatDateDMY(form.appointment_date)}`)
   if (form.appointment_time) lines.push(`Appointment Time: ${formatTime12h(form.appointment_time)}`)
@@ -729,9 +730,24 @@ function useDoctorAvailabilityNote(doctorName: string, dateStr: string): string 
 function useDoctors() {
   const [options, setOptions] = useState<{ label: string; value: string }[]>([])
   useEffect(() => {
-    supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
-      if (data) setOptions(data.map((d: any) => ({ label: d.name, value: d.name })))
+    const key = 'lead-intake:doctors:v1'
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || 'null')
+      if (Array.isArray(cached?.options)) setOptions(cached.options)
+    } catch { localStorage.removeItem(key) }
+
+    const load = () => supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
+      if (!data) return
+      const next = data.map((d: any) => ({ label: d.name, value: d.name }))
+      setOptions(next)
+      localStorage.setItem(key, JSON.stringify({ options: next, cachedAt: Date.now() }))
     })
+    const now = new Date()
+    const nextSix = new Date(now)
+    nextSix.setHours(6, 0, 0, 0)
+    if (nextSix <= now) nextSix.setDate(nextSix.getDate() + 1)
+    const timer = window.setTimeout(load, nextSix.getTime() - now.getTime())
+    return () => window.clearTimeout(timer)
   }, [])
   return options
 }

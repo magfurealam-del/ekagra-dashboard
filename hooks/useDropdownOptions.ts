@@ -10,6 +10,7 @@ export function useDropdownOptions(category: string) {
 
   useEffect(() => {
     let active = true
+    const cacheKey = `dropdown-options:${category}:v1`
 
     function load() {
       supabase
@@ -20,12 +21,21 @@ export function useDropdownOptions(category: string) {
         .order('sort_order', { ascending: true })
         .then(({ data, error }) => {
           if (!active) return
-          if (!error && data) setOptions(data)
+          if (!error && data) {
+            setOptions(data)
+            localStorage.setItem(cacheKey, JSON.stringify({ options: data, cachedAt: Date.now() }))
+          }
           setLoading(false)
         })
     }
 
-    load()
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
+      if (Array.isArray(cached?.options)) {
+        setOptions(cached.options)
+        setLoading(false)
+      } else load()
+    } catch { load() }
 
     let interval: number
     const scheduleNextRefresh = () => {
