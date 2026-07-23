@@ -733,7 +733,7 @@ export default function CallKpisPage() {
                                 {r.source || '—'}
                               </span>
                             </td>
-                            <td className="py-1.5 text-slate-600 whitespace-nowrap font-mono text-xs border border-slate-100 px-2">{r.details?.facebook_ad_id || 'â€”'}</td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap font-mono text-xs border border-slate-100 px-2">{r.details?.facebook_ad_id || 'N/A'}</td>
                             <td className="py-1.5 text-slate-600 max-w-[140px] break-words border border-slate-100 px-2">{r.details?.campaign_short_name || r.details?.campaign || 'â€”'}</td>
                             <td className="py-1.5 border border-slate-100 px-2">
                               <span className="inline-block text-xs rounded-md px-2 py-0.5 leading-tight break-words bg-sky-50 text-sky-700 max-w-[130px]">
