@@ -117,7 +117,7 @@ export default function AppointmentStatusChanges({ date }: { date: string | null
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <div>
           <h2 className="text-base font-semibold text-slate-800">Status Change Log</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Every status update this month — who changed what, and when relative to the appointment</p>
+          <p className="text-xs text-slate-400 mt-0.5">Appointment-status changes for {date || 'the selected date'} only</p>
         </div>
       </div>
 

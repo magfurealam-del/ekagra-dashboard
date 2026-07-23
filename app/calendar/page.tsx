@@ -200,7 +200,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Status change audit log — always visible below the calendar */}
-      <AppointmentStatusChanges date={selectedDate} />
+      <AppointmentStatusChanges key={selectedDate || 'no-date'} date={selectedDate} />
     </div>
   )
 }
