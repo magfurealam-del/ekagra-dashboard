@@ -55,7 +55,13 @@ export function useMetaActiveAds() {
     }
 
     load()
-    timer.current = setTimeout(load, msUntilNextSixDhaka())
+    const scheduleNextRefresh = () => {
+      timer.current = setTimeout(async () => {
+        await load()
+        scheduleNextRefresh()
+      }, msUntilNextSixDhaka())
+    }
+    scheduleNextRefresh()
     return () => {
       cancelled = true
       if (timer.current) clearTimeout(timer.current)

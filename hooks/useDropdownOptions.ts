@@ -27,11 +27,18 @@ export function useDropdownOptions(category: string) {
 
     load()
 
-    const now = new Date()
-    const next = new Date(now)
-    next.setHours(6, 0, 0, 0)
-    if (next <= now) next.setDate(next.getDate() + 1)
-    const interval = window.setTimeout(load, next.getTime() - now.getTime())
+    let interval: number
+    const scheduleNextRefresh = () => {
+      const current = new Date()
+      const target = new Date(current)
+      target.setHours(6, 0, 0, 0)
+      if (target <= current) target.setDate(target.getDate() + 1)
+      interval = window.setTimeout(() => {
+        load()
+        scheduleNextRefresh()
+      }, target.getTime() - current.getTime())
+    }
+    scheduleNextRefresh()
 
     return () => {
       active = false

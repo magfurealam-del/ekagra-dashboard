@@ -141,7 +141,13 @@ export default function OutgoingCallsPage() {
 
   useEffect(() => {
     load()
-    refreshTimer.current = setTimeout(() => load(true), millisecondsUntilNextDhakaSix())
+    const scheduleNextRefresh = () => {
+      refreshTimer.current = setTimeout(async () => {
+        await load(true)
+        scheduleNextRefresh()
+      }, millisecondsUntilNextDhakaSix())
+    }
+    scheduleNextRefresh()
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
     }
