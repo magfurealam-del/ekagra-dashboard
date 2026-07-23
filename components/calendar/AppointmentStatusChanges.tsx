@@ -15,7 +15,7 @@ type StatusChange = {
   old_value: string | null
   new_value: string | null
   changed_by: string | null
-  changed_at: string
+  changed_at: string | null
 }
 
 const FIELD_LABEL: Record<string, string> = {
@@ -76,27 +76,36 @@ export default function AppointmentStatusChanges({ date }: { date: string | null
   async function load() {
     setLoading(true)
     try {
-      const { data } = await withRetry(
-        () => supabase
+      const [{ data: appointments }, { data: changes }] = await Promise.all([
+        withRetry(() => supabase
+          .from('crm_appointments')
+          .select('id, appointment_date, appointment_time, doctor_service, patient_id, appointment_status, patients ( full_name )')
+          .eq('appointment_date', date)
+          .order('appointment_time'), 12000, 2),
+        withRetry(() => supabase
           .from('appointment_status_changes')
-          .select(`
-            id, appointment_id, appointment_date, appointment_time,
-            doctor_service, field_changed, old_value, new_value, changed_by, changed_at,
-            patients ( full_name )
-          `)
+          .select('id, appointment_id, appointment_date, appointment_time, doctor_service, field_changed, old_value, new_value, changed_by, changed_at, patients ( full_name )')
           .eq('appointment_date', date)
           .eq('field_changed', 'appointment_status')
           .order('changed_at', { ascending: false })
-          .limit(300),
-        12000,
-        2,
-      )
-      setRows(
-        (data || []).map((r: any) => ({
-          ...r,
-          patient_name: r.patients?.full_name ?? null,
-        }))
-      )
+          .limit(300), 12000, 2),
+      ])
+      const byAppointment = new Map<number, any[]>()
+      ;(changes || []).forEach((r: any) => {
+        const list = byAppointment.get(r.appointment_id) || []
+        list.push(r)
+        byAppointment.set(r.appointment_id, list)
+      })
+      const monitoringRows: StatusChange[] = []
+      ;(appointments || []).forEach((a: any) => {
+        const appointmentChanges = byAppointment.get(a.id) || []
+        if (appointmentChanges.length) {
+          appointmentChanges.forEach((r: any) => monitoringRows.push({ ...r, patient_name: r.patients?.full_name ?? a.patients?.full_name ?? null }))
+        } else {
+          monitoringRows.push({ id: -a.id, appointment_id: a.id, appointment_date: a.appointment_date, appointment_time: a.appointment_time, doctor_service: a.doctor_service, patient_name: a.patients?.full_name ?? null, field_changed: 'appointment_status', old_value: null, new_value: a.appointment_status, changed_by: null, changed_at: null })
+        }
+      })
+      setRows(monitoringRows)
     } catch (err) {
       console.error('[appt-status-changes] load failed', err)
     }
@@ -146,15 +155,15 @@ export default function AppointmentStatusChanges({ date }: { date: string | null
                   <td colSpan={9} className="py-6 text-center text-sm text-slate-400">No status changes recorded this month yet.</td>
                 </tr>
               ) : filtered.map(r => {
-                const timing = r.appointment_time
+                const timing = r.changed_at && r.appointment_time
                   ? timingLabel(r.changed_at, r.appointment_date, r.appointment_time)
                   : null
                 return (
                   <tr key={r.id} className="hover:bg-slate-50">
                     <td className="py-2 pr-4 whitespace-nowrap text-slate-600 text-xs">
-                      {new Date(r.changed_at).toLocaleString('en-GB', {
+                      {r.changed_at ? new Date(r.changed_at).toLocaleString('en-GB', {
                         day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                      })}
+                      }) : <span className="text-amber-600">Not updated</span>}
                     </td>
                     <td className="py-2 pr-4 whitespace-nowrap text-slate-700 text-xs">
                       {new Date(r.appointment_date + 'T00:00:00').toLocaleDateString('en-GB', {
