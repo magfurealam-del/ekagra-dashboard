@@ -731,17 +731,17 @@ function useDoctors() {
   const [options, setOptions] = useState<{ label: string; value: string }[]>([])
   useEffect(() => {
     const key = 'lead-intake:doctors:v1'
-    try {
-      const cached = JSON.parse(localStorage.getItem(key) || 'null')
-      if (Array.isArray(cached?.options)) setOptions(cached.options)
-    } catch { localStorage.removeItem(key) }
-
     const load = () => supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
       if (!data) return
       const next = data.map((d: any) => ({ label: d.name, value: d.name }))
       setOptions(next)
       localStorage.setItem(key, JSON.stringify({ options: next, cachedAt: Date.now() }))
     })
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || 'null')
+      if (Array.isArray(cached?.options)) setOptions(cached.options)
+      else load()
+    } catch { localStorage.removeItem(key); load() }
     const now = new Date()
     const nextSix = new Date(now)
     nextSix.setHours(6, 0, 0, 0)
