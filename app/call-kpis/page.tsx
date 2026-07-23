@@ -131,6 +131,7 @@ type CallLogRow = {
   invoice_match?: InvoiceMatch
   details: Record<string, string | number | null> | null
 }
+type AdAttribution = { facebookAdId: string | null; campaignName: string | null }
 
 function MiniCallCalendar({
   trend,
@@ -228,6 +229,8 @@ const DETAIL_FIELD_LABEL: Record<string, string> = {
   doctor_service: 'Doctor / Service',
   appointment_type: 'Appointment Type',
   attempt_number: 'Attempt #',
+  facebook_ad_id: 'Facebook Ad ID',
+  campaign_short_name: 'Campaign',
 }
 
 type SortKey = 'call_date' | 'patient_name' | 'direction' | 'source' | 'agent' | 'outcome'
@@ -239,6 +242,7 @@ export default function CallKpisPage() {
   const { start, end } = useMemo(() => rangeFor(rangeKey, customStart, customEnd), [rangeKey, customStart, customEnd])
 
   const [metrics, setMetrics] = useState<any | null>(null)
+  const [adAttribution, setAdAttribution] = useState<Record<string, AdAttribution>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null)
@@ -251,6 +255,23 @@ export default function CallKpisPage() {
   const [invoiceMatches, setInvoiceMatches] = useState<Record<number, InvoiceMatch | null>>({})
   const [invoiceLoading, setInvoiceLoading] = useState<number | null>(null)
   const selectedDate = rangeKey === 'custom' && customStart === customEnd ? customStart : null
+
+  async function loadAdAttribution(startDate: string, endDate: string) {
+    const key = `call-kpi-ad-attribution:${startDate}:${endDate}:v1`
+    try {
+      const cached = JSON.parse(localStorage.getItem(key) || 'null')
+      if (cached?.data) { setAdAttribution(cached.data); return }
+    } catch { localStorage.removeItem(key) }
+    const { data } = await supabase.from('crm_leads').select('patient_id, phone, meta_ad_id, campaign_name').gte('created_at', `${startDate}T00:00:00`).lt('created_at', `${endDate}T23:59:59.999`)
+    const next: Record<string, AdAttribution> = {}
+    ;(data || []).forEach((lead: any) => {
+      const value = { facebookAdId: lead.meta_ad_id || null, campaignName: lead.campaign_name || null }
+      if (lead.patient_id != null) next[`patient:${lead.patient_id}`] = value
+      if (lead.phone) next[`phone:${lead.phone}`] = value
+    })
+    localStorage.setItem(key, JSON.stringify({ data: next, cachedAt: Date.now() }))
+    setAdAttribution(next)
+  }
 
   // Outcome correction state (per-row index in current callLog)
   const [correctingRow, setCorrectingRow] = useState<number | null>(null)
@@ -294,6 +315,7 @@ export default function CallKpisPage() {
       setMetrics(kpiCache.data)
       setLastFetchedAt(kpiCache.fetchedAt)
       setLoading(false)
+      loadAdAttribution(start, end)
       return
     }
     setLoading(true)
@@ -310,6 +332,7 @@ export default function CallKpisPage() {
       kpiCache.fetchedAt = Date.now()
       setMetrics(data)
       setLastFetchedAt(kpiCache.fetchedAt)
+      loadAdAttribution(start, end)
     } catch (err) {
       setError('Could not load KPI data — please retry.')
     } finally {
@@ -326,6 +349,7 @@ export default function CallKpisPage() {
           setMetrics(kpiCache.data)
           setLastFetchedAt(kpiCache.fetchedAt)
           setLoading(false)
+          loadAdAttribution(start, end)
         }
         return
       }
@@ -344,6 +368,7 @@ export default function CallKpisPage() {
         kpiCache.fetchedAt = Date.now()
         setMetrics(data)
         setLastFetchedAt(kpiCache.fetchedAt)
+        loadAdAttribution(start, end)
       } catch (err) {
         if (!cancelled) setError('Could not load KPI data — please retry.')
       } finally {
@@ -423,8 +448,13 @@ export default function CallKpisPage() {
       return av.localeCompare(bv)
     })
     if (sortDir === 'desc') sorted.reverse()
-    return sorted
-  }, [metrics, directionFilter, search, sortKey, sortDir])
+    return sorted.map((row) => {
+      const attribution = (row.patient_id != null && adAttribution[`patient:${row.patient_id}`]) || (row.phone && adAttribution[`phone:${row.phone}`])
+      return attribution
+        ? { ...row, details: { ...(row.details || {}), facebook_ad_id: attribution.facebookAdId, campaign_short_name: attribution.campaignName } }
+        : row
+    })
+  }, [metrics, adAttribution, directionFilter, search, sortKey, sortDir])
 
   function SortHeader({ label, k }: { label: string; k: SortKey }) {
     return (
@@ -663,6 +693,8 @@ export default function CallKpisPage() {
                       <SortHeader label="Date" k="call_date" />
                       <SortHeader label="Direction" k="direction" />
                       <SortHeader label="Source" k="source" />
+                      <th className="text-left py-1 border border-slate-200 px-2">Facebook Ad ID</th>
+                      <th className="text-left py-1 border border-slate-200 px-2">Campaign</th>
                       <th className="text-left py-1 border border-slate-200 px-2">Lead Bucket</th>
                       <SortHeader label="Patient" k="patient_name" />
                       <th className="text-left py-1 border border-slate-200 px-2">Old/New</th>
@@ -701,6 +733,8 @@ export default function CallKpisPage() {
                                 {r.source || '—'}
                               </span>
                             </td>
+                            <td className="py-1.5 text-slate-600 whitespace-nowrap font-mono text-xs border border-slate-100 px-2">{r.details?.facebook_ad_id || 'â€”'}</td>
+                            <td className="py-1.5 text-slate-600 max-w-[140px] break-words border border-slate-100 px-2">{r.details?.campaign_short_name || r.details?.campaign || 'â€”'}</td>
                             <td className="py-1.5 border border-slate-100 px-2">
                               <span className="inline-block text-xs rounded-md px-2 py-0.5 leading-tight break-words bg-sky-50 text-sky-700 max-w-[130px]">
                                 {r.details?.lead_bucket || '—'}
