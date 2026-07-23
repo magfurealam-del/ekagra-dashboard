@@ -68,7 +68,7 @@ function timingLabel(changedAt: string, apptDate: string, apptTime: string | nul
   return { label: `${hrs}h after appt`, tone: 'text-rose-400' }
 }
 
-export default function AppointmentStatusChanges({ start, end }: { start: string; end: string }) {
+export default function AppointmentStatusChanges({ date }: { date: string | null }) {
   const [rows, setRows] = useState<StatusChange[]>([])
   const [loading, setLoading] = useState(true)
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -84,8 +84,7 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
             doctor_service, field_changed, old_value, new_value, changed_by, changed_at,
             patients ( full_name )
           `)
-          .gte('appointment_date', start)
-          .lte('appointment_date', end)
+          .eq('appointment_date', date)
           .eq('field_changed', 'appointment_status')
           .order('changed_at', { ascending: false })
           .limit(300),
@@ -109,7 +108,7 @@ export default function AppointmentStatusChanges({ start, end }: { start: string
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
     }
-  }, [start, end])
+  }, [date])
 
   const filtered = rows
 
