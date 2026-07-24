@@ -215,7 +215,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
         <h4 className="text-xs font-semibold text-slate-600 mb-1.5">Last Contact</h4>
         {lastReached ? (
           <div className="bg-amber-50 border border-amber-100 rounded-md p-2.5 text-xs text-slate-700 space-y-1">
-            <div><span className="font-medium">Last reached:</span> {lastReached.called_at || lastReached.scheduled_date || 'Date not recorded'} · {lastReached.assigned_agent || 'Agent not recorded'}</div>
+            <div><span className="font-medium">Last reached:</span> {lastReached.called_at || lastReached.relevant_date || 'Date not recorded'} · {lastReached.assigned_agent || 'Agent not recorded'}</div>
             <div><span className="font-medium">Outcome/reason:</span> {lastReached.outcome || lastReached.outcome_code || lastReached.status || 'Not recorded'}</div>
             <div><span className="font-medium">Comment:</span> {lastReached.notes || lastReached.attempt_notes || 'No comment recorded'}</div>
           </div>
@@ -279,7 +279,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
               <li key={h.attempt_id} className="border-b border-slate-100 pb-1.5 last:border-0">
                 <div className="flex justify-between">
                   <span>
-                    {h.scheduled_date} · {h.assigned_agent}
+                    {h.relevant_date} · {h.assigned_agent}
                   </span>
                   <span className="text-slate-500">{h.outcome || h.status}</span>
                 </div>

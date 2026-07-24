@@ -101,6 +101,7 @@ export default function LeadIntakePage() {
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
   const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
   const { profile } = useAuth()
+  const [refreshingReferenceData, setRefreshingReferenceData] = useState(false)
 
   // Attribution is now the actual logged-in user — the field is no longer an
   // editable picker (that let anyone log entries under any name); the server
@@ -112,6 +113,33 @@ export default function LeadIntakePage() {
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(''), 3500)
+  }
+
+  async function refreshReferenceData() {
+    setRefreshingReferenceData(true)
+    try {
+      localStorage.removeItem('lead-intake:doctors:v1')
+      Object.keys(localStorage).filter((key) => key.startsWith('dropdown-options:')).forEach((key) => localStorage.removeItem(key))
+      localStorage.removeItem(`meta-active-ads:v3:${new Date().toISOString().slice(0, 10)}`)
+      window.dispatchEvent(new Event('ekagra:refresh-reference-data'))
+      const now = new Date()
+      const iso = (d: Date) => d.toISOString().slice(0, 10)
+      const ranges = [
+        { start: iso(now), end: iso(now) },
+        { start: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)), end: iso(now) },
+        { start: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)), end: iso(now) },
+        { start: iso(new Date(now.getFullYear(), now.getMonth(), 1)), end: iso(now) },
+      ]
+      const results = await Promise.all(ranges.map((range) => supabase.rpc('refresh_dashboard_metric_snapshot', {
+        p_start_date: range.start, p_end_date: range.end,
+      })))
+      const failed = results.find((result) => result.error)
+      if (failed?.error) throw failed.error
+      showToast('Dashboard snapshot refreshed. Reloading…')
+      window.setTimeout(() => window.location.reload(), 250)
+    } finally {
+      setRefreshingReferenceData(false)
+    }
   }
 
   function set<K extends keyof typeof blankForm>(key: K, value: any) {
@@ -152,7 +180,7 @@ export default function LeadIntakePage() {
         .select('id')
         .eq('patient_id', patientId)
         .eq('status', 'open')
-        .lte('scheduled_date', todayDhaka)
+        .lte('relevant_date', todayDhaka)
         .limit(1),
     ])
     if (data) {
@@ -307,8 +335,16 @@ export default function LeadIntakePage() {
   return (
     <div className="space-y-4 pb-28">
       <div>
-        <h1 className="text-2xl font-semibold">Lead Intake & Appointment</h1>
-        <p className="text-sm text-slate-500">Fast patient intake, booking, and follow-up</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Lead Intake & Appointment</h1>
+            <p className="text-sm text-slate-500">Fast patient intake, booking, and follow-up</p>
+          </div>
+          <button type="button" onClick={refreshReferenceData} disabled={refreshingReferenceData}
+            className="border border-slate-300 px-3 py-2 rounded-md text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            {refreshingReferenceData ? 'Refreshing…' : 'Refresh reference data'}
+          </button>
+        </div>
       </div>
 
       {/* Section 1: Patient Lookup */}
@@ -743,7 +779,7 @@ function useDoctors() {
       else load()
     } catch { localStorage.removeItem(key); load() }
     const now = new Date()
-    const nextSix = new Date(now)
+    const nextSix = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
     nextSix.setHours(6, 0, 0, 0)
     if (nextSix <= now) nextSix.setDate(nextSix.getDate() + 1)
     const timer = window.setTimeout(load, nextSix.getTime() - now.getTime())

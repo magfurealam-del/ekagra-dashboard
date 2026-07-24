@@ -15,7 +15,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'funnel', label: 'Funnel & Follow-ups' },
   { key: 'revenue', label: 'Revenue' },
-  { key: 'sources', label: 'Sources & Patients' },
+  { key: 'sources', label: 'Marketing Attribution' },
   { key: 'quality', label: 'Data Quality' },
 ]
 
@@ -67,6 +67,7 @@ function money(n: number) {
 
 const adminCache: { key: string; data: any; prevData: any; fetchedAt: number } = { key: '', data: null, prevData: null, fetchedAt: 0 }
 const ADMIN_TTL_MS = 30 * 60 * 1000
+function snapshotKey(start: string, end: string) { return `${start}:${end}` }
 
 export default function AdminDashboardPage() {
   const router = useRouter()
@@ -104,27 +105,29 @@ export default function AdminDashboardPage() {
     setLoading(true)
     setError('')
     Promise.all([
-      supabase.rpc('get_admin_dashboard_metrics', { p_start_date: start, p_end_date: end }),
-      compare ? supabase.rpc('get_admin_dashboard_metrics', { p_start_date: prevRange.start, p_end_date: prevRange.end }) : Promise.resolve({ data: null, error: null }),
+      supabase.from('dashboard_metric_snapshots').select('metrics, refreshed_at').eq('snapshot_key', snapshotKey(start, end)).maybeSingle(),
+      compare ? supabase.from('dashboard_metric_snapshots').select('metrics').eq('snapshot_key', snapshotKey(prevRange.start, prevRange.end)).maybeSingle() : Promise.resolve({ data: null, error: null }),
     ]).then(([curr, prev]) => {
       if (cancelled) return
       if (curr.error) { setError(curr.error.message); setLoading(false); return }
+      if (!curr.data) { setError('No scheduled snapshot is available for this range yet. Use Refresh on the home page or wait for the 6:00 AM Bangladesh refresh.'); setLoading(false); return }
       adminCache.key = cacheKey
-      adminCache.data = curr.data
-      adminCache.prevData = prev.data
+      adminCache.data = curr.data.metrics
+      adminCache.prevData = prev.data?.metrics ?? null
       adminCache.fetchedAt = Date.now()
-      setMetrics(curr.data)
-      setPrevMetrics(prev.data)
+      setMetrics(curr.data.metrics)
+      setPrevMetrics(prev.data?.metrics ?? null)
       setLoading(false)
     })
     return () => { cancelled = true }
   }, [start, end, compare, prevRange.start, prevRange.end, isAdmin])
 
   async function reloadMetrics() {
-    const { data } = await supabase.rpc('get_admin_dashboard_metrics', { p_start_date: start, p_end_date: end })
-    if (data) {
+    const { data, error } = await supabase.rpc('refresh_dashboard_metric_snapshot', { p_start_date: start, p_end_date: end })
+    if (error) { setSyncMsg(error.message); return }
+    if (data?.metrics) {
       adminCache.key = ''  // invalidate so next mount re-fetches
-      setMetrics(data)
+      setMetrics(data.metrics)
     }
   }
 
@@ -321,8 +324,28 @@ export default function AdminDashboardPage() {
           )}
 
           {tab === 'sources' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Panel title="Lead Source" subtitle="Where patients come from — Facebook, referral, phone, walk-in">
+            <div className="space-y-4">
+              <Panel title="Marketing Attribution" subtitle="Canonical CRM source attribution, validated invoice revenue, and patient-linked evidence">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                    <div className="font-medium text-slate-700 mb-1">Lead source</div>
+                    <div className="text-slate-500">crm_leads → lead_attribution → patient_marketing_attribution</div>
+                    <div className="mt-2 text-slate-700">{metrics.validation?.attributed_leads ?? '—'} attributed leads</div>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                    <div className="font-medium text-slate-700 mb-1">Validated revenue</div>
+                    <div className="text-slate-500">crm_invoice_reconciliation → invoices → invoice_line_items</div>
+                    <div className="mt-2 text-slate-700">{metrics.validation?.approved_invoice_matches ?? '—'} approved invoice matches</div>
+                  </div>
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+                    <div className="font-medium text-amber-800 mb-1">Review boundary</div>
+                    <div className="text-amber-700">Needs-review and duplicate candidates are excluded from validated revenue.</div>
+                    <div className="mt-2 text-amber-800">{metrics.validation?.invoice_matches_needing_review ?? '—'} need review</div>
+                  </div>
+                </div>
+              </Panel>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Panel title="Lead Source" subtitle="Lead counts grouped from canonical source attribution; fallback is crm_leads.source">
                 <DonutChart
                   items={(metrics.by_source || []).map((s: any) => ({ label: s.source, count: s.count }))}
                 />
@@ -352,6 +375,7 @@ export default function AdminDashboardPage() {
                   booking_rate: a.booking_rate,
                 }))} />
               </Panel>
+              </div>
             </div>
           )}
 

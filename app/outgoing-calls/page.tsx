@@ -101,7 +101,7 @@ export default function OutgoingCallsPage() {
           supabase
             .from('outgoing_call_sheet_view')
             .select('*')
-            .lte('scheduled_date', date)
+            .lte('relevant_date', date)
             .eq('attempt_status', 'pending')
             .order('category_rank')
             .order('followup_number', { ascending: true })

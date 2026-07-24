@@ -8,6 +8,14 @@ if (!url || !key) {
 }
 
 export const supabase = createClient(url, key, {
+  global: {
+    fetch: (input, init = {}) => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 15000)
+      const signal = init.signal ?? controller.signal
+      return fetch(input, { ...init, signal }).finally(() => clearTimeout(timer))
+    },
+  },
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'ekagra-auth' },
   realtime: {
     // Send a heartbeat every 15 s so the server knows the connection is alive.
