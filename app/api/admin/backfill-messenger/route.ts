@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   // 1. Fetch one page of conversations
   const convUrl = new URL(`${GRAPH}/${page_id}/conversations`)
-  convUrl.searchParams.set('fields', 'id,participants,updated_time')
+  convUrl.searchParams.set('fields', 'id,participants,updated_time,tags')
   convUrl.searchParams.set('limit', '25')
   convUrl.searchParams.set('access_token', access_token)
   if (cursor) convUrl.searchParams.set('after', cursor)
@@ -64,6 +64,9 @@ export async function POST(req: NextRequest) {
 
     if (msgData.error || !Array.isArray(msgData.data)) continue
 
+    // Labels (Page Labels / tags) are on the conversation, shared by all messages in it
+    const labels: string[] = (conv.tags?.data ?? []).map((t: any) => t.name).filter(Boolean)
+
     const rows: Record<string, unknown>[] = []
 
     for (const msg of msgData.data) {
@@ -80,6 +83,7 @@ export async function POST(req: NextRequest) {
         adset_id:        null,
         referral_source: 'BACKFILL',
         referral_type:   null,
+        labels,
         raw_payload:     msg,
         received_at:     msg.created_time,
         processed:       false,
