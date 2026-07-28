@@ -33,3 +33,5 @@ create policy "admins can read messenger events"
 
 create policy "service role can update messenger events"
   on public.messenger_events for update to service_role using (true);
+
+grant insert, update, select on public.messenger_events to service_role;
