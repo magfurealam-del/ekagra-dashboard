@@ -53,6 +53,7 @@ async function insert(body: Record<string, unknown>) {
 
       const psid        = sender?.id ?? ''
       const messageText = message?.text ?? null
+      const messageMid  = (message as any)?.mid ?? null
 
       // Ad referral — present on the first message from a Click-to-Messenger ad
       const adId           = String(referral?.ad_id       ?? '') || null
@@ -64,6 +65,7 @@ async function insert(body: Record<string, unknown>) {
       if (!psid) continue
 
       rows.push({
+        meta_message_id: messageMid,
         psid,
         page_id:         pageId,
         message_text:    messageText,
