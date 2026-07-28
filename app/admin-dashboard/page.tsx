@@ -9,7 +9,7 @@ import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 import { KPICard, BarList, TrendChart, Panel, FunnelChart, DonutChart, GaugeMeter, AgentTable, DoctorTable } from '@/components/admin/DashboardCharts'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
-type Tab = 'overview' | 'funnel' | 'revenue' | 'sources' | 'quality'
+type Tab = 'overview' | 'funnel' | 'revenue' | 'sources' | 'quality' | 'ad_attribution'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
@@ -17,6 +17,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'revenue', label: 'Revenue' },
   { key: 'sources', label: 'Marketing Attribution' },
   { key: 'quality', label: 'Data Quality' },
+  { key: 'ad_attribution', label: 'Ad Attribution' },
 ]
 
 function toISO(d: Date) { return d.toISOString().slice(0, 10) }
@@ -91,6 +92,24 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
+
+  const [adRows, setAdRows] = useState<any[] | null>(null)
+  const [adLoading, setAdLoading] = useState(false)
+  const [adError, setAdError] = useState('')
+
+  useEffect(() => {
+    if (!isAdmin || tab !== 'ad_attribution') return
+    let cancelled = false
+    setAdLoading(true)
+    setAdError('')
+    supabase.rpc('get_ad_attribution_report', { p_start_date: start, p_end_date: end }).then(({ data, error }) => {
+      if (cancelled) return
+      if (error) { setAdError(error.message); setAdLoading(false); return }
+      setAdRows(Array.isArray(data) ? data : [])
+      setAdLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [tab, start, end, isAdmin])
 
   useEffect(() => {
     if (!isAdmin) return
@@ -462,6 +481,79 @@ export default function AdminDashboardPage() {
             </div>
           )}
         </>
+      )}
+
+      {tab === 'ad_attribution' && (
+        <div className="space-y-4">
+          <Panel
+            title="Facebook Ad Attribution"
+            subtitle="Leads, bookings, appointments, and revenue attributed to each ad via Messenger conversations — reconciled nightly"
+          >
+            {adError && <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-md p-3 mb-3">{adError}</div>}
+            {adLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map(i => <div key={i} className="h-8 bg-slate-100 rounded animate-pulse" />)}
+              </div>
+            ) : !adRows || adRows.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4 text-center">
+                No attributed ad data for this period. Attribution runs nightly via Messenger reconciliation.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
+                      <th className="pb-2 pr-4 font-medium">Campaign</th>
+                      <th className="pb-2 pr-4 font-medium">Ad</th>
+                      <th className="pb-2 pr-4 font-medium text-right">Leads</th>
+                      <th className="pb-2 pr-4 font-medium text-right">Booked</th>
+                      <th className="pb-2 pr-4 font-medium text-right">Appts</th>
+                      <th className="pb-2 pr-4 font-medium text-right">Completed</th>
+                      <th className="pb-2 font-medium text-right">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {adRows.map((row: any, i: number) => {
+                      const bookRate = row.leads > 0 ? Math.round((row.booked / row.leads) * 100) : 0
+                      const completeRate = row.appointments > 0 ? Math.round((row.completed / row.appointments) * 100) : 0
+                      return (
+                        <tr key={i} className="hover:bg-slate-50">
+                          <td className="py-2 pr-4 text-slate-700 max-w-[180px] truncate" title={row.campaign_name || row.campaign_id}>
+                            {row.campaign_name || row.campaign_id || '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-600 max-w-[200px] truncate" title={row.ad_name || row.ad_id}>
+                            {row.ad_name || row.ad_id || '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-right font-medium">{row.leads}</td>
+                          <td className="py-2 pr-4 text-right">
+                            <span className="font-medium">{row.booked}</span>
+                            <span className="text-slate-400 text-xs ml-1">({bookRate}%)</span>
+                          </td>
+                          <td className="py-2 pr-4 text-right">{row.appointments}</td>
+                          <td className="py-2 pr-4 text-right">
+                            <span className="font-medium text-emerald-600">{row.completed}</span>
+                            {row.appointments > 0 && <span className="text-slate-400 text-xs ml-1">({completeRate}%)</span>}
+                          </td>
+                          <td className="py-2 text-right font-medium text-emerald-700">{money(row.revenue)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 text-xs text-slate-500">
+                      <td colSpan={2} className="pt-2 pr-4">Totals</td>
+                      <td className="pt-2 pr-4 text-right font-medium text-slate-700">{adRows.reduce((s: number, r: any) => s + r.leads, 0)}</td>
+                      <td className="pt-2 pr-4 text-right font-medium text-slate-700">{adRows.reduce((s: number, r: any) => s + r.booked, 0)}</td>
+                      <td className="pt-2 pr-4 text-right font-medium text-slate-700">{adRows.reduce((s: number, r: any) => s + r.appointments, 0)}</td>
+                      <td className="pt-2 pr-4 text-right font-medium text-emerald-600">{adRows.reduce((s: number, r: any) => s + r.completed, 0)}</td>
+                      <td className="pt-2 text-right font-medium text-emerald-700">{money(adRows.reduce((s: number, r: any) => s + r.revenue, 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </Panel>
+        </div>
       )}
     </div>
   )
