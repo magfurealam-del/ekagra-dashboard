@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { after } from 'next/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 const VERIFY_TOKEN      = process.env.META_WEBHOOK_VERIFY_TOKEN
@@ -28,7 +29,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Return 200 immediately — Meta retries if you don't respond fast enough.
-  insert(body).catch((err) => console.error('[meta-webhook] insert error', err))
+  // `after` keeps the serverless function alive until the insert completes.
+  after(() => insert(body).catch((err) => console.error('[meta-webhook] insert error', err)))
   return new NextResponse('EVENT_RECEIVED', { status: 200 })
 }
 
