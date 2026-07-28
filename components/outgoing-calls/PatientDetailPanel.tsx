@@ -29,6 +29,17 @@ function ageFromDob(dob: string | null) {
   return Math.floor((Date.now() - new Date(dob).getTime()) / 3.15576e10)
 }
 
+function historyDate(attempt: Record<string, unknown>) {
+  const value = attempt.relevant_date || attempt.called_at || attempt.attempted_at || attempt.created_at
+  if (!value) return 'Date not recorded'
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value)
+
+  const parsed = new Date(String(value))
+  return Number.isNaN(parsed.getTime())
+    ? String(value)
+    : parsed.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 export default function PatientDetailPanel({ row }: { row: any | null }) {
   const [patient, setPatient] = useState<any | null>(null)
   const [visitSummary, setVisitSummary] = useState<any | null>(null)
@@ -278,7 +289,8 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
             {history.map((h) => (
               <li key={h.attempt_id} className="border-b border-slate-100 pb-1.5 last:border-0">
                 <div className="flex justify-between">
-                  <span>
+                  <span>{historyDate(h)} · {h.assigned_agent || 'Agent not recorded'}</span>
+                  <span className="hidden">
                     {h.relevant_date} · {h.assigned_agent}
                   </span>
                   <span className="text-slate-500">{h.outcome || h.status}</span>
