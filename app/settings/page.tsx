@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { withRetry, parallelFetch } from '@/lib/withTimeout'
 import { useAuth } from '@/lib/AuthContext'
+import MetaAdsEditor from '@/components/settings/MetaAdsEditor'
 
 const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[] }[] = [
   {
@@ -54,7 +55,12 @@ const ALL_CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-type Selection = { kind: 'dropdown'; category: string } | { kind: 'doctorSchedules' } | { kind: 'agentSchedules' } | { kind: 'auditLog' }
+type Selection =
+  | { kind: 'dropdown'; category: string }
+  | { kind: 'metaAds' }
+  | { kind: 'doctorSchedules' }
+  | { kind: 'agentSchedules' }
+  | { kind: 'auditLog' }
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -350,6 +356,14 @@ export default function SettingsPage() {
             </div>
           ))}
           <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase px-3 mb-1">Marketing</p>
+            <div className="space-y-0.5">
+              <SidebarButton active={selection.kind === 'metaAds'} onClick={() => setSelection({ kind: 'metaAds' })}>
+                Meta Ads
+              </SidebarButton>
+            </div>
+          </div>
+          <div>
             <p className="text-xs font-semibold text-slate-400 uppercase px-3 mb-1">Schedules</p>
             <div className="space-y-0.5">
               <SidebarButton active={selection.kind === 'doctorSchedules'} onClick={() => setSelection({ kind: 'doctorSchedules' })}>
@@ -397,6 +411,8 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {selection.kind === 'metaAds' && <MetaAdsEditor showToast={showToast} />}
 
           {selection.kind === 'doctorSchedules' && (
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
