@@ -71,6 +71,14 @@ function nullable(value: string) {
   return trimmed || null
 }
 
+// Both columns are NOT NULL in the database, so a blank value gets a
+// manual placeholder instead of blocking the save — there is no format
+// requirement on manual entries anymore (no live Meta API to validate against).
+function withPlaceholder(value: string, prefix: string) {
+  const trimmed = value.trim()
+  return trimmed || `manual-${prefix}-${Date.now()}`
+}
+
 export default function MetaAdsEditor({ showToast }: { showToast: (message: string) => void }) {
   const [ads, setAds] = useState<MetaAd[]>([])
   const [loading, setLoading] = useState(true)
@@ -148,29 +156,14 @@ export default function MetaAdsEditor({ showToast }: { showToast: (message: stri
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  function validateForm() {
-    if (!form.ad_account_id.trim()) return 'Ad account ID is required.'
-    if (!form.ad_id.trim()) return 'Ad ID is required.'
-    if (!/^\d+$/.test(form.ad_account_id.trim())) return 'Ad account ID must contain digits only.'
-    if (!/^\d+$/.test(form.ad_id.trim())) return 'Ad ID must contain digits only.'
-    if (form.campaign_id.trim() && !/^\d+$/.test(form.campaign_id.trim())) return 'Campaign ID must contain digits only.'
-    return ''
-  }
-
   async function saveAd() {
-    const validationError = validateForm()
-    if (validationError) {
-      showToast(validationError)
-      return
-    }
-
     setSaving(true)
     const payload = {
-      ad_account_id: form.ad_account_id.trim(),
+      ad_account_id: withPlaceholder(form.ad_account_id, 'account'),
       ad_account_name: nullable(form.ad_account_name),
       campaign_id: nullable(form.campaign_id),
       campaign_name: nullable(form.campaign_name),
-      ad_id: form.ad_id.trim(),
+      ad_id: withPlaceholder(form.ad_id, 'ad'),
       ad_name: nullable(form.ad_name),
       campaign_effective_status: form.campaign_effective_status,
       ad_effective_status: form.ad_effective_status,
@@ -272,16 +265,16 @@ export default function MetaAdsEditor({ showToast }: { showToast: (message: stri
           <div>
             <h3 className="font-medium text-slate-700">{adding ? 'Add manual Meta ad' : 'Edit Meta ad fields'}</h3>
             <p className="text-xs text-slate-500 mt-1">
-              IDs are validated as numeric Meta IDs. Spend fields remain read-only because they come from Meta reporting.
+              Any text is accepted — leave Ad account ID or Ad ID blank and a placeholder is generated automatically. Spend fields remain read-only because they come from Meta reporting.
             </p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Field label="Ad account ID" required value={form.ad_account_id} onChange={(value) => setField('ad_account_id', value)} />
+            <Field label="Ad account ID" value={form.ad_account_id} onChange={(value) => setField('ad_account_id', value)} />
             <Field label="Ad account name" value={form.ad_account_name} onChange={(value) => setField('ad_account_name', value)} />
             <Field label="Campaign ID" value={form.campaign_id} onChange={(value) => setField('campaign_id', value)} />
             <Field label="Campaign name" value={form.campaign_name} onChange={(value) => setField('campaign_name', value)} />
-            <Field label="Ad ID" required value={form.ad_id} onChange={(value) => setField('ad_id', value)} />
+            <Field label="Ad ID" value={form.ad_id} onChange={(value) => setField('ad_id', value)} />
             <Field label="Ad name" value={form.ad_name} onChange={(value) => setField('ad_name', value)} />
             <StatusField label="Campaign status" value={form.campaign_effective_status} onChange={(value) => setField('campaign_effective_status', value)} />
             <StatusField label="Ad status" value={form.ad_effective_status} onChange={(value) => setField('ad_effective_status', value)} />
@@ -379,18 +372,16 @@ export default function MetaAdsEditor({ showToast }: { showToast: (message: stri
 function Field({
   label,
   value,
-  required = false,
   onChange,
 }: {
   label: string
   value: string
-  required?: boolean
   onChange: (value: string) => void
 }) {
   return (
     <label className="space-y-1">
-      <span className="text-xs font-medium text-slate-600">{label}{required ? ' *' : ''}</span>
-      <input className="input w-full" value={value} required={required} onChange={(event) => onChange(event.target.value)} />
+      <span className="text-xs font-medium text-slate-600">{label}</span>
+      <input className="input w-full" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   )
 }
