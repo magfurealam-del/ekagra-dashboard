@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { withRetry, parallelFetch } from '@/lib/withTimeout'
 import { useAuth } from '@/lib/AuthContext'
-import MetaAdsEditor from '@/components/settings/MetaAdsEditor'
 import MetaAdOptionsEditor from '@/components/settings/MetaAdOptionsEditor'
 
 const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[] }[] = [
@@ -58,7 +57,6 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 
 type Selection =
   | { kind: 'dropdown'; category: string }
-  | { kind: 'metaAds' }
   | { kind: 'metaAdOptions' }
   | { kind: 'doctorSchedules' }
   | { kind: 'agentSchedules' }
@@ -360,9 +358,6 @@ export default function SettingsPage() {
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase px-3 mb-1">Marketing</p>
             <div className="space-y-0.5">
-              <SidebarButton active={selection.kind === 'metaAds'} onClick={() => setSelection({ kind: 'metaAds' })}>
-                Meta Ads
-              </SidebarButton>
               <SidebarButton active={selection.kind === 'metaAdOptions'} onClick={() => setSelection({ kind: 'metaAdOptions' })}>
                 Ad ID Options
               </SidebarButton>
@@ -416,8 +411,6 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
-
-          {selection.kind === 'metaAds' && <MetaAdsEditor showToast={showToast} />}
 
           {selection.kind === 'metaAdOptions' && <MetaAdOptionsEditor showToast={showToast} />}
 
