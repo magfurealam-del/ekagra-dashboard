@@ -19,13 +19,16 @@ function msUntilNextSixDhaka() {
   return Math.max(1000, next.getTime() - dhaka.getTime())
 }
 
-export function useMetaActiveAds() {
+// Reads the manually-maintained Ad ID list from public.meta_ad_options —
+// managed in Settings > Marketing > Ad ID Options, no connection to the
+// Meta Ads API or the meta_active_ads table.
+export function useMetaAdOptions() {
   const [options, setOptions] = useState<MetaAdOption[]>([])
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    const key = `meta-active-ads:v3:${windowKey()}`
+    const key = `meta-ad-options:v1:${windowKey()}`
 
     async function load() {
       try {
@@ -39,17 +42,19 @@ export function useMetaActiveAds() {
       }
 
       const { data, error } = await supabase
-        .from('meta_active_ads')
-        .select('ad_id')
-        .eq('is_current', true)
+        .from('meta_ad_options')
+        .select('ad_id, campaign_name')
         .order('ad_id')
 
       if (error) {
-        console.error('[meta-active-ads] failed to load public.meta_active_ads', error)
+        console.error('[meta-ad-options] failed to load public.meta_ad_options', error)
         return
       }
 
-      const next = (data || []).map((ad) => ({ value: ad.ad_id, label: ad.ad_id }))
+      const next = (data || []).map((row) => ({
+        value: row.ad_id,
+        label: row.campaign_name ? `${row.ad_id} — ${row.campaign_name}` : row.ad_id,
+      }))
       localStorage.setItem(key, JSON.stringify({ windowKey: windowKey(), options: next }))
       if (!cancelled) setOptions(next)
     }

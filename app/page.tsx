@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
-import { useMetaActiveAds } from '@/hooks/useMetaActiveAds'
+import { useMetaAdOptions } from '@/hooks/useMetaAdOptions'
 import { useAuth } from '@/lib/AuthContext'
 import {
   FOLLOWUP_QUEUE_OUTCOMES, CALLBACK_OUTCOMES, SUPPRESSED_OUTCOMES,
@@ -97,7 +97,7 @@ export default function LeadIntakePage() {
   const newOldStatusOpts = useDropdownOptions('intake_new_old_status')
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
   const noAppointmentReasonOpts = useDropdownOptions('intake_no_appointment_reason')
-  const metaAdOptions = useMetaActiveAds()
+  const metaAdOptions = useMetaAdOptions()
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
   const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
   const { profile } = useAuth()
@@ -470,7 +470,7 @@ export default function LeadIntakePage() {
               options={metaAdOptions}
               value={form.meta_ad_id}
               onChange={(v) => set('meta_ad_id', v)}
-              placeholder={metaAdOptions.length ? 'Select active ad' : 'No active ads loaded'}
+              placeholder={metaAdOptions.length ? 'Select ad ID' : 'No ad IDs added yet'}
             />
           </Field>
               <Field label="Doctor / referral name">
