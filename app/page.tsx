@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
@@ -767,15 +768,20 @@ function useDoctors() {
   const [options, setOptions] = useState<{ label: string; value: string }[]>([])
   useEffect(() => {
     const key = 'lead-intake:doctors:v1'
-    const load = () => supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
-      if (!data) return
+    const load = () => withRetry(
+      () => supabase.from('doctors').select('name').eq('is_active', true).order('name'),
+      12000, 2,
+    ).then(({ data }) => {
+      if (!data || data.length === 0) return
       const next = data.map((d: any) => ({ label: d.name, value: d.name }))
       setOptions(next)
       localStorage.setItem(key, JSON.stringify({ options: next, cachedAt: Date.now() }))
+    }).catch(() => {
+      // Leave any existing cached/state options in place; a later refresh will retry.
     })
     try {
       const cached = JSON.parse(localStorage.getItem(key) || 'null')
-      if (Array.isArray(cached?.options)) setOptions(cached.options)
+      if (Array.isArray(cached?.options) && cached.options.length > 0) setOptions(cached.options)
       else load()
     } catch { localStorage.removeItem(key); load() }
     const now = new Date()

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withTimeout'
 
 export type UserProfile = {
   id: string
@@ -44,11 +45,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loadProfile(userId: string) {
     if (profileUserId.current === userId && profile) return
     profileUserId.current = userId
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('id, full_name, email, role, is_active, must_change_password')
-      .eq('id', userId)
-      .single()
+    const { data, error } = await withRetry(
+      () => supabase
+        .from('user_profiles')
+        .select('id, full_name, email, role, is_active, must_change_password')
+        .eq('id', userId)
+        .single(),
+      12000, 2,
+    )
     if (error) {
       profileUserId.current = null
       setProfile(null)
@@ -58,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data, error }) => {
+    withRetry(() => supabase.auth.getSession(), 12000, 2).then(({ data, error }) => {
       if (error) {
         setSession(null)
         setProfile(null)
@@ -73,6 +77,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.replace('/login')
         }).finally(() => setLoading(false))
       } else setLoading(false)
+    }).catch(() => {
+      // Session lookup timed out/failed after retries — fall through to the
+      // logged-out state instead of leaving the app stuck on a loading screen.
+      setSession(null)
+      setProfile(null)
+      setLoading(false)
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
