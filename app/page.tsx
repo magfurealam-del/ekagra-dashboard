@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
+import DoctorDatePicker from '@/components/DoctorDatePicker'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { useMetaAdOptions } from '@/hooks/useMetaAdOptions'
 import { useAuth } from '@/lib/AuthContext'
@@ -101,6 +102,7 @@ export default function LeadIntakePage() {
   const metaAdOptions = useMetaAdOptions()
   const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
   const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
+  const doctorApptCount = useDoctorApptCount(form.doctor, form.appointment_date)
   const { profile } = useAuth()
   const [refreshingReferenceData, setRefreshingReferenceData] = useState(false)
 
@@ -555,7 +557,12 @@ export default function LeadIntakePage() {
                   <SearchableSelect options={branchOpts.options} value={form.branch} onChange={(v) => set('branch', v)} />
                 </Field>
                 <Field label="Appointment date *">
-                  <input type="date" className="input" value={form.appointment_date} onChange={(e) => set('appointment_date', e.target.value)} />
+                  <DoctorDatePicker doctorName={form.doctor} value={form.appointment_date} onChange={(v) => set('appointment_date', v)} />
+                  {form.doctor && form.appointment_date && doctorApptCount !== null && (
+                    <span className="text-xs text-slate-500">
+                      {doctorApptCount} appointment{doctorApptCount === 1 ? '' : 's'} already booked that day
+                    </span>
+                  )}
                 </Field>
                 <Field label="Appointment time *">
                   <SearchableSelect
@@ -741,6 +748,21 @@ function useDoctorSlots(doctorName: string, dateStr: string): { label: string; v
     }
     return slots
   }, [dateStr, schedule, override])
+}
+
+// Lets agents see how loaded a doctor's day already is before adding another
+// booking — a plain count, not filtered by service type or branch.
+function useDoctorApptCount(doctorName: string, dateStr: string): number | null {
+  const [count, setCount] = useState<number | null>(null)
+  useEffect(() => {
+    if (!doctorName || !dateStr) { setCount(null); return }
+    withRetry(
+      () => supabase.from('crm_appointments').select('id', { count: 'exact', head: true })
+        .eq('doctor_service', doctorName).eq('appointment_date', dateStr).neq('appointment_status', 'Cancelled'),
+      12000, 2,
+    ).then(({ count: c }) => setCount(c ?? 0)).catch(() => setCount(null))
+  }, [doctorName, dateStr])
+  return count
 }
 
 // Companion to useDoctorSlots — surfaces *why* slots are empty when it's a
