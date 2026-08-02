@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import DoctorDatePicker from '@/components/DoctorDatePicker'
 
 export default function RescheduleModal({
   appointment, onClose, onDone,
@@ -121,7 +122,11 @@ export default function RescheduleModal({
 
         <label className="block">
           <span className="block text-xs font-medium text-slate-500 mb-1">New date</span>
-          <input type="date" className="input w-full" value={newDate} onChange={(e) => { setNewDate(e.target.value); setNewTime('') }} />
+          <DoctorDatePicker
+            doctorName={appointment.doctor_service || ''}
+            value={newDate}
+            onChange={(v) => { setNewDate(v); setNewTime('') }}
+          />
         </label>
 
         <label className="block">
