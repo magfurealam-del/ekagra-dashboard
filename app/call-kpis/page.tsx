@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
+import { useVisibilityReload } from '@/hooks/useVisibilityReload'
 import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
 import { OUTCOMES } from '@/components/outgoing-calls/types'
@@ -341,43 +342,18 @@ export default function CallKpisPage() {
   }
 
   useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      const cacheKey = `${start}|${end}`
-      if (kpiCache.key === cacheKey && Date.now() - kpiCache.fetchedAt < CACHE_TTL_MS) {
-        if (!cancelled) {
-          setMetrics(kpiCache.data)
-          setLastFetchedAt(kpiCache.fetchedAt)
-          setLoading(false)
-          loadAdAttribution(start, end)
-        }
-        return
-      }
-      setLoading(true)
-      setError('')
-      try {
-        const { data, error } = await withRetry(
-          () => supabase.rpc('get_call_center_kpis_fast', { p_start_date: start, p_end_date: end }),
-          8000,
-          0,
-        )
-        if (cancelled) return
-        if (error) { setError('Could not load KPI data — please retry.'); setLoading(false); return }
-        kpiCache.key = cacheKey
-        kpiCache.data = data
-        kpiCache.fetchedAt = Date.now()
-        setMetrics(data)
-        setLastFetchedAt(kpiCache.fetchedAt)
-        loadAdAttribution(start, end)
-      } catch (err) {
-        if (!cancelled) setError('Could not load KPI data — please retry.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [start, end])
+    fetchKpis(start, end)
+    // fetchKpis reads kpiCache first and only hits the network when stale,
+    // so this is safe to call on every start/end change without a separate
+    // "cancelled" guard duplicating the logic below.
+  }, [start, end]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when the tab regains focus. Backgrounded tabs can have their
+  // Supabase WebSocket dropped or an in-flight fetch silently killed by the
+  // browser, which used to leave the page stuck showing stale data or a
+  // timeout error until a manual refresh. fetchKpis() itself checks
+  // kpiCache freshness first, so this is a no-op if data is still fresh.
+  useVisibilityReload(() => fetchKpis(start, end))
 
 
   async function expandCallRow(index: number, row: CallLogRow) {
