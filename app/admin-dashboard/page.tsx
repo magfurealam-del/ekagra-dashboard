@@ -40,6 +40,15 @@ interface AgentDetailRow {
   conversionRate: number | null; confirmRate: number | null; reachedRate: number | null; outboundAttendedRate: number | null
 }
 
+interface SourcePerfRow {
+  source: string
+  leads: number; new_leads: number; old_leads: number
+  appointments_set: number; appointments_eligible: number; no_shows: number
+  revenue_new: number; revenue_followup: number
+  trend: { date: string; leads: number; booked: number }[]
+  attendedRate: number | null; newShare: number | null
+}
+
 function toISO(d: Date) { return d.toISOString().slice(0, 10) }
 function daysBetween(a: string, b: string) { return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1 }
 
@@ -145,6 +154,24 @@ export default function AdminDashboardPage() {
       if (error) { setAgentPerfError(error.message); setAgentPerfLoading(false); return }
       setAgentPerf(data)
       setAgentPerfLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [tab, start, end, isAdmin])
+
+  const [sourcePerf, setSourcePerf] = useState<any | null>(null)
+  const [sourcePerfLoading, setSourcePerfLoading] = useState(false)
+  const [sourcePerfError, setSourcePerfError] = useState('')
+
+  useEffect(() => {
+    if (!isAdmin || tab !== 'channels') return
+    let cancelled = false
+    setSourcePerfLoading(true)
+    setSourcePerfError('')
+    supabase.rpc('get_admin_source_performance', { p_start_date: start, p_end_date: end }).then(({ data, error }) => {
+      if (cancelled) return
+      if (error) { setSourcePerfError(error.message); setSourcePerfLoading(false); return }
+      setSourcePerf(data)
+      setSourcePerfLoading(false)
     })
     return () => { cancelled = true }
   }, [tab, start, end, isAdmin])
@@ -409,7 +436,10 @@ export default function AdminDashboardPage() {
                     />
                   </Panel>
                   <Panel title="Revenue by Agent" subtitle="New patient revenue (the effort signal) vs. follow-up revenue, shown side by side">
-                    <RevenueCompareChart rows={rows.map(a => ({ agent: a.agent, revenue_new: a.revenue_new, revenue_followup: a.revenue_followup }))} money={money} />
+                    <DualBarChart
+                      rows={rows.map(a => ({ name: a.agent, primary: a.revenue_new, secondary: a.revenue_followup }))}
+                      primaryLabel="New patient" secondaryLabel="Follow-up" formatter={money}
+                    />
                   </Panel>
                 </div>
 
@@ -431,64 +461,93 @@ export default function AdminDashboardPage() {
           })()}
 
           {tab === 'channels' && (() => {
-            const sourceRows = (metrics.by_source || []) as { source: string; count: number }[]
-            const revenueRows = (metrics.revenue_by_source || []) as { source: string; revenue: number }[]
-            const revenueBySource = new Map(revenueRows.map(r => [r.source, r.revenue]))
-            const totalSourceLeads = sourceRows.reduce((s, r) => s + r.count, 0)
-            const combined = sourceRows
-              .map(r => ({ source: r.source, leads: r.count, revenue: revenueBySource.get(r.source) || 0 }))
-              .sort((a, b) => b.leads - a.leads)
+            if (sourcePerfLoading) {
+              return (
+                <div className="space-y-2">
+                  {[0, 1, 2, 3].map(i => <div key={i} className="h-20 bg-slate-100 rounded-xl animate-pulse" />)}
+                </div>
+              )
+            }
+            if (sourcePerfError) {
+              return <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-md p-3">{sourcePerfError}</div>
+            }
+            const sourceRows = ((sourcePerf?.sources || []) as SourcePerfRow[]).map(s => {
+              const attendedRate = s.appointments_eligible > 0
+                ? Math.round((1 - s.no_shows / s.appointments_eligible) * 1000) / 10
+                : null
+              const newShare = s.leads > 0 ? Math.round((s.new_leads / s.leads) * 100) : null
+              return { ...s, attendedRate, newShare }
+            })
+            const totalLeads = sourceRows.reduce((s, r) => s + r.leads, 0)
+            const totalNew = sourceRows.reduce((s, r) => s + r.new_leads, 0)
+            const totalOld = sourceRows.reduce((s, r) => s + r.old_leads, 0)
+            const totalNewRevenue = sourceRows.reduce((s, r) => s + r.revenue_new, 0)
+            const byLeads = [...sourceRows].sort((a, b) => b.leads - a.leads)
+            const byAttended = [...sourceRows].filter(s => s.attendedRate != null).sort((a, b) => (b.attendedRate ?? 0) - (a.attendedRate ?? 0))
             return (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500">
+                  Source identity: <span className="font-medium text-slate-700">crm_leads → lead_attribution.source_category</span>,
+                  falling back to <span className="font-medium text-slate-700">crm_leads.source</span> when unattributed.
+                  Revenue: <span className="font-medium text-slate-700">crm_invoice_reconciliation</span> (matched/approved only) →{' '}
+                  <span className="font-medium text-slate-700">invoices</span>. Attendance: invoice-validated within ±7 days of the appointment,
+                  same rule used across the whole dashboard.
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <KPICard label="Active Sources" value={sourceRows.length} tone="text-slate-800"
                     tooltip="Distinct lead sources with at least one lead this period." />
-                  <KPICard label="Top Source" value={combined[0]?.source ?? '—'} tone="text-teal-600"
-                    sub={combined[0] ? `${combined[0].leads} leads` : undefined}
+                  <KPICard label="Top Source" value={byLeads[0]?.source ?? '—'} tone="text-teal-600"
+                    sub={byLeads[0] ? `${byLeads[0].leads} leads` : undefined}
                     tooltip="Source with the most leads this period." />
-                  <KPICard label="Total Leads" value={totalSourceLeads} tone="text-indigo-600"
-                    tooltip="Sum of leads across all sources this period." />
+                  <KPICard label="New vs Old Leads" value={`${totalNew} / ${totalOld}`} tone="text-indigo-600"
+                    sub={totalLeads > 0 ? `${Math.round((totalNew / totalLeads) * 100)}% new` : undefined}
+                    tooltip="New-patient leads vs returning/Old-patient leads, across all sources this period." />
+                  <KPICard label="New Patient Revenue" value={money(totalNewRevenue)} tone="text-emerald-600"
+                    tooltip="Invoice revenue (via crm_invoice_reconciliation) attributed to NEW patients whose lead traces to a source this period." />
                 </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <Panel title="Lead Source Distribution" subtitle="Share of leads by source this period">
-                    <DonutChart items={sourceRows.map(s => ({ label: s.source, count: s.count }))} />
+                    <DonutChart items={sourceRows.map(s => ({ label: s.source, count: s.leads }))} />
                   </Panel>
-                  <Panel title="Revenue by Source" subtitle="Attributed via matched invoices, not every lead has a matched invoice yet">
-                    <BarList
-                      items={revenueRows.map(s => ({ label: s.source, count: Math.round(s.revenue) }))}
-                      colorFor={(label) => SOURCE_COLORS[label] || 'bg-slate-400'}
-                      unit="৳"
+                  <Panel title="New vs Old Leads by Source" subtitle="New-patient leads (the acquisition signal) vs returning/Old, per source">
+                    <DualBarChart
+                      rows={sourceRows.map(s => ({ name: s.source, primary: s.new_leads, secondary: s.old_leads }))}
+                      primaryLabel="New patient" secondaryLabel="Old / returning"
                     />
                   </Panel>
                 </div>
-                <Panel title="Source Performance" subtitle="Leads and attributed revenue per source, sorted by volume">
-                  {combined.length === 0 ? (
-                    <p className="text-sm text-slate-400">No source data for this period.</p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <Panel title="Attended Rate by Source" subtitle="Invoice-validated — share of that source's past appointments that were actually attended">
+                    <StatusMeterList
+                      items={byAttended.map(s => ({ label: s.source, value: s.attendedRate ?? 0, sub: `${s.appointments_eligible - s.no_shows}/${s.appointments_eligible}` }))}
+                      thresholds={{ warn: 80, critical: 60 }}
+                      higherIsBetter
+                    />
+                  </Panel>
+                  <Panel title="Revenue by Source" subtitle="New patient revenue (the acquisition signal) vs follow-up, per source">
+                    <DualBarChart
+                      rows={sourceRows.map(s => ({ name: s.source, primary: s.revenue_new, secondary: s.revenue_followup }))}
+                      primaryLabel="New patient" secondaryLabel="Follow-up" formatter={money}
+                    />
+                  </Panel>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-1">Source Detail</h3>
+                  <p className="text-xs text-slate-400 mb-3">Full funnel per source — leads in, appointments set, and who actually showed up.</p>
+                  {sourceRows.length === 0 ? (
+                    <p className="text-sm text-slate-400">No source activity this period.</p>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
-                          <th className="text-left pb-2 font-medium">Source</th>
-                          <th className="text-right pb-2 font-medium pr-2">Leads</th>
-                          <th className="text-right pb-2 font-medium pr-2">Revenue</th>
-                          <th className="text-right pb-2 font-medium">Revenue / Lead</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {combined.map(r => (
-                          <tr key={r.source} className="hover:bg-slate-50">
-                            <td className="py-2 font-medium text-slate-700">{r.source}</td>
-                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{r.leads}</td>
-                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{money(r.revenue)}</td>
-                            <td className="py-2 text-right text-slate-500 tabular-nums">
-                              {r.leads > 0 ? money(r.revenue / r.leads) : '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {byLeads.map((s, i) => (
+                        <SourceDetailCard key={s.source} s={s} rank={i} money={money} />
+                      ))}
+                    </div>
                   )}
-                </Panel>
+                </div>
               </div>
             )
           })()}
@@ -761,10 +820,16 @@ export default function AdminDashboardPage() {
 
 // ── StatusMeterList — a labeled row of status-colored meters (good/warn/critical) ──
 function StatusMeterList({
-  items, thresholds,
-}: { items: { label: string; value: number; sub?: string }[]; thresholds: { warn: number; critical: number } }) {
+  items, thresholds, higherIsBetter = false,
+}: {
+  items: { label: string; value: number; sub?: string }[]
+  thresholds: { warn: number; critical: number }
+  higherIsBetter?: boolean
+}) {
   if (items.length === 0) return <p className="text-sm text-slate-400">No eligible data for this period.</p>
-  const statusFor = (v: number) => v >= thresholds.critical ? 'critical' : v >= thresholds.warn ? 'warn' : 'good'
+  const statusFor = (v: number) => higherIsBetter
+    ? (v <= thresholds.critical ? 'critical' : v <= thresholds.warn ? 'warn' : 'good')
+    : (v >= thresholds.critical ? 'critical' : v >= thresholds.warn ? 'warn' : 'good')
   const barColor = { good: 'bg-emerald-500', warn: 'bg-amber-500', critical: 'bg-rose-500' }
   const textColor = { good: 'text-emerald-600', warn: 'text-amber-600', critical: 'text-rose-600' }
   return (
@@ -794,32 +859,45 @@ function StatusMeterList({
   )
 }
 
-// ── RevenueCompareChart — New (emphasis) vs Follow-up (de-emphasized) revenue, per agent ──
-function RevenueCompareChart({
-  rows, money,
-}: { rows: { agent: string; revenue_new: number; revenue_followup: number }[]; money: (n: number) => string }) {
-  if (rows.length === 0) return <p className="text-sm text-slate-400">No revenue data for this period.</p>
-  const max = Math.max(1, ...rows.map(r => Math.max(r.revenue_new, r.revenue_followup)))
+// ── DualBarChart — emphasis form: a primary metric (bold color) against a
+// de-emphasized secondary one, per row. Used for New vs Follow-up revenue
+// and New vs Old leads - anywhere one number is the point and the other is
+// context. ──
+function DualBarChart({
+  rows, primaryLabel, secondaryLabel, primaryColor = 'bg-emerald-500', primaryText = 'text-emerald-700',
+  formatter = (n: number) => String(n), sortDesc = true,
+}: {
+  rows: { name: string; primary: number; secondary: number }[]
+  primaryLabel: string
+  secondaryLabel: string
+  primaryColor?: string
+  primaryText?: string
+  formatter?: (n: number) => string
+  sortDesc?: boolean
+}) {
+  if (rows.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  const max = Math.max(1, ...rows.map(r => Math.max(r.primary, r.secondary)))
+  const sorted = sortDesc ? [...rows].sort((a, b) => b.primary - a.primary) : rows
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 text-[10px] text-slate-400">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />New patient</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Follow-up</span>
+        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${primaryColor}`} />{primaryLabel}</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />{secondaryLabel}</span>
       </div>
-      {[...rows].sort((a, b) => b.revenue_new - a.revenue_new).map(r => (
-        <div key={r.agent}>
-          <div className="text-xs font-medium text-slate-700 mb-1">{r.agent}</div>
+      {sorted.map(r => (
+        <div key={r.name}>
+          <div className="text-xs font-medium text-slate-700 mb-1">{r.name}</div>
           <div className="flex items-center gap-2 mb-1">
             <div className="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(r.revenue_new / max) * 100}%` }} />
+              <div className={`h-full rounded-full ${primaryColor}`} style={{ width: `${(r.primary / max) * 100}%` }} />
             </div>
-            <div className="w-24 text-right text-xs font-semibold text-emerald-700 tabular-nums">{money(r.revenue_new)}</div>
+            <div className={`w-24 text-right text-xs font-semibold tabular-nums ${primaryText}`}>{formatter(r.primary)}</div>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-slate-300 rounded-full" style={{ width: `${(r.revenue_followup / max) * 100}%` }} />
+              <div className="h-full bg-slate-300 rounded-full" style={{ width: `${(r.secondary / max) * 100}%` }} />
             </div>
-            <div className="w-24 text-right text-xs text-slate-500 tabular-nums">{money(r.revenue_followup)}</div>
+            <div className="w-24 text-right text-xs text-slate-500 tabular-nums">{formatter(r.secondary)}</div>
           </div>
         </div>
       ))}
@@ -913,6 +991,69 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
             <span className="ml-auto text-slate-300">hover a day →</span>
           </div>
           <AgentTrendChart trend={a.trend} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── SourceDetailCard — one visual box per source: full funnel (leads -> set
+// -> attended), New/Old composition, and revenue split. ──
+function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number | undefined; money: (n: number) => string }) {
+  const attended = s.appointments_eligible - s.no_shows
+  const noShowRate = s.appointments_eligible > 0 ? Math.round((s.no_shows / s.appointments_eligible) * 1000) / 10 : null
+  const noShowTone = (noShowRate ?? 0) >= 40 ? 'bg-rose-50 text-rose-700' : (noShowRate ?? 0) >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {rank === 0 && <span title="Top source by volume this period">🏆</span>}
+          <h3 className="font-semibold text-slate-800">{s.source}</h3>
+        </div>
+        <span className="text-xs font-bold text-indigo-600 tabular-nums">{s.newShare != null ? `${s.newShare}%` : '—'} new</span>
+      </div>
+
+      <FunnelChart steps={[
+        { label: 'Leads', count: s.leads, hint: 'created this period' },
+        { label: 'Appointments Set', count: s.appointments_set, hint: 'appointments dated this period' },
+        { label: 'Attended', count: attended, hint: 'invoice-validated show-up' },
+      ]} />
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-indigo-50 rounded-lg py-2 px-1">
+          <div className="text-[10px] text-indigo-700 font-medium">New Leads</div>
+          <div className="text-sm font-bold text-indigo-700 tabular-nums">{s.new_leads}</div>
+        </div>
+        <div className="bg-slate-50 rounded-lg py-2 px-1">
+          <div className="text-[10px] text-slate-500 font-medium">Old Leads</div>
+          <div className="text-sm font-bold text-slate-600 tabular-nums">{s.old_leads}</div>
+        </div>
+        <div className={`rounded-lg py-2 px-1 ${noShowTone}`}>
+          <div className="text-[10px] font-medium">No-show Rate</div>
+          <div className="text-sm font-bold tabular-nums">{noShowRate != null ? `${noShowRate}%` : '—'}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-center">
+        <div>
+          <div className="text-[10px] text-slate-400">New Patient Revenue</div>
+          <div className="text-xs font-semibold text-emerald-700 tabular-nums">{money(s.revenue_new)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] text-slate-400">Follow-up Revenue</div>
+          <div className="text-xs font-semibold text-slate-600 tabular-nums">{money(s.revenue_followup)}</div>
+        </div>
+      </div>
+
+      {s.trend.length > 0 && (
+        <div className="pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-3 text-[10px] text-slate-400 mb-1">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-slate-300 inline-block" />Leads</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-teal-600 inline-block" />Appts</span>
+            <span className="ml-auto text-slate-300">hover a day →</span>
+          </div>
+          <AgentTrendChart trend={s.trend} />
         </div>
       )}
     </div>
