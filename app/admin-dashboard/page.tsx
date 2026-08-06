@@ -22,6 +22,24 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'ad_attribution', label: 'Ad Attribution' },
 ]
 
+// Fixed categorical color per channel, used consistently across every chart
+// on the Agents tab so "outbound" is always the same color everywhere.
+const CHANNEL_COLORS = { incoming: '#0d9488', outgoing: '#6366f1', outbound: '#f59e0b', confirmation: '#0ea5e9' }
+
+interface AgentDetailRow {
+  agent: string
+  incoming: number; incoming_booked: number
+  outgoing_leads: number; outgoing_leads_booked: number
+  outbound: number; outbound_reached: number; outbound_booked: number
+  outbound_appointments_set: number; outbound_appointments_eligible: number; outbound_appointments_attended: number
+  confirmation: number; confirmation_confirmed: number
+  appointments_set: number; no_shows: number; no_show_rate: number | null
+  revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
+  trend: { date: string; leads: number; booked: number }[]
+  bookableCalls: number; appointmentsSet: number
+  conversionRate: number | null; confirmRate: number | null; reachedRate: number | null; outboundAttendedRate: number | null
+}
+
 function toISO(d: Date) { return d.toISOString().slice(0, 10) }
 function daysBetween(a: string, b: string) { return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1 }
 
@@ -358,10 +376,7 @@ export default function AdminDashboardPage() {
             const byConversion = [...rows].sort((a, b) => (b.conversionRate ?? 0) - (a.conversionRate ?? 0))
             const byVolume = [...rows].sort((a, b) => b.bookableCalls - a.bookableCalls)
             const byNoShow = [...rows].filter(a => a.no_show_rate != null).sort((a, b) => (a.no_show_rate ?? 0) - (b.no_show_rate ?? 0))
-            const pctCell = (set: number, total: number) => {
-              const rate = total > 0 ? Math.round((set / total) * 100) : null
-              return `${set}/${total}${rate != null ? ` (${rate}%)` : ''}`
-            }
+            const byAgentRank = new Map(byConversion.map((a, i) => [a.agent, i]))
             return (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -386,135 +401,31 @@ export default function AdminDashboardPage() {
                   </Panel>
                 </div>
 
-                <Panel title="Agent Breakdown — Incoming / Outgoing / Outbound" subtitle="Appointments set out of calls handled, per channel — not blended into one number">
-                  {rows.length === 0 ? <p className="text-sm text-slate-400">No agent activity this period.</p> : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
-                            <th className="text-left pb-2 font-medium">Agent</th>
-                            <th className="text-right pb-2 font-medium pr-2">Incoming Set/Total</th>
-                            <th className="text-right pb-2 font-medium pr-2">Outgoing Follow-up Set/Total</th>
-                            <th className="text-right pb-2 font-medium pr-2">Outbound Set/Total</th>
-                            <th className="text-right pb-2 font-medium">Confirmation Confirmed/Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {rows.map(a => (
-                            <tr key={a.agent} className="hover:bg-slate-50">
-                              <td className="py-2 font-medium text-slate-700 whitespace-nowrap">{a.agent}</td>
-                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.incoming_booked, a.incoming)}</td>
-                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.outgoing_leads_booked, a.outgoing_leads)}</td>
-                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.outbound_booked, a.outbound)}</td>
-                              <td className="py-2 text-right text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.confirmation_confirmed, a.confirmation)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </Panel>
-
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <Panel title="No-Show Rate by Agent" subtitle="Invoice-validated — share of that agent's past appointments with no matching invoice">
-                    {byNoShow.length === 0 ? <p className="text-sm text-slate-400">No eligible appointments this period.</p> : (
-                      <div className="space-y-2">
-                        {byNoShow.map(a => {
-                          const rate = a.no_show_rate ?? 0
-                          const color = rate > 40 ? 'text-rose-600' : rate > 20 ? 'text-amber-600' : 'text-emerald-600'
-                          const barColor = rate > 40 ? 'bg-rose-500' : rate > 20 ? 'bg-amber-500' : 'bg-emerald-500'
-                          return (
-                            <div key={a.agent}>
-                              <div className="flex items-center justify-between text-xs mb-1">
-                                <span className="font-medium text-slate-700">{a.agent}</span>
-                                <span className={`font-bold tabular-nums ${color}`}>{rate}% <span className="font-normal text-slate-400">({a.no_shows}/{a.appointments_set})</span></span>
-                              </div>
-                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, rate)}%` }} />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                    <StatusMeterList
+                      items={byNoShow.map(a => ({ label: a.agent, value: a.no_show_rate ?? 0, sub: `${a.no_shows}/${a.appointments_set}` }))}
+                      thresholds={{ warn: 20, critical: 40 }}
+                    />
                   </Panel>
-                  <Panel title="New Patient Revenue by Agent" subtitle="Matched-invoice revenue from NEW patients only — the effort signal we care about">
-                    <BarList items={[...rows].sort((a, b) => b.revenue_new - a.revenue_new).map(a => ({ label: a.agent, count: Math.round(a.revenue_new) }))} unit="৳" />
+                  <Panel title="Revenue by Agent" subtitle="New patient revenue (the effort signal) vs. follow-up revenue, shown side by side">
+                    <RevenueCompareChart rows={rows.map(a => ({ agent: a.agent, revenue_new: a.revenue_new, revenue_followup: a.revenue_followup }))} money={money} />
                   </Panel>
                 </div>
 
-                <Panel title="Follow-up Patient Revenue by Agent" subtitle="Shown separately — reflects earlier acquisition effort, not this period's calls">
-                  <BarList items={[...rows].sort((a, b) => b.revenue_followup - a.revenue_followup).map(a => ({ label: a.agent, count: Math.round(a.revenue_followup) }))} unit="৳" />
-                </Panel>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Panel title="Confirmation Call Performance" subtitle="Night-before / morning-of confirmation calls, per agent">
-                    {rows.filter(a => a.confirmation > 0).length === 0 ? <p className="text-sm text-slate-400">No confirmation calls this period.</p> : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
-                            <th className="text-left pb-2 font-medium">Agent</th>
-                            <th className="text-right pb-2 font-medium pr-2">Calls</th>
-                            <th className="text-right pb-2 font-medium">Confirm Rate</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {rows.filter(a => a.confirmation > 0).sort((a, b) => (b.confirmRate ?? 0) - (a.confirmRate ?? 0)).map(a => (
-                            <tr key={a.agent} className="hover:bg-slate-50">
-                              <td className="py-2 font-medium text-slate-700">{a.agent}</td>
-                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.confirmation}</td>
-                              <td className="py-2 text-right text-slate-500 tabular-nums">{a.confirmRate}%</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </Panel>
-                  <Panel title="Outbound Dial Efficiency" subtitle="Reached rate, appointments set and actually attended, dials per appointment">
-                    {rows.filter(a => a.outbound > 0).length === 0 ? <p className="text-sm text-slate-400">No outbound calls this period.</p> : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
-                              <th className="text-left pb-2 font-medium">Agent</th>
-                              <th className="text-right pb-2 font-medium pr-2">Reached</th>
-                              <th className="text-right pb-2 font-medium pr-2">Appts Set</th>
-                              <th className="text-right pb-2 font-medium pr-2">Attended</th>
-                              <th className="text-right pb-2 font-medium">Dials / Appt</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-50">
-                            {rows.filter(a => a.outbound > 0).sort((a, b) => (b.reachedRate ?? 0) - (a.reachedRate ?? 0)).map(a => (
-                              <tr key={a.agent} className="hover:bg-slate-50">
-                                <td className="py-2 font-medium text-slate-700 whitespace-nowrap">{a.agent}</td>
-                                <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.reachedRate}%</td>
-                                <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.outbound_appointments_set}</td>
-                                <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">
-                                  {a.outboundAttendedRate != null ? `${a.outboundAttendedRate}%` : '—'}
-                                  <span className="text-slate-400"> ({a.outbound_appointments_attended}/{a.outbound_appointments_eligible})</span>
-                                </td>
-                                <td className="py-2 text-right text-slate-500 tabular-nums">{a.attempts_per_booking ?? '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-
-                <Panel title="Daily Trend by Agent" subtitle="Grey = leads handled, teal = appointments set — hover a point for exact numbers">
-                  {rows.filter(a => a.trend.length > 0).length === 0 ? <p className="text-sm text-slate-400">Not enough days in range for a trend.</p> : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {rows.filter(a => a.trend.length > 0).map(a => (
-                        <div key={a.agent}>
-                          <div className="text-xs font-medium text-slate-600 mb-1">{a.agent}</div>
-                          <AgentTrendChart trend={a.trend} />
-                        </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-1">Agent Detail</h3>
+                  <p className="text-xs text-slate-400 mb-3">Every metric broken out per agent — not blended into one number.</p>
+                  {rows.length === 0 ? (
+                    <p className="text-sm text-slate-400">No agent activity this period.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {rows.map(a => (
+                        <AgentDetailCard key={a.agent} a={a} rank={byAgentRank.get(a.agent)} money={money} />
                       ))}
                     </div>
                   )}
-                </Panel>
+                </div>
               </div>
             )
           })()}
@@ -842,6 +753,166 @@ export default function AdminDashboardPage() {
               </div>
             )}
           </Panel>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── StatusMeterList — a labeled row of status-colored meters (good/warn/critical) ──
+function StatusMeterList({
+  items, thresholds,
+}: { items: { label: string; value: number; sub?: string }[]; thresholds: { warn: number; critical: number } }) {
+  if (items.length === 0) return <p className="text-sm text-slate-400">No eligible data for this period.</p>
+  const statusFor = (v: number) => v >= thresholds.critical ? 'critical' : v >= thresholds.warn ? 'warn' : 'good'
+  const barColor = { good: 'bg-emerald-500', warn: 'bg-amber-500', critical: 'bg-rose-500' }
+  const textColor = { good: 'text-emerald-600', warn: 'text-amber-600', critical: 'text-rose-600' }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 text-[10px] text-slate-400">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Good</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />Warning</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />Critical</span>
+      </div>
+      {items.map(item => {
+        const status = statusFor(item.value)
+        return (
+          <div key={item.label}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="font-medium text-slate-700">{item.label}</span>
+              <span className={`font-bold tabular-nums ${textColor[status]}`}>
+                {item.value}% {item.sub && <span className="font-normal text-slate-400">({item.sub})</span>}
+              </span>
+            </div>
+            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${barColor[status]}`} style={{ width: `${Math.min(100, item.value)}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── RevenueCompareChart — New (emphasis) vs Follow-up (de-emphasized) revenue, per agent ──
+function RevenueCompareChart({
+  rows, money,
+}: { rows: { agent: string; revenue_new: number; revenue_followup: number }[]; money: (n: number) => string }) {
+  if (rows.length === 0) return <p className="text-sm text-slate-400">No revenue data for this period.</p>
+  const max = Math.max(1, ...rows.map(r => Math.max(r.revenue_new, r.revenue_followup)))
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 text-[10px] text-slate-400">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />New patient</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />Follow-up</span>
+      </div>
+      {[...rows].sort((a, b) => b.revenue_new - a.revenue_new).map(r => (
+        <div key={r.agent}>
+          <div className="text-xs font-medium text-slate-700 mb-1">{r.agent}</div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 h-3.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(r.revenue_new / max) * 100}%` }} />
+            </div>
+            <div className="w-24 text-right text-xs font-semibold text-emerald-700 tabular-nums">{money(r.revenue_new)}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-slate-300 rounded-full" style={{ width: `${(r.revenue_followup / max) * 100}%` }} />
+            </div>
+            <div className="w-24 text-right text-xs text-slate-500 tabular-nums">{money(r.revenue_followup)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── AgentDetailCard — one visual box per agent with every metric broken out ──
+function ChannelMeter({ label, value, color, sub }: { label: string; value: number | null; color: string; sub: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] mb-0.5">
+        <span className="flex items-center gap-1.5 text-slate-500">
+          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: color }} />
+          {label}
+        </span>
+        <span className="font-semibold tabular-nums text-slate-700">{value != null ? `${value}%` : '—'} <span className="font-normal text-slate-400">({sub})</span></span>
+      </div>
+      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(100, value ?? 0)}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  )
+}
+
+function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number | undefined; money: (n: number) => string }) {
+  const noShowRate = a.no_show_rate ?? 0
+  const noShowTone = noShowRate >= 40 ? 'bg-rose-50 text-rose-700' : noShowRate >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+  const incomingRate = a.incoming > 0 ? Math.round((a.incoming_booked / a.incoming) * 100) : null
+  const outgoingRate = a.outgoing_leads > 0 ? Math.round((a.outgoing_leads_booked / a.outgoing_leads) * 100) : null
+  const outboundRate = a.outbound > 0 ? Math.round((a.outbound_booked / a.outbound) * 100) : null
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {rank === 0 && <span title="Top performer this period">🏆</span>}
+          <h3 className="font-semibold text-slate-800">{a.agent}</h3>
+        </div>
+        <span className="text-xs font-bold text-teal-600 tabular-nums">{a.conversionRate != null ? `${a.conversionRate}%` : '—'} conv.</span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-emerald-50 rounded-lg py-2 px-1">
+          <div className="text-[10px] text-emerald-700 font-medium">New Revenue</div>
+          <div className="text-sm font-bold text-emerald-700 tabular-nums">{money(a.revenue_new)}</div>
+        </div>
+        <div className="bg-slate-50 rounded-lg py-2 px-1">
+          <div className="text-[10px] text-slate-500 font-medium">Follow-up Rev.</div>
+          <div className="text-sm font-bold text-slate-600 tabular-nums">{money(a.revenue_followup)}</div>
+        </div>
+        <div className={`rounded-lg py-2 px-1 ${noShowTone}`}>
+          <div className="text-[10px] font-medium">No-show Rate</div>
+          <div className="text-sm font-bold tabular-nums">{a.no_show_rate != null ? `${a.no_show_rate}%` : '—'}</div>
+        </div>
+      </div>
+
+      <div className="space-y-2.5">
+        <ChannelMeter label="Incoming" value={incomingRate} color={CHANNEL_COLORS.incoming} sub={`${a.incoming_booked}/${a.incoming} set`} />
+        <ChannelMeter label="Outgoing Follow-up" value={outgoingRate} color={CHANNEL_COLORS.outgoing} sub={`${a.outgoing_leads_booked}/${a.outgoing_leads} set`} />
+        <ChannelMeter label="Outbound" value={outboundRate} color={CHANNEL_COLORS.outbound} sub={`${a.outbound_booked}/${a.outbound} set`} />
+        {a.confirmation > 0 && (
+          <ChannelMeter label="Confirmation Calls" value={a.confirmRate} color={CHANNEL_COLORS.confirmation} sub={`${a.confirmation_confirmed}/${a.confirmation} confirmed`} />
+        )}
+      </div>
+
+      {a.outbound > 0 && (
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 text-center">
+          <div>
+            <div className="text-[10px] text-slate-400">Reached</div>
+            <div className="text-xs font-semibold text-slate-700 tabular-nums">{a.reachedRate != null ? `${a.reachedRate}%` : '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-slate-400">Attended</div>
+            <div className="text-xs font-semibold text-slate-700 tabular-nums">
+              {a.outboundAttendedRate != null ? `${a.outboundAttendedRate}%` : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-slate-400">Dials / Appt</div>
+            <div className="text-xs font-semibold text-slate-700 tabular-nums">{a.attempts_per_booking ?? '—'}</div>
+          </div>
+        </div>
+      )}
+
+      {a.trend.length > 0 && (
+        <div className="pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-3 text-[10px] text-slate-400 mb-1">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-slate-300 inline-block" />Leads</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-teal-600 inline-block" />Set</span>
+            <span className="ml-auto text-slate-300">hover a day →</span>
+          </div>
+          <AgentTrendChart trend={a.trend} />
         </div>
       )}
     </div>
