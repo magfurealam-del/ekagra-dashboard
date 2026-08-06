@@ -319,9 +319,10 @@ export default function AdminDashboardPage() {
               incoming: number; incoming_booked: number
               outgoing_leads: number; outgoing_leads_booked: number
               outbound: number; outbound_reached: number; outbound_booked: number
+              outbound_appointments_set: number; outbound_appointments_eligible: number; outbound_appointments_attended: number
               confirmation: number; confirmation_confirmed: number
-              appointments_booked: number; no_shows: number; no_show_rate: number | null
-              revenue: number; attempts_per_booking: number | null
+              appointments_set: number; no_shows: number; no_show_rate: number | null
+              revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
               trend: { date: string; leads: number; booked: number }[]
             }
             if (agentPerfLoading) {
@@ -336,23 +337,31 @@ export default function AdminDashboardPage() {
             }
             const rows = ((agentPerf?.agents || []) as AgentPerfRow[]).map(a => {
               const bookableCalls = a.incoming + a.outgoing_leads + a.outbound
-              const bookings = a.incoming_booked + a.outgoing_leads_booked + a.outbound_booked
-              const conversionRate = bookableCalls > 0 ? Math.round((bookings / bookableCalls) * 1000) / 10 : null
+              const appointmentsSet = a.incoming_booked + a.outgoing_leads_booked + a.outbound_booked
+              const conversionRate = bookableCalls > 0 ? Math.round((appointmentsSet / bookableCalls) * 1000) / 10 : null
               const confirmRate = a.confirmation > 0 ? Math.round((a.confirmation_confirmed / a.confirmation) * 1000) / 10 : null
               const reachedRate = a.outbound > 0 ? Math.round((a.outbound_reached / a.outbound) * 1000) / 10 : null
-              return { ...a, bookableCalls, bookings, conversionRate, confirmRate, reachedRate }
+              const outboundAttendedRate = a.outbound_appointments_eligible > 0
+                ? Math.round((a.outbound_appointments_attended / a.outbound_appointments_eligible) * 1000) / 10
+                : null
+              return { ...a, bookableCalls, appointmentsSet, conversionRate, confirmRate, reachedRate, outboundAttendedRate }
             })
             const withVolume = rows.filter(a => a.bookableCalls >= 5)
             const topAgent = withVolume.length
               ? withVolume.reduce((best, a) => (a.conversionRate ?? 0) > (best.conversionRate ?? 0) ? a : best, withVolume[0])
               : null
-            const totalBookings = rows.reduce((s, a) => s + a.bookings, 0)
+            const totalSet = rows.reduce((s, a) => s + a.appointmentsSet, 0)
             const totalBookable = rows.reduce((s, a) => s + a.bookableCalls, 0)
-            const avgConversion = totalBookable > 0 ? Math.round((totalBookings / totalBookable) * 1000) / 10 : null
-            const totalRevenue = rows.reduce((s, a) => s + a.revenue, 0)
+            const avgConversion = totalBookable > 0 ? Math.round((totalSet / totalBookable) * 1000) / 10 : null
+            const totalNewRevenue = rows.reduce((s, a) => s + a.revenue_new, 0)
+            const totalFollowupRevenue = rows.reduce((s, a) => s + a.revenue_followup, 0)
             const byConversion = [...rows].sort((a, b) => (b.conversionRate ?? 0) - (a.conversionRate ?? 0))
             const byVolume = [...rows].sort((a, b) => b.bookableCalls - a.bookableCalls)
             const byNoShow = [...rows].filter(a => a.no_show_rate != null).sort((a, b) => (a.no_show_rate ?? 0) - (b.no_show_rate ?? 0))
+            const pctCell = (set: number, total: number) => {
+              const rate = total > 0 ? Math.round((set / total) * 100) : null
+              return `${set}/${total}${rate != null ? ` (${rate}%)` : ''}`
+            }
             return (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -360,46 +369,49 @@ export default function AdminDashboardPage() {
                     tooltip="Agents with any incoming, outgoing, outbound, or confirmation activity this period." />
                   <KPICard label="Top Performer" value={topAgent ? topAgent.agent : '—'} tone="text-teal-600"
                     sub={topAgent ? `${topAgent.conversionRate}% conversion` : undefined}
-                    tooltip="Highest blended conversion rate (incoming + outgoing + outbound bookings ÷ calls) among agents with 5+ bookable calls." />
+                    tooltip="Highest blended conversion rate (incoming + outgoing + outbound appointments set ÷ calls) among agents with 5+ calls." />
                   <KPICard label="Avg Conversion Rate" value={avgConversion != null ? `${avgConversion}%` : '—'} tone="text-teal-600"
-                    tooltip="Total bookings ÷ total bookable calls, blended across incoming, outgoing follow-up, and outbound." />
-                  <KPICard label="Total Revenue" value={money(totalRevenue)} tone="text-emerald-600"
-                    tooltip="Sum of invoice revenue attributed to appointments booked by any agent this period." />
+                    tooltip="Total appointments set ÷ total calls, blended across incoming, outgoing follow-up, and outbound." />
+                  <KPICard label="New Patient Revenue" value={money(totalNewRevenue)} tone="text-emerald-600"
+                    sub={`Follow-up: ${money(totalFollowupRevenue)}`}
+                    tooltip="Invoice revenue attributed to NEW patients whose appointment was set by an agent this period — the number that reflects that agent's acquisition effort. Follow-up/returning-patient revenue is shown separately since it isn't driven by this period's calls." />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Panel title="Conversion Rate by Agent" subtitle="Bookings ÷ bookable calls (incoming + outgoing + outbound) — best to worst">
+                  <Panel title="Conversion Rate by Agent" subtitle="Appointments set ÷ calls handled (incoming + outgoing + outbound) — best to worst">
                     <BarList items={byConversion.map(a => ({ label: a.agent, count: a.conversionRate ?? 0 }))} unit="%" />
                   </Panel>
-                  <Panel title="Call Volume by Agent" subtitle="Total bookable calls handled — highest to lowest">
+                  <Panel title="Call Volume by Agent" subtitle="Total calls handled — highest to lowest">
                     <BarList items={byVolume.map(a => ({ label: a.agent, count: a.bookableCalls }))} />
                   </Panel>
                 </div>
 
-                <Panel title="Call-Type Mix by Agent" subtitle="Bookings out of calls handled, split by channel">
+                <Panel title="Agent Breakdown — Incoming / Outgoing / Outbound" subtitle="Appointments set out of calls handled, per channel — not blended into one number">
                   {rows.length === 0 ? <p className="text-sm text-slate-400">No agent activity this period.</p> : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
-                          <th className="text-left pb-2 font-medium">Agent</th>
-                          <th className="text-right pb-2 font-medium pr-2">Incoming</th>
-                          <th className="text-right pb-2 font-medium pr-2">Outgoing Follow-up</th>
-                          <th className="text-right pb-2 font-medium pr-2">Outbound</th>
-                          <th className="text-right pb-2 font-medium">Confirmation</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {rows.map(a => (
-                          <tr key={a.agent} className="hover:bg-slate-50">
-                            <td className="py-2 font-medium text-slate-700">{a.agent}</td>
-                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.incoming_booked}/{a.incoming}</td>
-                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.outgoing_leads_booked}/{a.outgoing_leads}</td>
-                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.outbound_booked}/{a.outbound}</td>
-                            <td className="py-2 text-right text-slate-500 tabular-nums">{a.confirmation_confirmed}/{a.confirmation}</td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
+                            <th className="text-left pb-2 font-medium">Agent</th>
+                            <th className="text-right pb-2 font-medium pr-2">Incoming Set/Total</th>
+                            <th className="text-right pb-2 font-medium pr-2">Outgoing Follow-up Set/Total</th>
+                            <th className="text-right pb-2 font-medium pr-2">Outbound Set/Total</th>
+                            <th className="text-right pb-2 font-medium">Confirmation Confirmed/Total</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {rows.map(a => (
+                            <tr key={a.agent} className="hover:bg-slate-50">
+                              <td className="py-2 font-medium text-slate-700 whitespace-nowrap">{a.agent}</td>
+                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.incoming_booked, a.incoming)}</td>
+                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.outgoing_leads_booked, a.outgoing_leads)}</td>
+                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.outbound_booked, a.outbound)}</td>
+                              <td className="py-2 text-right text-slate-500 tabular-nums whitespace-nowrap">{pctCell(a.confirmation_confirmed, a.confirmation)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </Panel>
 
@@ -415,7 +427,7 @@ export default function AdminDashboardPage() {
                             <div key={a.agent}>
                               <div className="flex items-center justify-between text-xs mb-1">
                                 <span className="font-medium text-slate-700">{a.agent}</span>
-                                <span className={`font-bold tabular-nums ${color}`}>{rate}% <span className="font-normal text-slate-400">({a.no_shows}/{a.appointments_booked})</span></span>
+                                <span className={`font-bold tabular-nums ${color}`}>{rate}% <span className="font-normal text-slate-400">({a.no_shows}/{a.appointments_set})</span></span>
                               </div>
                               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                                 <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, rate)}%` }} />
@@ -426,10 +438,14 @@ export default function AdminDashboardPage() {
                       </div>
                     )}
                   </Panel>
-                  <Panel title="Revenue by Agent" subtitle="Attributed via matched invoices for appointments that agent booked">
-                    <BarList items={[...rows].sort((a, b) => b.revenue - a.revenue).map(a => ({ label: a.agent, count: Math.round(a.revenue) }))} unit="৳" />
+                  <Panel title="New Patient Revenue by Agent" subtitle="Matched-invoice revenue from NEW patients only — the effort signal we care about">
+                    <BarList items={[...rows].sort((a, b) => b.revenue_new - a.revenue_new).map(a => ({ label: a.agent, count: Math.round(a.revenue_new) }))} unit="৳" />
                   </Panel>
                 </div>
+
+                <Panel title="Follow-up Patient Revenue by Agent" subtitle="Shown separately — reflects earlier acquisition effort, not this period's calls">
+                  <BarList items={[...rows].sort((a, b) => b.revenue_followup - a.revenue_followup).map(a => ({ label: a.agent, count: Math.round(a.revenue_followup) }))} unit="৳" />
+                </Panel>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <Panel title="Confirmation Call Performance" subtitle="Night-before / morning-of confirmation calls, per agent">
@@ -454,31 +470,40 @@ export default function AdminDashboardPage() {
                       </table>
                     )}
                   </Panel>
-                  <Panel title="Outbound Dial Efficiency" subtitle="Reached rate and dials needed per booking, from the outbound queue">
+                  <Panel title="Outbound Dial Efficiency" subtitle="Reached rate, appointments set and actually attended, dials per appointment">
                     {rows.filter(a => a.outbound > 0).length === 0 ? <p className="text-sm text-slate-400">No outbound calls this period.</p> : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
-                            <th className="text-left pb-2 font-medium">Agent</th>
-                            <th className="text-right pb-2 font-medium pr-2">Reached</th>
-                            <th className="text-right pb-2 font-medium">Attempts / Booking</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {rows.filter(a => a.outbound > 0).sort((a, b) => (b.reachedRate ?? 0) - (a.reachedRate ?? 0)).map(a => (
-                            <tr key={a.agent} className="hover:bg-slate-50">
-                              <td className="py-2 font-medium text-slate-700">{a.agent}</td>
-                              <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.reachedRate}%</td>
-                              <td className="py-2 text-right text-slate-500 tabular-nums">{a.attempts_per_booking ?? '—'}</td>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
+                              <th className="text-left pb-2 font-medium">Agent</th>
+                              <th className="text-right pb-2 font-medium pr-2">Reached</th>
+                              <th className="text-right pb-2 font-medium pr-2">Appts Set</th>
+                              <th className="text-right pb-2 font-medium pr-2">Attended</th>
+                              <th className="text-right pb-2 font-medium">Dials / Appt</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {rows.filter(a => a.outbound > 0).sort((a, b) => (b.reachedRate ?? 0) - (a.reachedRate ?? 0)).map(a => (
+                              <tr key={a.agent} className="hover:bg-slate-50">
+                                <td className="py-2 font-medium text-slate-700 whitespace-nowrap">{a.agent}</td>
+                                <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.reachedRate}%</td>
+                                <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{a.outbound_appointments_set}</td>
+                                <td className="py-2 text-right pr-3 text-slate-500 tabular-nums whitespace-nowrap">
+                                  {a.outboundAttendedRate != null ? `${a.outboundAttendedRate}%` : '—'}
+                                  <span className="text-slate-400"> ({a.outbound_appointments_attended}/{a.outbound_appointments_eligible})</span>
+                                </td>
+                                <td className="py-2 text-right text-slate-500 tabular-nums">{a.attempts_per_booking ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </Panel>
                 </div>
 
-                <Panel title="Daily Trend by Agent" subtitle="Grey = leads handled, teal = booked — one line per day in range">
+                <Panel title="Daily Trend by Agent" subtitle="Grey = leads handled, teal = appointments set — hover a point for exact numbers">
                   {rows.filter(a => a.trend.length > 0).length === 0 ? <p className="text-sm text-slate-400">Not enough days in range for a trend.</p> : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {rows.filter(a => a.trend.length > 0).map(a => (
@@ -489,10 +514,6 @@ export default function AdminDashboardPage() {
                       ))}
                     </div>
                   )}
-                </Panel>
-
-                <Panel title="Agent Breakdown" subtitle="Bookable calls vs bookings per agent — grey bar is calls, teal is booked">
-                  <AgentTable rows={rows.map(a => ({ agent: a.agent, leads: a.bookableCalls, booked: a.bookings, booking_rate: a.conversionRate }))} />
                 </Panel>
               </div>
             )

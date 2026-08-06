@@ -528,23 +528,36 @@ export function TrendChart({ data }: { data: { date: string; leads: number; appo
   return <LineAreaChart data={data} />
 }
 
-// ── AgentTrendChart (compact sparkline: leads vs booked, per agent) ───────────
+// ── AgentTrendChart (compact sparkline: leads vs appointments set, per agent) ─
+// Hover/tap a day for exact numbers via native <title> tooltips - no extra
+// state or JS needed, works on touch too.
 export function AgentTrendChart({ trend }: { trend: { date: string; leads: number; booked: number }[] }) {
   if (!trend || trend.length === 0) return <p className="text-xs text-slate-400 py-4 text-center">No daily data.</p>
   const w = 280, h = 56, pad = 4
   const maxV = Math.max(1, ...trend.map(t => t.leads))
   const stepX = trend.length > 1 ? (w - pad * 2) / (trend.length - 1) : 0
-  const pt = (v: number, i: number) => {
+  const coord = (v: number, i: number) => {
     const x = pad + i * stepX
     const y = h - pad - (v / maxV) * (h - pad * 2)
-    return `${x.toFixed(1)},${y.toFixed(1)}`
+    return { x, y }
   }
-  const leadsPath = trend.map((t, i) => pt(t.leads, i)).join(' ')
-  const bookedPath = trend.map((t, i) => pt(t.booked, i)).join(' ')
+  const leadsPts = trend.map((t, i) => coord(t.leads, i))
+  const bookedPts = trend.map((t, i) => coord(t.booked, i))
+  const leadsPath = leadsPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const bookedPath = bookedPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-14" preserveAspectRatio="none">
       <polyline points={leadsPath} fill="none" stroke="#cbd5e1" strokeWidth="2" />
       <polyline points={bookedPath} fill="none" stroke="#0d9488" strokeWidth="2" />
+      {trend.map((t, i) => {
+        const colW = trend.length > 1 ? stepX : w
+        return (
+          <rect key={t.date} x={leadsPts[i].x - colW / 2} y={0} width={colW} height={h} fill="transparent" className="cursor-default">
+            <title>{`${fmtDate(t.date)}: ${t.leads} leads, ${t.booked} set`}</title>
+          </rect>
+        )
+      })}
     </svg>
   )
 }
