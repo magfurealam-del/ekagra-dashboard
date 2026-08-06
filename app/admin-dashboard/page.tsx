@@ -9,10 +9,12 @@ import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 import { KPICard, BarList, TrendChart, Panel, FunnelChart, DonutChart, GaugeMeter, AgentTable, DoctorTable } from '@/components/admin/DashboardCharts'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
-type Tab = 'overview' | 'funnel' | 'revenue' | 'sources' | 'quality' | 'ad_attribution'
+type Tab = 'overview' | 'agents' | 'channels' | 'funnel' | 'revenue' | 'sources' | 'quality' | 'ad_attribution'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
+  { key: 'agents', label: 'Agents' },
+  { key: 'channels', label: 'Sources & Channels' },
   { key: 'funnel', label: 'Funnel & Follow-ups' },
   { key: 'revenue', label: 'Revenue' },
   { key: 'sources', label: 'Marketing Attribution' },
@@ -292,6 +294,111 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           )}
+
+          {tab === 'agents' && (() => {
+            const agentRows = (metrics.by_agent || []) as { agent: string; leads: number; booked: number; booking_rate: number | null }[]
+            const withLeads = agentRows.filter(a => a.leads >= 5)
+            const topAgent = withLeads.length
+              ? withLeads.reduce((best, a) => (a.booking_rate ?? 0) > (best.booking_rate ?? 0) ? a : best, withLeads[0])
+              : null
+            const totalBooked = agentRows.reduce((s, a) => s + a.booked, 0)
+            const totalAgentLeads = agentRows.reduce((s, a) => s + a.leads, 0)
+            const avgBookingRate = totalAgentLeads > 0 ? Math.round((totalBooked / totalAgentLeads) * 1000) / 10 : null
+            const byBookingRate = [...agentRows].sort((a, b) => (b.booking_rate ?? 0) - (a.booking_rate ?? 0))
+            const byVolume = [...agentRows].sort((a, b) => b.leads - a.leads)
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <KPICard label="Active Agents" value={agentRows.length} tone="text-slate-800"
+                    tooltip="Agents with at least one attributed lead this period." />
+                  <KPICard label="Top Performer" value={topAgent ? topAgent.agent : '—'} tone="text-teal-600"
+                    sub={topAgent ? `${topAgent.booking_rate}% booking rate` : undefined}
+                    tooltip="Highest booking rate among agents with 5+ leads this period." />
+                  <KPICard label="Avg Booking Rate" value={avgBookingRate != null ? `${avgBookingRate}%` : '—'} tone="text-teal-600"
+                    tooltip="Total booked ÷ total agent-attributed leads." />
+                  <KPICard label="Total Booked" value={totalBooked} tone="text-indigo-600"
+                    tooltip="Sum of bookings across all agents this period." />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <Panel title="Booking Rate by Agent" subtitle="Higher is better — sorted best to worst">
+                    <BarList
+                      items={byBookingRate.map(a => ({ label: a.agent, count: a.booking_rate ?? 0 }))}
+                      unit="%"
+                    />
+                  </Panel>
+                  <Panel title="Lead Volume by Agent" subtitle="Total leads handled, sorted highest to lowest">
+                    <BarList items={byVolume.map(a => ({ label: a.agent, count: a.leads }))} />
+                  </Panel>
+                </div>
+                <Panel title="Agent Breakdown" subtitle="Leads vs bookings per agent — grey bar is leads, teal is booked">
+                  <AgentTable rows={agentRows} />
+                </Panel>
+              </div>
+            )
+          })()}
+
+          {tab === 'channels' && (() => {
+            const sourceRows = (metrics.by_source || []) as { source: string; count: number }[]
+            const revenueRows = (metrics.revenue_by_source || []) as { source: string; revenue: number }[]
+            const revenueBySource = new Map(revenueRows.map(r => [r.source, r.revenue]))
+            const totalSourceLeads = sourceRows.reduce((s, r) => s + r.count, 0)
+            const combined = sourceRows
+              .map(r => ({ source: r.source, leads: r.count, revenue: revenueBySource.get(r.source) || 0 }))
+              .sort((a, b) => b.leads - a.leads)
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <KPICard label="Active Sources" value={sourceRows.length} tone="text-slate-800"
+                    tooltip="Distinct lead sources with at least one lead this period." />
+                  <KPICard label="Top Source" value={combined[0]?.source ?? '—'} tone="text-teal-600"
+                    sub={combined[0] ? `${combined[0].leads} leads` : undefined}
+                    tooltip="Source with the most leads this period." />
+                  <KPICard label="Total Leads" value={totalSourceLeads} tone="text-indigo-600"
+                    tooltip="Sum of leads across all sources this period." />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <Panel title="Lead Source Distribution" subtitle="Share of leads by source this period">
+                    <DonutChart items={sourceRows.map(s => ({ label: s.source, count: s.count }))} />
+                  </Panel>
+                  <Panel title="Revenue by Source" subtitle="Attributed via matched invoices, not every lead has a matched invoice yet">
+                    <BarList
+                      items={revenueRows.map(s => ({ label: s.source, count: Math.round(s.revenue) }))}
+                      colorFor={(label) => SOURCE_COLORS[label] || 'bg-slate-400'}
+                      unit="৳"
+                    />
+                  </Panel>
+                </div>
+                <Panel title="Source Performance" subtitle="Leads and attributed revenue per source, sorted by volume">
+                  {combined.length === 0 ? (
+                    <p className="text-sm text-slate-400">No source data for this period.</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
+                          <th className="text-left pb-2 font-medium">Source</th>
+                          <th className="text-right pb-2 font-medium pr-2">Leads</th>
+                          <th className="text-right pb-2 font-medium pr-2">Revenue</th>
+                          <th className="text-right pb-2 font-medium">Revenue / Lead</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {combined.map(r => (
+                          <tr key={r.source} className="hover:bg-slate-50">
+                            <td className="py-2 font-medium text-slate-700">{r.source}</td>
+                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{r.leads}</td>
+                            <td className="py-2 text-right pr-3 text-slate-500 tabular-nums">{money(r.revenue)}</td>
+                            <td className="py-2 text-right text-slate-500 tabular-nums">
+                              {r.leads > 0 ? money(r.revenue / r.leads) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </Panel>
+              </div>
+            )
+          })()}
 
           {tab === 'funnel' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
