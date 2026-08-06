@@ -11,7 +11,6 @@ const links = [
   { href: '/doctor-availability', label: 'Doctor Availability' },
   { href: '/call-kpis', label: 'Call KPIs' },
   { href: '/admin-dashboard', label: 'Dashboard', adminOnly: true },
-  { href: '/meta-ads', label: 'Meta Ads', adminOnly: true },
   { href: '/settings', label: 'Settings', adminOnly: true },
 ]
 
