@@ -527,3 +527,24 @@ export function DoctorTable({
 export function TrendChart({ data }: { data: { date: string; leads: number; appointments: number }[] }) {
   return <LineAreaChart data={data} />
 }
+
+// ── AgentTrendChart (compact sparkline: leads vs booked, per agent) ───────────
+export function AgentTrendChart({ trend }: { trend: { date: string; leads: number; booked: number }[] }) {
+  if (!trend || trend.length === 0) return <p className="text-xs text-slate-400 py-4 text-center">No daily data.</p>
+  const w = 280, h = 56, pad = 4
+  const maxV = Math.max(1, ...trend.map(t => t.leads))
+  const stepX = trend.length > 1 ? (w - pad * 2) / (trend.length - 1) : 0
+  const pt = (v: number, i: number) => {
+    const x = pad + i * stepX
+    const y = h - pad - (v / maxV) * (h - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }
+  const leadsPath = trend.map((t, i) => pt(t.leads, i)).join(' ')
+  const bookedPath = trend.map((t, i) => pt(t.booked, i)).join(' ')
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-14" preserveAspectRatio="none">
+      <polyline points={leadsPath} fill="none" stroke="#cbd5e1" strokeWidth="2" />
+      <polyline points={bookedPath} fill="none" stroke="#0d9488" strokeWidth="2" />
+    </svg>
+  )
+}
