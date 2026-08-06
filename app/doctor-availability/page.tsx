@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { parallelFetch } from '@/lib/withTimeout'
+import AvailabilityCalendar from '@/components/doctor-availability/AvailabilityCalendar'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -42,9 +43,10 @@ type OverrideRow = {
 type AuditRow = { doctor_name: string; action: string; changed_by: string; changed_at: string; start_time: string | null; end_time: string | null; note: string | null }
 
 export default function DoctorAvailabilityPage() {
-  const date = tomorrowDhaka()
-  const dateIso = toISO(date)
+  const [dateIso, setDateIso] = useState(() => toISO(tomorrowDhaka()))
+  const date = new Date(dateIso + 'T00:00:00')
   const dow = date.getDay()
+  const isTomorrow = dateIso === toISO(tomorrowDhaka())
 
   const [schedule, setSchedule] = useState<ScheduleRow[]>([])
   const [overrides, setOverrides] = useState<Record<string, OverrideRow>>({})
@@ -137,8 +139,20 @@ export default function DoctorAvailabilityPage() {
           {DAY_NAMES[dow]}&apos;s normal doctors — <span className="font-medium text-slate-700">{formattedDate}</span>
         </p>
         <p className="text-xs text-slate-400 mt-1">
-          Mark any doctor unavailable or with reduced hours for tomorrow. Changes take effect immediately across the Calendar and new-booking screens.
+          Mark any doctor unavailable or with reduced hours for the selected date. Changes take effect immediately across the Calendar and new-booking screens.
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-start gap-4">
+        <AvailabilityCalendar value={dateIso} onChange={setDateIso} />
+        {!isTomorrow && (
+          <button
+            onClick={() => setDateIso(toISO(tomorrowDhaka()))}
+            className="text-xs px-2.5 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 self-start"
+          >
+            Jump to tomorrow
+          </button>
+        )}
       </div>
 
       {loading ? (
