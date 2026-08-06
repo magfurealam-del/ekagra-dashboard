@@ -12,8 +12,22 @@ export const supabase = createClient(url, key, {
     fetch: (input, init = {}) => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 15000)
-      const signal = init.signal ?? controller.signal
-      return fetch(input, { ...init, signal }).finally(() => clearTimeout(timer))
+      // Always fetch with our own timeout-bound signal. If supabase-js also
+      // passed in its own signal (it does for internal auth/session-refresh
+      // calls), chain it so an early external abort still wins - but we
+      // never fall back to a signal our timer isn't actually wired to.
+      // Previously this used `init.signal ?? controller.signal`, which meant
+      // any call that supplied its own signal silently lost the 15s timeout
+      // - the timer still fired but aborted the abandoned controller, not
+      // the signal actually passed to fetch. A hang in one of those calls
+      // (e.g. a session refresh triggered on tab focus) would never time
+      // out and would stall every other query queued behind the same
+      // shared client.
+      if (init.signal) {
+        if (init.signal.aborted) controller.abort()
+        else init.signal.addEventListener('abort', () => controller.abort(), { once: true })
+      }
+      return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))
     },
   },
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'ekagra-auth' },
