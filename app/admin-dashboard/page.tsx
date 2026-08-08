@@ -549,6 +549,35 @@ export default function AdminDashboardPage() {
                     tooltip="Invoice revenue (via crm_invoice_reconciliation) attributed to NEW patients whose lead traces to a source this period." />
                 </div>
 
+                {(() => {
+                  const ptFunnel = (sourcePerf?.patient_type_funnel || []) as { type: string; leads: number; appointments_set: number; attended: number }[]
+                  const newFunnel = ptFunnel.find(p => p.type === 'New')
+                  const oldFunnel = ptFunnel.find(p => p.type === 'Old')
+                  if (!newFunnel && !oldFunnel) return null
+                  return (
+                    <Panel title="New vs Old Patient Funnel" subtitle="Leads → Appointments Set → Attended, combined across every source, split by patient type">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <div className="text-xs font-semibold text-indigo-700 mb-2">New Patients</div>
+                          <FunnelChart steps={[
+                            { label: 'Leads', count: newFunnel?.leads ?? 0, hint: 'first-time patients, created this period' },
+                            { label: 'Appointments Set', count: newFunnel?.appointments_set ?? 0, hint: 'appointments dated this period' },
+                            { label: 'Attended', count: newFunnel?.attended ?? 0, hint: 'invoice-validated show-up' },
+                          ]} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-slate-500 mb-2">Old / Returning Patients</div>
+                          <FunnelChart steps={[
+                            { label: 'Leads', count: oldFunnel?.leads ?? 0, hint: 'returning patients, created this period' },
+                            { label: 'Appointments Set', count: oldFunnel?.appointments_set ?? 0, hint: 'appointments dated this period' },
+                            { label: 'Attended', count: oldFunnel?.attended ?? 0, hint: 'invoice-validated show-up' },
+                          ]} />
+                        </div>
+                      </div>
+                    </Panel>
+                  )
+                })()}
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <Panel title="Lead Source Distribution" subtitle="Share of leads by source this period">
                     <DonutChart items={sourceRows.map(s => ({ label: s.source, count: s.leads }))} />
