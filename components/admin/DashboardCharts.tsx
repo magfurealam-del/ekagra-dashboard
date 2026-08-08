@@ -104,37 +104,23 @@ export function GaugeMeter({
   )
 }
 
-// ── LineAreaChart (SVG, crosshair tooltip) ────────────────────────────────────
+// ── DailyTrendBars (grouped vertical bar chart, hover tooltips) ───────────────
 type TrendPoint = { date: string; leads: number; appointments: number }
 
-export function LineAreaChart({ data }: { data: TrendPoint[] }) {
-  const [hover, setHover] = useState<(TrendPoint & { x: number }) | null>(null)
+export function DailyTrendBars({ data }: { data: TrendPoint[] }) {
   if (data.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
 
-  const W = 560, H = 160
-  const PAD = { top: 12, right: 12, bottom: 28, left: 34 }
-  const iW = W - PAD.left - PAD.right
-  const iH = H - PAD.top - PAD.bottom
-
-  const maxY = Math.max(1, ...data.map(d => Math.max(d.leads, d.appointments)))
-  const niceMax = Math.ceil(maxY / 5) * 5
-  const yS = (v: number) => iH - (v / niceMax) * iH
-  const xS = (i: number) => data.length < 2 ? iW / 2 : (i / (data.length - 1)) * iW
-
-  const leadsPath = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xS(i).toFixed(1)},${yS(d.leads).toFixed(1)}`).join(' ')
-  const apptPath  = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xS(i).toFixed(1)},${yS(d.appointments).toFixed(1)}`).join(' ')
-  const leadsArea = `${leadsPath} L${xS(data.length - 1).toFixed(1)},${iH} L0,${iH} Z`
-  const apptArea  = `${apptPath}  L${xS(data.length - 1).toFixed(1)},${iH} L0,${iH} Z`
-
-  const gridVals = [0, Math.round(niceMax * 0.25), Math.round(niceMax * 0.5), Math.round(niceMax * 0.75), niceMax]
-
-  const labelIdxs: number[] = []
+  const max = Math.max(1, ...data.map(d => Math.max(d.leads, d.appointments)))
+  const barAreaH = 140
+  // Sparse labels so a 30+ day range doesn't collide - same cadence as the
+  // chart this replaced.
+  const labelIdxs = new Set<number>()
   if (data.length <= 8) {
-    data.forEach((_, i) => labelIdxs.push(i))
+    data.forEach((_, i) => labelIdxs.add(i))
   } else {
-    const step = Math.floor(data.length / 7)
-    for (let i = 0; i < data.length; i += step) labelIdxs.push(i)
-    if (labelIdxs[labelIdxs.length - 1] !== data.length - 1) labelIdxs.push(data.length - 1)
+    const step = Math.ceil(data.length / 7)
+    for (let i = 0; i < data.length; i += step) labelIdxs.add(i)
+    labelIdxs.add(data.length - 1)
   }
 
   function fmt(iso: string) {
@@ -143,106 +129,20 @@ export function LineAreaChart({ data }: { data: TrendPoint[] }) {
 
   return (
     <div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ height: 200 }}
-        onMouseLeave={() => setHover(null)}
-      >
-        <defs>
-          <linearGradient id="lg-leads" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0d9488" stopOpacity="0.20" />
-            <stop offset="100%" stopColor="#0d9488" stopOpacity="0.01" />
-          </linearGradient>
-          <linearGradient id="lg-appt" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="#6366f1" stopOpacity="0.01" />
-          </linearGradient>
-          <clipPath id="lc-clip">
-            <rect x="0" y="0" width={iW} height={iH} />
-          </clipPath>
-        </defs>
-        <g transform={`translate(${PAD.left},${PAD.top})`}>
-          {/* Grid */}
-          {gridVals.map(v => (
-            <g key={v}>
-              <line x1={0} y1={yS(v).toFixed(1)} x2={iW} y2={yS(v).toFixed(1)} stroke="#f1f5f9" strokeWidth={1} />
-              <text x={-5} y={yS(v)} dominantBaseline="middle" textAnchor="end" fontSize={9} fill="#94a3b8">{v}</text>
-            </g>
-          ))}
-
-          {/* Baseline */}
-          <line x1={0} y1={iH} x2={iW} y2={iH} stroke="#e2e8f0" strokeWidth={1} />
-
-          {/* Areas */}
-          <g clipPath="url(#lc-clip)">
-            <path d={apptArea}  fill="url(#lg-appt)" />
-            <path d={leadsArea} fill="url(#lg-leads)" />
-          </g>
-
-          {/* Lines */}
-          <g clipPath="url(#lc-clip)">
-            <path d={apptPath}  fill="none" stroke="#6366f1" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-            <path d={leadsPath} fill="none" stroke="#0d9488" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-          </g>
-
-          {/* Crosshair + dots */}
-          {hover && (() => {
-            const idx = data.findIndex(d => d.date === hover.date)
-            if (idx < 0) return null
-            const x = xS(idx)
-            return (
-              <>
-                <line x1={x} y1={0} x2={x} y2={iH} stroke="#cbd5e1" strokeWidth={1} strokeDasharray="3,3" />
-                <circle cx={x} cy={yS(hover.leads)}        r={4} fill="#0d9488" stroke="white" strokeWidth={1.5} />
-                <circle cx={x} cy={yS(hover.appointments)} r={4} fill="#6366f1" stroke="white" strokeWidth={1.5} />
-              </>
-            )
-          })()}
-
-          {/* Invisible hover hit targets */}
-          {data.map((d, i) => {
-            const x = xS(i)
-            const prev = i > 0 ? xS(i - 1) : x
-            const next = i < data.length - 1 ? xS(i + 1) : x
-            const left = (x + prev) / 2, right = (x + next) / 2
-            return (
-              <rect
-                key={d.date}
-                x={i === 0 ? 0 : left}
-                y={0}
-                width={i === 0 ? right : i === data.length - 1 ? iW - left : right - left}
-                height={iH}
-                fill="transparent"
-                style={{ cursor: 'crosshair' }}
-                onMouseEnter={() => setHover({ ...d, x })}
-              />
-            )
-          })}
-
-          {/* X labels */}
-          {labelIdxs.map(i => (
-            <text key={i} x={xS(i)} y={iH + 14} textAnchor="middle" fontSize={9} fill="#94a3b8">
-              {fmt(data[i].date)}
-            </text>
-          ))}
-        </g>
-      </svg>
-
-      {/* Hover tooltip */}
-      <div className="h-8 flex items-center">
-        {hover ? (
-          <div className="inline-flex items-center gap-3 bg-slate-900 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg">
-            <span className="text-slate-400">{fmt(hover.date)}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-teal-400 rounded" />{hover.leads} leads</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-indigo-400 rounded" />{hover.appointments} appts</span>
+      <div className="flex gap-4 text-[11px] text-slate-400 mb-2">
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-500 inline-block" />Leads received</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />Appointments scheduled</span>
+      </div>
+      <div className="flex items-end gap-1 overflow-x-auto pb-1" style={{ height: barAreaH + 20 }}>
+        {data.map((d, i) => (
+          <div key={d.date} className="flex flex-col items-center flex-shrink-0" style={{ width: 16 }}>
+            <div className="flex items-end gap-0.5" style={{ height: barAreaH }} title={`${fmt(d.date)}: ${d.leads} leads, ${d.appointments} appointments`}>
+              <div className="w-1.5 bg-teal-500 rounded-t-sm hover:bg-teal-600" style={{ height: `${Math.max(2, (d.leads / max) * 100)}%` }} />
+              <div className="w-1.5 bg-indigo-500 rounded-t-sm hover:bg-indigo-600" style={{ height: `${Math.max(2, (d.appointments / max) * 100)}%` }} />
+            </div>
+            <span className="text-[8px] text-slate-400 mt-1 whitespace-nowrap">{labelIdxs.has(i) ? fmt(d.date) : ''}</span>
           </div>
-        ) : (
-          <div className="flex gap-4 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-teal-500 rounded-full inline-block" />Leads received</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-indigo-500 rounded-full inline-block" />Appointments scheduled</span>
-          </div>
-        )}
+        ))}
       </div>
     </div>
   )
@@ -523,41 +423,7 @@ export function DoctorTable({
   )
 }
 
-// ── TrendChart (compat shim → LineAreaChart) ──────────────────────────────────
+// ── TrendChart (compat shim → DailyTrendBars) ──────────────────────────────────
 export function TrendChart({ data }: { data: { date: string; leads: number; appointments: number }[] }) {
-  return <LineAreaChart data={data} />
-}
-
-// ── AgentTrendChart (compact sparkline: leads vs appointments set, per agent) ─
-// Hover/tap a day for exact numbers via native <title> tooltips - no extra
-// state or JS needed, works on touch too.
-export function AgentTrendChart({ trend }: { trend: { date: string; leads: number; booked: number }[] }) {
-  if (!trend || trend.length === 0) return <p className="text-xs text-slate-400 py-4 text-center">No daily data.</p>
-  const w = 280, h = 56, pad = 4
-  const maxV = Math.max(1, ...trend.map(t => t.leads))
-  const stepX = trend.length > 1 ? (w - pad * 2) / (trend.length - 1) : 0
-  const coord = (v: number, i: number) => {
-    const x = pad + i * stepX
-    const y = h - pad - (v / maxV) * (h - pad * 2)
-    return { x, y }
-  }
-  const leadsPts = trend.map((t, i) => coord(t.leads, i))
-  const bookedPts = trend.map((t, i) => coord(t.booked, i))
-  const leadsPath = leadsPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const bookedPath = bookedPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const fmtDate = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-14" preserveAspectRatio="none">
-      <polyline points={leadsPath} fill="none" stroke="#cbd5e1" strokeWidth="2" />
-      <polyline points={bookedPath} fill="none" stroke="#0d9488" strokeWidth="2" />
-      {trend.map((t, i) => {
-        const colW = trend.length > 1 ? stepX : w
-        return (
-          <rect key={t.date} x={leadsPts[i].x - colW / 2} y={0} width={colW} height={h} fill="transparent" className="cursor-default">
-            <title>{`${fmtDate(t.date)}: ${t.leads} leads, ${t.booked} set`}</title>
-          </rect>
-        )
-      })}
-    </svg>
-  )
+  return <DailyTrendBars data={data} />
 }

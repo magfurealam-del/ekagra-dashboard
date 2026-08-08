@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
-import { KPICard, BarList, TrendChart, Panel, FunnelChart, DonutChart, GaugeMeter, AgentTable, DoctorTable, AgentTrendChart } from '@/components/admin/DashboardCharts'
+import { KPICard, BarList, TrendChart, Panel, FunnelChart, DonutChart, GaugeMeter, AgentTable, DoctorTable } from '@/components/admin/DashboardCharts'
 
 type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 type Tab = 'overview' | 'agents' | 'channels' | 'funnel' | 'revenue' | 'sources' | 'quality' | 'ad_attribution'
@@ -62,9 +62,10 @@ const OUTBOUND_OUTCOME_LABEL: Record<string, string> = {
 interface SourcePerfRow {
   source: string
   leads: number; new_leads: number; old_leads: number
-  appointments_set: number; appointments_eligible: number; no_shows: number
+  appointments_set: number; new_appointments_set: number; old_appointments_set: number
+  appointments_eligible: number; no_shows: number
+  new_attended: number; old_attended: number
   revenue_new: number; revenue_followup: number
-  trend: { date: string; leads: number; booked: number }[]
   attendedRate: number | null; newShare: number | null
 }
 
@@ -1136,17 +1137,6 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
           <BarList items={a.outbound_outcomes.map(o => ({ label: OUTBOUND_OUTCOME_LABEL[o.outcome] || o.outcome, count: o.count }))} />
         </div>
       )}
-
-      {a.trend.length > 0 && (
-        <div className="pt-3 border-t border-slate-100">
-          <div className="flex items-center gap-3 text-[10px] text-slate-400 mb-1">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-slate-300 inline-block" />Leads</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-teal-600 inline-block" />Set</span>
-            <span className="ml-auto text-slate-300">hover a day →</span>
-          </div>
-          <AgentTrendChart trend={a.trend} />
-        </div>
-      )}
     </div>
   )
 }
@@ -1154,7 +1144,6 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
 // ── SourceDetailCard — one visual box per source: full funnel (leads -> set
 // -> attended), New/Old composition, and revenue split. ──
 function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number | undefined; money: (n: number) => string }) {
-  const attended = s.appointments_eligible - s.no_shows
   const noShowRate = s.appointments_eligible > 0 ? Math.round((s.no_shows / s.appointments_eligible) * 1000) / 10 : null
   const noShowTone = (noShowRate ?? 0) >= 40 ? 'bg-rose-50 text-rose-700' : (noShowRate ?? 0) >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
 
@@ -1168,11 +1157,16 @@ function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number |
         <span className="text-xs font-bold text-indigo-600 tabular-nums">{s.newShare != null ? `${s.newShare}%` : '—'} new</span>
       </div>
 
-      <FunnelChart steps={[
-        { label: 'Leads', count: s.leads, hint: 'created this period' },
-        { label: 'Appointments Set', count: s.appointments_set, hint: 'appointments dated this period' },
-        { label: 'Attended', count: attended, hint: 'invoice-validated show-up' },
-      ]} />
+      <DualBarChart
+        rows={[
+          { name: 'Leads', primary: s.new_leads, secondary: s.old_leads },
+          { name: 'Appointments Set', primary: s.new_appointments_set, secondary: s.old_appointments_set },
+          { name: 'Attended', primary: s.new_attended, secondary: s.old_attended },
+        ]}
+        primaryLabel="New patient" secondaryLabel="Old / returning"
+        primaryColor="bg-indigo-500" primaryText="text-indigo-700"
+        sortDesc={false}
+      />
 
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="bg-indigo-50 rounded-lg py-2 px-1">
@@ -1200,16 +1194,6 @@ function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number |
         </div>
       </div>
 
-      {s.trend.length > 0 && (
-        <div className="pt-3 border-t border-slate-100">
-          <div className="flex items-center gap-3 text-[10px] text-slate-400 mb-1">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-slate-300 inline-block" />Leads</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-teal-600 inline-block" />Appts</span>
-            <span className="ml-auto text-slate-300">hover a day →</span>
-          </div>
-          <AgentTrendChart trend={s.trend} />
-        </div>
-      )}
     </div>
   )
 }
