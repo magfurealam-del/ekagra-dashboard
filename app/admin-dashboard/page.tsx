@@ -528,12 +528,27 @@ export default function AdminDashboardPage() {
             const byAttended = [...sourceRows].filter(s => s.attendedRate != null).sort((a, b) => (b.attendedRate ?? 0) - (a.attendedRate ?? 0))
             return (
               <div className="space-y-4">
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500">
-                  Source identity: <span className="font-medium text-slate-700">crm_leads → lead_attribution.source_category</span>,
-                  falling back to <span className="font-medium text-slate-700">crm_leads.source</span> when unattributed.
-                  Revenue: <span className="font-medium text-slate-700">crm_invoice_reconciliation</span> (matched/approved only) →{' '}
-                  <span className="font-medium text-slate-700">invoices</span>. Attendance: invoice-validated within ±7 days of the appointment,
-                  same rule used across the whole dashboard.
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 space-y-1.5">
+                  <p>
+                    Source identity: <span className="font-medium text-slate-700">crm_leads → lead_attribution.source_category</span>,
+                    falling back to <span className="font-medium text-slate-700">crm_leads.source</span> when unattributed.
+                    Revenue: <span className="font-medium text-slate-700">crm_invoice_reconciliation</span> (matched/approved only) →{' '}
+                    <span className="font-medium text-slate-700">invoices</span>. Attendance: invoice-validated within ±7 days of the appointment,
+                    same rule used across the whole dashboard.
+                  </p>
+                  <p>
+                    Every real source (<span className="font-medium text-slate-700">facebook</span>, <span className="font-medium text-slate-700">Facebook Page / Messenger</span>,{' '}
+                    <span className="font-medium text-slate-700">Facebook Ad</span>, etc.) is folded into one <span className="font-medium text-slate-700">Facebook</span> bucket
+                    instead of splitting the same channel across near-duplicate labels.
+                  </p>
+                  <p>
+                    Every appointment on this tab should trace back to a Lead Intake record (<span className="font-medium text-slate-700">crm_leads</span>) — that&apos;s the
+                    normal path and where source/agent/patient-type attribution comes from. Two buckets below are appointments that don&apos;t, by design or by history, not a bug:
+                    {' '}<span className="font-medium text-slate-700">Outbound Follow-up</span> — booked via the outbound call queue for an existing patient (has an agent and
+                    patient, just no lead, since the queue is fed from existing patients, not fresh leads); and{' '}
+                    <span className="font-medium text-slate-700">Unattributed / Historical</span> — bulk-imported from the old external call-center log before Lead Intake
+                    existed, with no attribution recoverable.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
