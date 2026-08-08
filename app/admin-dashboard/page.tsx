@@ -25,19 +25,38 @@ const TABS: { key: Tab; label: string }[] = [
 // Fixed categorical color per channel, used consistently across every chart
 // on the Agents tab so "outbound" is always the same color everywhere.
 const CHANNEL_COLORS = { incoming: '#0d9488', outgoing: '#6366f1', outbound: '#f59e0b', confirmation: '#0ea5e9' }
+// Same four colors as Tailwind classes, for components (like BarList) that take a class instead of a hex value.
+const CHANNEL_COLOR_CLASS = { incoming: 'bg-teal-500', outgoing: 'bg-indigo-500', outbound: 'bg-amber-500', confirmation: 'bg-sky-500' }
 
 interface AgentDetailRow {
   agent: string
   incoming: number; incoming_booked: number
   outgoing_leads: number; outgoing_leads_booked: number
   outbound: number; outbound_reached: number; outbound_booked: number
+  outbound_outcomes: { outcome: string; count: number }[]
   outbound_appointments_set: number; outbound_appointments_eligible: number; outbound_appointments_attended: number
   confirmation: number; confirmation_confirmed: number
   appointments_set: number; no_shows: number; no_show_rate: number | null
   revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
   trend: { date: string; leads: number; booked: number }[]
-  bookableCalls: number; appointmentsSet: number
+  bookableCalls: number; appointmentsSet: number; totalCalls: number
   conversionRate: number | null; confirmRate: number | null; reachedRate: number | null; outboundAttendedRate: number | null
+}
+
+// Same vocabulary as the Call KPIs page's outbound outcome labels, so the
+// two views describe outcomes identically.
+const OUTBOUND_OUTCOME_LABEL: Record<string, string> = {
+  reached: 'Reached',
+  not_reached: 'Not Reached',
+  busy: 'Busy',
+  switched_off: 'Switched Off',
+  wrong_number: 'Wrong Number',
+  booked_appointment: 'Booked Appointment',
+  already_visited: 'Already Visited',
+  not_interested: 'Not Interested',
+  call_later: 'Call Later',
+  do_not_call: 'Do Not Call',
+  unspecified: 'Unspecified',
 }
 
 interface SourcePerfRow {
@@ -364,6 +383,7 @@ export default function AdminDashboardPage() {
               incoming: number; incoming_booked: number
               outgoing_leads: number; outgoing_leads_booked: number
               outbound: number; outbound_reached: number; outbound_booked: number
+              outbound_outcomes: { outcome: string; count: number }[]
               outbound_appointments_set: number; outbound_appointments_eligible: number; outbound_appointments_attended: number
               confirmation: number; confirmation_confirmed: number
               appointments_set: number; no_shows: number; no_show_rate: number | null
@@ -382,6 +402,7 @@ export default function AdminDashboardPage() {
             }
             const rows = ((agentPerf?.agents || []) as AgentPerfRow[]).map(a => {
               const bookableCalls = a.incoming + a.outgoing_leads + a.outbound
+              const totalCalls = bookableCalls + a.confirmation
               const appointmentsSet = a.incoming_booked + a.outgoing_leads_booked + a.outbound_booked
               const conversionRate = bookableCalls > 0 ? Math.round((appointmentsSet / bookableCalls) * 1000) / 10 : null
               const confirmRate = a.confirmation > 0 ? Math.round((a.confirmation_confirmed / a.confirmation) * 1000) / 10 : null
@@ -389,7 +410,7 @@ export default function AdminDashboardPage() {
               const outboundAttendedRate = a.outbound_appointments_eligible > 0
                 ? Math.round((a.outbound_appointments_attended / a.outbound_appointments_eligible) * 1000) / 10
                 : null
-              return { ...a, bookableCalls, appointmentsSet, conversionRate, confirmRate, reachedRate, outboundAttendedRate }
+              return { ...a, bookableCalls, totalCalls, appointmentsSet, conversionRate, confirmRate, reachedRate, outboundAttendedRate }
             })
             const withVolume = rows.filter(a => a.bookableCalls >= 5)
             const topAgent = withVolume.length
@@ -401,7 +422,6 @@ export default function AdminDashboardPage() {
             const totalNewRevenue = rows.reduce((s, a) => s + a.revenue_new, 0)
             const totalFollowupRevenue = rows.reduce((s, a) => s + a.revenue_followup, 0)
             const byConversion = [...rows].sort((a, b) => (b.conversionRate ?? 0) - (a.conversionRate ?? 0))
-            const byVolume = [...rows].sort((a, b) => b.bookableCalls - a.bookableCalls)
             const byNoShow = [...rows].filter(a => a.no_show_rate != null).sort((a, b) => (a.no_show_rate ?? 0) - (b.no_show_rate ?? 0))
             const byAgentRank = new Map(byConversion.map((a, i) => [a.agent, i]))
             return (
@@ -423,9 +443,31 @@ export default function AdminDashboardPage() {
                   <Panel title="Conversion Rate by Agent" subtitle="Appointments set ÷ calls handled (incoming + outgoing + outbound) — best to worst">
                     <BarList items={byConversion.map(a => ({ label: a.agent, count: a.conversionRate ?? 0 }))} unit="%" />
                   </Panel>
-                  <Panel title="Call Volume by Agent" subtitle="Total calls handled — highest to lowest">
-                    <BarList items={byVolume.map(a => ({ label: a.agent, count: a.bookableCalls }))} />
+                  <Panel title="Calls vs Appointments by Agent" subtitle="Appointments set (bright) against total calls handled (muted context), all channels combined">
+                    <DualBarChart
+                      rows={rows.map(a => ({ name: a.agent, primary: a.appointmentsSet, secondary: a.totalCalls }))}
+                      primaryLabel="Appointments set" secondaryLabel="Total calls" primaryColor="bg-teal-500" primaryText="text-teal-700"
+                    />
                   </Panel>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-1">Call Volume by Channel</h3>
+                  <p className="text-xs text-slate-400 mb-3">Same agents, one chart per channel — not blended into a single call count.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Panel title="Incoming Calls by Agent" subtitle="New leads calling in, highest to lowest">
+                      <BarList items={[...rows].sort((a, b) => b.incoming - a.incoming).map(a => ({ label: a.agent, count: a.incoming }))} colorFor={() => CHANNEL_COLOR_CLASS.incoming} />
+                    </Panel>
+                    <Panel title="Outgoing Follow-up Calls by Agent" subtitle="Follow-up calls to existing leads, highest to lowest">
+                      <BarList items={[...rows].sort((a, b) => b.outgoing_leads - a.outgoing_leads).map(a => ({ label: a.agent, count: a.outgoing_leads }))} colorFor={() => CHANNEL_COLOR_CLASS.outgoing} />
+                    </Panel>
+                    <Panel title="Confirmation Calls by Agent" subtitle="Night-before / morning-of confirmation calls, highest to lowest">
+                      <BarList items={[...rows].sort((a, b) => b.confirmation - a.confirmation).map(a => ({ label: a.agent, count: a.confirmation }))} colorFor={() => CHANNEL_COLOR_CLASS.confirmation} />
+                    </Panel>
+                    <Panel title="Outbound Calls by Agent" subtitle="Outbound queue dials, highest to lowest">
+                      <BarList items={[...rows].sort((a, b) => b.outbound - a.outbound).map(a => ({ label: a.agent, count: a.outbound }))} colorFor={() => CHANNEL_COLOR_CLASS.outbound} />
+                    </Panel>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -980,6 +1022,13 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
             <div className="text-[10px] text-slate-400">Dials / Appt</div>
             <div className="text-xs font-semibold text-slate-700 tabular-nums">{a.attempts_per_booking ?? '—'}</div>
           </div>
+        </div>
+      )}
+
+      {a.outbound_outcomes.length > 0 && (
+        <div className="pt-3 border-t border-slate-100">
+          <div className="text-[10px] text-slate-400 mb-1.5">Outbound call outcomes — every dial, not just reached/booked</div>
+          <BarList items={a.outbound_outcomes.map(o => ({ label: OUTBOUND_OUTCOME_LABEL[o.outcome] || o.outcome, count: o.count }))} />
         </div>
       )}
 
