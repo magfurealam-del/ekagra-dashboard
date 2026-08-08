@@ -606,6 +606,67 @@ export default function AdminDashboardPage() {
                   </Panel>
                 </div>
 
+                {(() => {
+                  const tta = (sourcePerf?.time_to_appointment || []) as { source: string; median_days: number; avg_days: number; n: number }[]
+                  if (tta.length === 0) return null
+                  return (
+                    <Panel title="Time to First Appointment by Source" subtitle="Median days from lead created to first appointment set — fastest to slowest">
+                      <BarList items={tta.map(t => ({ label: t.source, count: t.median_days }))} unit=" days" />
+                    </Panel>
+                  )
+                })()}
+
+                {(() => {
+                  const matrix = (sourcePerf?.source_agent_matrix || []) as { source: string; agent: string; leads: number }[]
+                  if (matrix.length === 0) return null
+                  const sources = [...new Set(matrix.map(m => m.source))].sort((a, b) => {
+                    const totalA = matrix.filter(m => m.source === a).reduce((s, m) => s + m.leads, 0)
+                    const totalB = matrix.filter(m => m.source === b).reduce((s, m) => s + m.leads, 0)
+                    return totalB - totalA
+                  })
+                  const agents = [...new Set(matrix.map(m => m.agent))].sort()
+                  const cell = new Map(matrix.map(m => [`${m.source}|${m.agent}`, m.leads]))
+                  const max = Math.max(1, ...matrix.map(m => m.leads))
+                  return (
+                    <Panel title="Source × Agent Matrix" subtitle="Which agents actually work which channels — leads handled, per source per agent">
+                      <div className="overflow-x-auto">
+                        <table className="text-sm border-collapse">
+                          <thead>
+                            <tr>
+                              <th className="text-left pb-2 pr-3 text-xs text-slate-400 font-medium">Source</th>
+                              {agents.map(ag => <th key={ag} className="pb-2 px-2 text-xs text-slate-400 font-medium text-center whitespace-nowrap">{ag}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sources.map(src => (
+                              <tr key={src}>
+                                <td className="py-1 pr-3 font-medium text-slate-700 whitespace-nowrap">{src}</td>
+                                {agents.map(ag => {
+                                  const v = cell.get(`${src}|${ag}`) ?? 0
+                                  const intensity = v / max
+                                  return (
+                                    <td key={ag} className="p-1 text-center">
+                                      <div
+                                        className="w-14 h-8 rounded-md flex items-center justify-center text-xs font-semibold tabular-nums mx-auto"
+                                        style={{
+                                          backgroundColor: v > 0 ? `rgba(13, 148, 136, ${0.12 + intensity * 0.75})` : 'transparent',
+                                          color: intensity > 0.5 ? 'white' : v > 0 ? '#0f766e' : '#cbd5e1',
+                                        }}
+                                      >
+                                        {v > 0 ? v : '—'}
+                                      </div>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Panel>
+                  )
+                })()}
+
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-1">Source Detail</h3>
                   <p className="text-xs text-slate-400 mb-3">Full funnel per source — leads in, appointments set, and who actually showed up.</p>
