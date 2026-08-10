@@ -37,14 +37,21 @@ function millisecondsUntilNextDhakaSix() {
 // rows are always selected first; the remaining slots are distributed across
 // the next priority bands and then filled from the lower-priority backlog.
 function selectBalancedQueue(rows: any[], limit = 100) {
+  // Website appointment requests are pinned to the very top (category_rank 0,
+  // pinned_to_top = true at the DB level) and are never subject to the
+  // per-band quota below — every one of them must appear on the sheet.
+  const pinned = rows.filter((row) => Number(row.category_rank) === 0)
+  const rest = rows.filter((row) => Number(row.category_rank) !== 0)
+  const restLimit = Math.max(0, limit - pinned.length)
+
   const bands = [1, 2, 3, 5, 9, 13]
   const quotas: Record<number, number> = { 1: 12, 2: 12, 3: 10, 5: 15, 9: 25, 13: 26 }
   const selected: any[] = []
-  const remaining = [...rows]
+  const remaining = [...rest]
 
   for (const rank of bands) {
     const matches = remaining.filter((row) => Number(row.category_rank) === rank)
-    const take = Math.min(quotas[rank] || 0, matches.length, limit - selected.length)
+    const take = Math.min(quotas[rank] || 0, matches.length, restLimit - selected.length)
     selected.push(...matches.slice(0, take))
     for (const row of matches.slice(0, take)) {
       const index = remaining.indexOf(row)
@@ -52,8 +59,8 @@ function selectBalancedQueue(rows: any[], limit = 100) {
     }
   }
 
-  if (selected.length < limit) selected.push(...remaining.slice(0, limit - selected.length))
-  return selected.slice(0, limit)
+  if (selected.length < restLimit) selected.push(...remaining.slice(0, restLimit - selected.length))
+  return [...pinned, ...selected].slice(0, limit)
 }
 
 export default function OutgoingCallsPage() {
