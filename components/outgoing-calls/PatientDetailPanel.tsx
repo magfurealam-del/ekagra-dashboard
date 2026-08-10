@@ -6,6 +6,8 @@ import { CATEGORY_LABEL } from './types'
 
 function recommendedAction(row: any) {
   switch (row.category) {
+    case 'website_appointment_made':
+      return 'New website booking request — call to confirm details and lock in a proper appointment.'
     case 'no_show_7':
     case 'no_show_14':
     case 'no_show_28':
@@ -108,7 +110,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       if (row.source_table === 'crm_leads' && row.source_id) {
         const { data: l } = await supabase
           .from('crm_leads')
-          .select('source, campaign_name, lead_status, main_problem, agent_name, lead_bucket, urgency, notes, referral_name, created_at, intake_outcome, no_appointment_reasons')
+          .select('source, campaign_name, lead_status, main_problem, agent_name, lead_bucket, urgency, notes, referral_name, created_at, intake_outcome, no_appointment_reasons, preferred_doctor, preferred_visit_date, lead_name, phone')
           .eq('id', row.source_id)
           .maybeSingle()
         if (!cancelled) setLead(l)
@@ -146,10 +148,23 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
       <div>
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-slate-800">{row.patient_name || 'Unknown patient'}</h3>
+          {row.category === 'website_appointment_made' && (
+            <span className="text-[10px] rounded px-1.5 py-0.5 bg-green-600 text-white font-semibold">🌐 Website Booking</span>
+          )}
           {row.category_rank <= 4 && (
             <span className="text-[10px] rounded px-1.5 py-0.5 bg-red-100 text-red-700">High Priority</span>
           )}
         </div>
+        {row.category === 'website_appointment_made' && (
+          <div className="mt-2 bg-green-50 border border-green-200 rounded-md p-2.5 text-xs text-slate-700 space-y-1">
+            <div className="font-semibold text-green-800">Website Appointment Request — call to confirm and schedule</div>
+            <div><span className="font-medium">Name:</span> {row.patient_name || lead?.lead_name || 'Not provided'}</div>
+            <div><span className="font-medium">Phone:</span> {row.phone || lead?.phone || 'Not provided'}</div>
+            <div><span className="font-medium">Problem:</span> {lead?.main_problem || 'Not provided'}</div>
+            <div><span className="font-medium">Requested doctor:</span> {lead?.preferred_doctor || 'Not specified'}</div>
+            <div><span className="font-medium">Preferred visit day:</span> {lead?.preferred_visit_date || 'Not specified'}</div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500 mt-2">
           <div>Patient ID: {patient?.hospital_patient_id || patient?.hn || row.patient_id || '—'}</div>
           <div>Lead type: {CATEGORY_LABEL[row.category] ?? row.category}</div>

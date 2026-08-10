@@ -28,8 +28,10 @@ export type CategoryKey =
   | 'wound_no_appt_7' | 'wound_no_appt_14' | 'wound_no_appt_28' | 'wound_no_appt_old'
   | 'screening_no_appt_7' | 'screening_no_appt_14' | 'screening_no_appt_28' | 'screening_no_appt_old'
   | 'general_no_appt'
+  | 'website_appointment_made'
 
 export const CATEGORY_LABEL: Record<string, string> = {
+  website_appointment_made: 'Website Appointment Request',
   no_show_7:            'No-show — last 7 days',
   no_show_14:           'No-show — 8–14 days ago',
   no_show_28:           'No-show — 15–28 days ago',
@@ -49,6 +51,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
 }
 
 export const CATEGORY_BADGE_LABEL: Record<string, string> = {
+  website_appointment_made: 'Website Booking',
   no_show_7:            'No-show (7d)',
   no_show_14:           'No-show (14d)',
   no_show_28:           'No-show (28d)',
@@ -74,6 +77,7 @@ export const CATEGORY_BADGE_LABEL: Record<string, string> = {
 export type CallType = 'lead_gen' | 'patient_recovery'
 
 export const CALL_TYPE_FOR_CATEGORY: Record<string, CallType> = {
+  website_appointment_made: 'lead_gen',
   no_show_7: 'patient_recovery',
   no_show_14: 'patient_recovery',
   no_show_28: 'patient_recovery',
@@ -107,6 +111,7 @@ export function callTypeForCategory(category: string): CallType {
 }
 
 export const CATEGORY_BADGE_TONE: Record<string, string> = {
+  website_appointment_made: 'bg-green-600 text-white',
   no_show_7:            'bg-rose-100 text-rose-700',
   no_show_14:           'bg-amber-100 text-amber-700',
   no_show_28:           'bg-amber-50 text-amber-600',
@@ -129,6 +134,7 @@ export const CATEGORY_BADGE_TONE: Record<string, string> = {
 // Each filter maps to one or more categories. `undefined` categories = show all.
 export const QUICK_FILTERS: { key: string; label: string; categories?: string[] }[] = [
   { key: 'all',           label: 'All' },
+  { key: 'website',       label: 'Website Appointment', categories: ['website_appointment_made'] },
   { key: 'overdue',       label: 'Overdue (No-show 7d+)', categories: ['no_show_14','no_show_28'] },
   { key: 'no_show_7',     label: 'No-show 7d',   categories: ['no_show_7'] },
   { key: 'no_show_14',    label: 'No-show 14d',  categories: ['no_show_14'] },
@@ -143,6 +149,9 @@ export const QUICK_FILTERS: { key: string; label: string; categories?: string[] 
 
 export function priorityBadges(row: any): { label: string; tone: string }[] {
   const badges: { label: string; tone: string }[] = []
+  if (row.category === 'website_appointment_made') {
+    badges.push({ label: '🌐 Call to Schedule', tone: 'bg-green-600 text-white font-semibold' })
+  }
   const callType = callTypeForCategory(row.category)
   badges.push({ label: CALL_TYPE_LABEL[callType], tone: CALL_TYPE_TONE[callType] })
   badges.push({
