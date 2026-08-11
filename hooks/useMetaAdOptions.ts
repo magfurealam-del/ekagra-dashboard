@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/AuthContext'
 
 type MetaAdOption = { label: string; value: string }
 
@@ -23,10 +24,17 @@ function msUntilNextSixDhaka() {
 // managed in Settings > Marketing > Ad ID Options, no connection to the
 // Meta Ads API or the meta_active_ads table.
 export function useMetaAdOptions() {
+  const { session } = useAuth()
   const [options, setOptions] = useState<MetaAdOption[]>([])
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    // Wait for AuthContext to resolve a session before querying — this table
+    // has no anon grant, so firing before the JWT is attached (e.g. during
+    // initial session bootstrap or a token refresh) always fails with
+    // "permission denied for table meta_ad_options".
+    if (!session) return
+
     let cancelled = false
     const key = `meta-ad-options:v1:${windowKey()}`
 
@@ -71,7 +79,7 @@ export function useMetaAdOptions() {
       cancelled = true
       if (timer.current) clearTimeout(timer.current)
     }
-  }, [])
+  }, [session])
 
   return options
 }
