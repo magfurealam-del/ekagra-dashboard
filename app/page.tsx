@@ -42,6 +42,8 @@ const blankForm = {
   branch: 'Dhanmondi',
   appointment_date: '',
   appointment_time: '',
+  screening_package_price: '',
+  screening_package_type: '',
   internal_note: '',
 }
 
@@ -90,6 +92,8 @@ export default function LeadIntakePage() {
   const doctorOpts = useDoctors()
   const serviceTypeOpts = useDropdownOptions('service_type')
   const branchOpts = useDropdownOptions('branch')
+  const screeningPackagePriceOpts = useDropdownOptions('screening_package_price')
+  const screeningPackageTypeOpts = useDropdownOptions('screening_package_type')
   const genderOpts = useDropdownOptions('gender')
   const sourceChannelOpts = useDropdownOptions('intake_source_channel')
   const callDirectionOpts = useDropdownOptions('intake_call_direction')
@@ -310,6 +314,8 @@ export default function LeadIntakePage() {
         branch: form.branch,
         appointment_date: form.appointment_date || null,
         appointment_time: form.appointment_time || null,
+        screening_package_price: form.service_type === 'Screening' ? form.screening_package_price || null : null,
+        screening_package_type: form.service_type === 'Screening' ? form.screening_package_type || null : null,
         follow_up_due_at: null,
         follow_up_priority: autoPriority,
         internal_note: form.internal_note,
@@ -553,6 +559,16 @@ export default function LeadIntakePage() {
                 <Field label="Service type *">
                   <SearchableSelect options={serviceTypeOpts.options} value={form.service_type} onChange={(v) => set('service_type', v)} />
                 </Field>
+                {form.service_type === 'Screening' && (
+                  <>
+                    <Field label="Screening package price">
+                      <SearchableSelect options={screeningPackagePriceOpts.options} value={form.screening_package_price} onChange={(v) => set('screening_package_price', v)} />
+                    </Field>
+                    <Field label="Screening package type">
+                      <SearchableSelect options={screeningPackageTypeOpts.options} value={form.screening_package_type} onChange={(v) => set('screening_package_type', v)} />
+                    </Field>
+                  </>
+                )}
                 <Field label="Branch *">
                   <SearchableSelect options={branchOpts.options} value={form.branch} onChange={(v) => set('branch', v)} />
                 </Field>

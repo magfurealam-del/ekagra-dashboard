@@ -30,6 +30,8 @@ const CATEGORY_GROUPS: { section: string; items: { key: string; label: string }[
       { key: 'confirmation_status', label: 'Confirmation Status' },
       { key: 'service_type', label: 'Service Type' },
       { key: 'branch', label: 'Branch' },
+      { key: 'screening_package_price', label: 'Screening Package Price' },
+      { key: 'screening_package_type', label: 'Screening Package Type' },
     ],
   },
   {
