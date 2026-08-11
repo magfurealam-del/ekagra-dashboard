@@ -39,6 +39,8 @@ interface AgentDetailRow {
   appointments_set: number; no_shows: number; no_show_rate: number | null
   revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
   trend: { date: string; leads: number; booked: number }[]
+  booked_to_completed: number; booked_to_no_show: number
+  status_change_daily: { date: string; booked_to_completed: number; booked_to_no_show: number }[]
   bookableCalls: number; appointmentsSet: number; totalCalls: number
   conversionRate: number | null; confirmRate: number | null; reachedRate: number | null; outboundAttendedRate: number | null
 }
@@ -390,6 +392,8 @@ export default function AdminDashboardPage() {
               appointments_set: number; no_shows: number; no_show_rate: number | null
               revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
               trend: { date: string; leads: number; booked: number }[]
+              booked_to_completed: number; booked_to_no_show: number
+              status_change_daily: { date: string; booked_to_completed: number; booked_to_no_show: number }[]
             }
             if (agentPerfLoading) {
               return (
@@ -425,6 +429,12 @@ export default function AdminDashboardPage() {
             const byConversion = [...rows].sort((a, b) => (b.conversionRate ?? 0) - (a.conversionRate ?? 0))
             const byNoShow = [...rows].filter(a => a.no_show_rate != null).sort((a, b) => (a.no_show_rate ?? 0) - (b.no_show_rate ?? 0))
             const byAgentRank = new Map(byConversion.map((a, i) => [a.agent, i]))
+            const totalPatientsWithAppointments = agentPerf?.total_patients_with_appointments ?? 0
+            // Flattened per-day, per-agent status-change log — sorted newest first,
+            // agent alphabetically within a day — for the daily breakdown table.
+            const statusChangeDailyRows = rows
+              .flatMap(a => a.status_change_daily.map(d => ({ agent: a.agent, ...d })))
+              .sort((x, y) => y.date.localeCompare(x.date) || x.agent.localeCompare(y.agent))
             return (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -484,6 +494,51 @@ export default function AdminDashboardPage() {
                       primaryLabel="New patient" secondaryLabel="Follow-up" formatter={money}
                     />
                   </Panel>
+                </div>
+
+                <Panel
+                  title="Calendar Status Changes by Agent"
+                  subtitle={`Appointments an agent manually moved from Booked → Completed or Booked → No-show, against the ${totalPatientsWithAppointments.toLocaleString()} total patients with an appointment this period`}
+                >
+                  <TripleBarChart
+                    rows={rows.map(a => ({ name: a.agent, a: a.booked_to_completed, b: a.booked_to_no_show, c: totalPatientsWithAppointments }))}
+                    aLabel="Booked → Completed" bLabel="Booked → No-show" cLabel="Total patients with appointments"
+                  />
+                </Panel>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-1">Daily Calendar Status Changes by Agent</h3>
+                  <p className="text-xs text-slate-400 mb-3">Every Booked → Completed / Booked → No-show change, broken out by the day it was made and who made it.</p>
+                  {statusChangeDailyRows.length === 0 ? (
+                    <p className="text-sm text-slate-400">No calendar status changes by an agent this period.</p>
+                  ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-auto max-h-[420px]">
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="text-xs text-slate-400 uppercase sticky top-0 bg-white">
+                          <tr>
+                            <th className="text-left py-1.5 px-3 border border-slate-200">Date</th>
+                            <th className="text-left py-1.5 px-3 border border-slate-200">Agent</th>
+                            <th className="text-right py-1.5 px-3 border border-slate-200">Booked → Completed</th>
+                            <th className="text-right py-1.5 px-3 border border-slate-200">Booked → No-show</th>
+                            <th className="text-right py-1.5 px-3 border border-slate-200">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {statusChangeDailyRows.map((r) => (
+                            <tr key={`${r.date}-${r.agent}`}>
+                              <td className="py-1.5 px-3 whitespace-nowrap text-slate-500 border border-slate-100">
+                                {new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </td>
+                              <td className="py-1.5 px-3 font-medium text-slate-700 border border-slate-100">{r.agent}</td>
+                              <td className="py-1.5 px-3 text-right text-emerald-700 font-medium tabular-nums border border-slate-100">{r.booked_to_completed}</td>
+                              <td className="py-1.5 px-3 text-right text-rose-700 font-medium tabular-nums border border-slate-100">{r.booked_to_no_show}</td>
+                              <td className="py-1.5 px-3 text-right text-slate-500 tabular-nums border border-slate-100">{r.booked_to_completed + r.booked_to_no_show}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1046,6 +1101,64 @@ function DualBarChart({
               <div className="h-full bg-slate-300 rounded-full" style={{ width: `${(r.secondary / max) * 100}%` }} />
             </div>
             <div className="w-24 text-right text-xs text-slate-500 tabular-nums">{formatter(r.secondary)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── TripleBarChart — same visual language as DualBarChart, extended to three
+// stacked rows per entity. Used for Booked→Completed / Booked→No-show status
+// changes against the total patients-with-appointments reference figure. ──
+function TripleBarChart({
+  rows, aLabel, bLabel, cLabel,
+  aColor = 'bg-emerald-500', bColor = 'bg-rose-500', cColor = 'bg-slate-400',
+  aText = 'text-emerald-700', bText = 'text-rose-700',
+  formatter = (n: number) => String(n), sortDesc = true,
+}: {
+  rows: { name: string; a: number; b: number; c: number }[]
+  aLabel: string
+  bLabel: string
+  cLabel: string
+  aColor?: string
+  bColor?: string
+  cColor?: string
+  aText?: string
+  bText?: string
+  formatter?: (n: number) => string
+  sortDesc?: boolean
+}) {
+  if (rows.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  const max = Math.max(1, ...rows.map(r => Math.max(r.a, r.b, r.c)))
+  const sorted = sortDesc ? [...rows].sort((x, y) => (y.a + y.b) - (x.a + x.b)) : rows
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
+        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${aColor}`} />{aLabel}</span>
+        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${bColor}`} />{bLabel}</span>
+        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${cColor}`} />{cLabel}</span>
+      </div>
+      {sorted.map(r => (
+        <div key={r.name}>
+          <div className="text-xs font-medium text-slate-700 mb-1">{r.name}</div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${aColor}`} style={{ width: `${(r.a / max) * 100}%` }} />
+            </div>
+            <div className={`w-20 text-right text-xs font-semibold tabular-nums ${aText}`}>{formatter(r.a)}</div>
+          </div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${bColor}`} style={{ width: `${(r.b / max) * 100}%` }} />
+            </div>
+            <div className={`w-20 text-right text-xs font-semibold tabular-nums ${bText}`}>{formatter(r.b)}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${cColor}`} style={{ width: `${(r.c / max) * 100}%` }} />
+            </div>
+            <div className="w-20 text-right text-xs text-slate-500 tabular-nums">{formatter(r.c)}</div>
           </div>
         </div>
       ))}
