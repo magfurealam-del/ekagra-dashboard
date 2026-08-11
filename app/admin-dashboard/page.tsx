@@ -500,9 +500,9 @@ export default function AdminDashboardPage() {
                   title="Calendar Status Changes by Agent"
                   subtitle={`Appointments an agent manually moved from Booked → Completed or Booked → No-show, against the ${totalPatientsWithAppointments.toLocaleString()} total patients with an appointment this period`}
                 >
-                  <TripleBarChart
-                    rows={rows.map(a => ({ name: a.agent, a: a.booked_to_completed, b: a.booked_to_no_show, c: totalPatientsWithAppointments }))}
-                    aLabel="Booked → Completed" bLabel="Booked → No-show" cLabel="Total patients with appointments"
+                  <StatusChangeStackedChart
+                    rows={rows.map(a => ({ name: a.agent, completed: a.booked_to_completed, noShow: a.booked_to_no_show, total: totalPatientsWithAppointments }))}
+                    totalLabel="Total patients with appointments"
                   />
                 </Panel>
 
@@ -1108,60 +1108,57 @@ function DualBarChart({
   )
 }
 
-// ── TripleBarChart — same visual language as DualBarChart, extended to three
-// stacked rows per entity. Used for Booked→Completed / Booked→No-show status
-// changes against the total patients-with-appointments reference figure. ──
-function TripleBarChart({
-  rows, aLabel, bLabel, cLabel,
-  aColor = 'bg-emerald-500', bColor = 'bg-rose-500', cColor = 'bg-slate-400',
-  aText = 'text-emerald-700', bText = 'text-rose-700',
-  formatter = (n: number) => String(n), sortDesc = true,
+// ── StatusChangeStackedChart — Booked→Completed and Booked→No-show stack
+// into a single cumulative bar per agent (since both are agent-driven
+// changes off the same starting "Booked" pool, not independent metrics), with
+// a muted reference bar underneath showing the total patients-with-appointments
+// figure they're being measured against. ──
+function StatusChangeStackedChart({
+  rows, totalLabel,
 }: {
-  rows: { name: string; a: number; b: number; c: number }[]
-  aLabel: string
-  bLabel: string
-  cLabel: string
-  aColor?: string
-  bColor?: string
-  cColor?: string
-  aText?: string
-  bText?: string
-  formatter?: (n: number) => string
-  sortDesc?: boolean
+  rows: { name: string; completed: number; noShow: number; total: number }[]
+  totalLabel: string
 }) {
   if (rows.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
-  const max = Math.max(1, ...rows.map(r => Math.max(r.a, r.b, r.c)))
-  const sorted = sortDesc ? [...rows].sort((x, y) => (y.a + y.b) - (x.a + x.b)) : rows
+  const max = Math.max(1, ...rows.map(r => Math.max(r.completed + r.noShow, r.total)))
+  const sorted = [...rows].sort((x, y) => (y.completed + y.noShow) - (x.completed + x.noShow))
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
-        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${aColor}`} />{aLabel}</span>
-        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${bColor}`} />{bLabel}</span>
-        <span className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full inline-block ${cColor}`} />{cLabel}</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-emerald-500" />Booked → Completed</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-rose-500" />Booked → No-show</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-slate-400" />{totalLabel}</span>
       </div>
-      {sorted.map(r => (
-        <div key={r.name}>
-          <div className="text-xs font-medium text-slate-700 mb-1">{r.name}</div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${aColor}`} style={{ width: `${(r.a / max) * 100}%` }} />
+      {sorted.map(r => {
+        const changed = r.completed + r.noShow
+        return (
+          <div key={r.name}>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="font-medium text-slate-700">{r.name}</span>
+              <span className="text-slate-500 tabular-nums">
+                <span className="text-emerald-700 font-semibold">{r.completed}</span>
+                {' + '}
+                <span className="text-rose-700 font-semibold">{r.noShow}</span>
+                {' = '}
+                <span className="font-semibold text-slate-700">{changed}</span>
+              </span>
             </div>
-            <div className={`w-20 text-right text-xs font-semibold tabular-nums ${aText}`}>{formatter(r.a)}</div>
-          </div>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${bColor}`} style={{ width: `${(r.b / max) * 100}%` }} />
+            <div
+              className="flex h-3.5 bg-slate-100 rounded-full overflow-hidden mb-1"
+              title={`${r.completed} Booked → Completed, ${r.noShow} Booked → No-show`}
+            >
+              {r.completed > 0 && <div className="h-full bg-emerald-500" style={{ width: `${(r.completed / max) * 100}%` }} />}
+              {r.noShow > 0 && <div className="h-full bg-rose-500" style={{ width: `${(r.noShow / max) * 100}%` }} />}
             </div>
-            <div className={`w-20 text-right text-xs font-semibold tabular-nums ${bText}`}>{formatter(r.b)}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${cColor}`} style={{ width: `${(r.c / max) * 100}%` }} />
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-slate-400 rounded-full" style={{ width: `${(r.total / max) * 100}%` }} />
+              </div>
+              <div className="w-20 text-right text-xs text-slate-500 tabular-nums">{r.total}</div>
             </div>
-            <div className="w-20 text-right text-xs text-slate-500 tabular-nums">{formatter(r.c)}</div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
