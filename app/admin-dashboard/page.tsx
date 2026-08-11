@@ -528,6 +528,19 @@ export default function AdminDashboardPage() {
                   />
                 </Panel>
 
+                <Panel
+                  title="Calendar Status Changes — All Agents Combined"
+                  subtitle="Every Booked → Completed/No-show change this period, stacked together into one bar and color-coded by who made it — the gray segment is how many of this period's appointments still haven't been updated at all"
+                >
+                  <CombinedStatusChangeStackedChart
+                    rows={[
+                      ...rows.map(a => ({ name: a.agent, changed: a.booked_to_completed + a.booked_to_no_show })),
+                      { name: 'Invoice Workflow (Automated)', changed: invoiceWorkflowStatusChanges.booked_to_completed + invoiceWorkflowStatusChanges.booked_to_no_show },
+                    ]}
+                    total={totalPatientsWithAppointments}
+                  />
+                </Panel>
+
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-1">Agent Detail</h3>
                   <p className="text-xs text-slate-400 mb-3">Every metric broken out per agent — not blended into one number.</p>
@@ -1146,6 +1159,66 @@ function StatusChangeStackedChart({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Same categorical palette as DonutChart (components/admin/DashboardCharts.tsx),
+// so an agent's color reads consistently across charts on this tab.
+const AGENT_PALETTE_HEX = ['#0d9488', '#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#e87ba4', '#eb6834']
+
+// ── CombinedStatusChangeStackedChart — every changer (agents + the automated
+// invoice workflow) combined into ONE bar, color-coded per changer, so the
+// total volume and the coverage gap (patients whose appointment was never
+// updated at all) read at a glance instead of needing to sum per-agent rows. ──
+function CombinedStatusChangeStackedChart({
+  rows, total,
+}: {
+  rows: { name: string; changed: number }[]
+  total: number
+}) {
+  if (total <= 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  const withVolume = rows.filter(r => r.changed > 0).sort((a, b) => b.changed - a.changed)
+  const totalChanged = withVolume.reduce((s, r) => s + r.changed, 0)
+  const missing = Math.max(0, total - totalChanged)
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between flex-wrap gap-1">
+        <div className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-800 tabular-nums">{totalChanged.toLocaleString()}</span> of{' '}
+          <span className="font-semibold text-slate-800 tabular-nums">{total.toLocaleString()}</span> patients updated
+        </div>
+        <div className={`text-xs font-semibold tabular-nums ${missing > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+          {missing.toLocaleString()} still not updated
+        </div>
+      </div>
+      <div className="flex h-6 bg-slate-100 rounded-full overflow-hidden">
+        {withVolume.map((r, i) => (
+          <div
+            key={r.name}
+            className="h-full"
+            style={{ width: `${(r.changed / total) * 100}%`, backgroundColor: AGENT_PALETTE_HEX[i % AGENT_PALETTE_HEX.length] }}
+            title={`${r.name}: ${r.changed}`}
+          />
+        ))}
+        {missing > 0 && (
+          <div className="h-full bg-slate-300" style={{ width: `${(missing / total) * 100}%` }} title={`Not yet updated: ${missing}`} />
+        )}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
+        {withVolume.map((r, i) => (
+          <span key={r.name} className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm inline-block flex-shrink-0" style={{ backgroundColor: AGENT_PALETTE_HEX[i % AGENT_PALETTE_HEX.length] }} />
+            {r.name} <span className="font-semibold text-slate-700 tabular-nums">{r.changed}</span>
+          </span>
+        ))}
+        {missing > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm inline-block bg-slate-300 flex-shrink-0" />
+            Not yet updated <span className="font-semibold text-slate-700 tabular-nums">{missing}</span>
+          </span>
+        )}
+      </div>
     </div>
   )
 }
