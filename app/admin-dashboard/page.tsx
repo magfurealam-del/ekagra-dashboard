@@ -61,6 +61,24 @@ const OUTBOUND_OUTCOME_LABEL: Record<string, string> = {
   unspecified: 'Unspecified',
 }
 
+// Fixed per-outcome color (not per-rank) so "Reached" is always the same
+// color on every agent's card, regardless of where it falls in that
+// agent's own sorted-by-count order. Same palette as the Call KPIs page's
+// outbound outcome colors.
+const OUTBOUND_OUTCOME_COLORS: Record<string, string> = {
+  'Reached': 'bg-emerald-500',
+  'Booked Appointment': 'bg-teal-500',
+  'Not Reached': 'bg-slate-400',
+  'Busy': 'bg-amber-500',
+  'Switched Off': 'bg-indigo-300',
+  'Wrong Number': 'bg-rose-500',
+  'Already Visited': 'bg-indigo-500',
+  'Not Interested': 'bg-fuchsia-400',
+  'Call Later': 'bg-sky-500',
+  'Do Not Call': 'bg-rose-700',
+  'Unspecified': 'bg-slate-300',
+}
+
 interface SourcePerfRow {
   source: string
   leads: number; new_leads: number; old_leads: number
@@ -430,11 +448,7 @@ export default function AdminDashboardPage() {
             const byNoShow = [...rows].filter(a => a.no_show_rate != null).sort((a, b) => (a.no_show_rate ?? 0) - (b.no_show_rate ?? 0))
             const byAgentRank = new Map(byConversion.map((a, i) => [a.agent, i]))
             const totalPatientsWithAppointments = agentPerf?.total_patients_with_appointments ?? 0
-            // Flattened per-day, per-agent status-change log — sorted newest first,
-            // agent alphabetically within a day — for the daily breakdown table.
-            const statusChangeDailyRows = rows
-              .flatMap(a => a.status_change_daily.map(d => ({ agent: a.agent, ...d })))
-              .sort((x, y) => y.date.localeCompare(x.date) || x.agent.localeCompare(y.agent))
+            const invoiceWorkflowStatusChanges = agentPerf?.invoice_workflow_status_changes ?? { booked_to_completed: 0, booked_to_no_show: 0 }
             return (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -498,48 +512,21 @@ export default function AdminDashboardPage() {
 
                 <Panel
                   title="Calendar Status Changes by Agent"
-                  subtitle={`Appointments an agent manually moved from Booked → Completed or Booked → No-show, against the ${totalPatientsWithAppointments.toLocaleString()} total patients with an appointment this period`}
+                  subtitle={`Appointments moved from Booked → Completed or Booked → No-show — by agent and by the automated invoice-reconciliation workflow — against the ${totalPatientsWithAppointments.toLocaleString()} total patients with an appointment this period`}
                 >
                   <StatusChangeStackedChart
-                    rows={rows.map(a => ({ name: a.agent, completed: a.booked_to_completed, noShow: a.booked_to_no_show, total: totalPatientsWithAppointments }))}
+                    rows={[
+                      ...rows.map(a => ({ name: a.agent, completed: a.booked_to_completed, noShow: a.booked_to_no_show, total: totalPatientsWithAppointments })),
+                      {
+                        name: 'Invoice Workflow (Automated)',
+                        completed: invoiceWorkflowStatusChanges.booked_to_completed,
+                        noShow: invoiceWorkflowStatusChanges.booked_to_no_show,
+                        total: totalPatientsWithAppointments,
+                      },
+                    ]}
                     totalLabel="Total patients with appointments"
                   />
                 </Panel>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700 mb-1">Daily Calendar Status Changes by Agent</h3>
-                  <p className="text-xs text-slate-400 mb-3">Every Booked → Completed / Booked → No-show change, broken out by the day it was made and who made it.</p>
-                  {statusChangeDailyRows.length === 0 ? (
-                    <p className="text-sm text-slate-400">No calendar status changes by an agent this period.</p>
-                  ) : (
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-auto max-h-[420px]">
-                      <table className="w-full text-sm border-collapse">
-                        <thead className="text-xs text-slate-400 uppercase sticky top-0 bg-white">
-                          <tr>
-                            <th className="text-left py-1.5 px-3 border border-slate-200">Date</th>
-                            <th className="text-left py-1.5 px-3 border border-slate-200">Agent</th>
-                            <th className="text-right py-1.5 px-3 border border-slate-200">Booked → Completed</th>
-                            <th className="text-right py-1.5 px-3 border border-slate-200">Booked → No-show</th>
-                            <th className="text-right py-1.5 px-3 border border-slate-200">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {statusChangeDailyRows.map((r) => (
-                            <tr key={`${r.date}-${r.agent}`}>
-                              <td className="py-1.5 px-3 whitespace-nowrap text-slate-500 border border-slate-100">
-                                {new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                              </td>
-                              <td className="py-1.5 px-3 font-medium text-slate-700 border border-slate-100">{r.agent}</td>
-                              <td className="py-1.5 px-3 text-right text-emerald-700 font-medium tabular-nums border border-slate-100">{r.booked_to_completed}</td>
-                              <td className="py-1.5 px-3 text-right text-rose-700 font-medium tabular-nums border border-slate-100">{r.booked_to_no_show}</td>
-                              <td className="py-1.5 px-3 text-right text-slate-500 tabular-nums border border-slate-100">{r.booked_to_completed + r.booked_to_no_show}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
 
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-1">Agent Detail</h3>
@@ -1244,7 +1231,10 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
       {a.outbound_outcomes.length > 0 && (
         <div className="pt-3 border-t border-slate-100">
           <div className="text-[10px] text-slate-400 mb-1.5">Outbound call outcomes — every dial, not just reached/booked</div>
-          <BarList items={a.outbound_outcomes.map(o => ({ label: OUTBOUND_OUTCOME_LABEL[o.outcome] || o.outcome, count: o.count }))} />
+          <BarList
+            items={a.outbound_outcomes.map(o => ({ label: OUTBOUND_OUTCOME_LABEL[o.outcome] || o.outcome, count: o.count }))}
+            colorFor={(label) => OUTBOUND_OUTCOME_COLORS[label] || 'bg-slate-400'}
+          />
         </div>
       )}
     </div>
