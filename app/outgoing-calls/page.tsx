@@ -44,8 +44,14 @@ function selectBalancedQueue(rows: any[], limit = 100) {
   const rest = rows.filter((row) => Number(row.category_rank) !== 0)
   const restLimit = Math.max(0, limit - pinned.length)
 
-  const bands = [1, 2, 3, 5, 9, 13]
-  const quotas: Record<number, number> = { 1: 12, 2: 12, 3: 10, 5: 15, 9: 25, 13: 26 }
+  // Ranks: 1-3 never-visited no-shows, 4 surgery (uncapped, no dedicated
+  // quota — same as before), 5-7 missed follow-ups (visited before), 8-11
+  // wound, 12-15 screening, 16-19 healing/general. Each band below lists
+  // only the freshest sub-rank of a multi-rank category — the older
+  // sub-ranks (e.g. wound_no_appt_14/28/old) fall through to the backlog
+  // fill-in below, same as before this change.
+  const bands = [1, 2, 3, 5, 8, 12, 19]
+  const quotas: Record<number, number> = { 1: 12, 2: 12, 3: 10, 5: 10, 8: 15, 12: 25, 19: 16 }
   const selected: any[] = []
   const remaining = [...rest]
 

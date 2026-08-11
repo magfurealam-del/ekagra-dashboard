@@ -24,6 +24,7 @@ export const OUTCOMES: OutcomeDef[] = [
 export type CategoryKey =
   | 'no_show_7' | 'no_show_14' | 'no_show_28'
   | 'surgery_no_show'
+  | 'missed_followup_7' | 'missed_followup_14' | 'missed_followup_28'
   | 'healing_overdue_4w' | 'healing_overdue_8w' | 'healing_overdue_old'
   | 'wound_no_appt_7' | 'wound_no_appt_14' | 'wound_no_appt_28' | 'wound_no_appt_old'
   | 'screening_no_appt_7' | 'screening_no_appt_14' | 'screening_no_appt_28' | 'screening_no_appt_old'
@@ -32,10 +33,13 @@ export type CategoryKey =
 
 export const CATEGORY_LABEL: Record<string, string> = {
   website_appointment_made: 'Website Appointment Request',
-  no_show_7:            'No-show — last 7 days',
-  no_show_14:           'No-show — 8–14 days ago',
-  no_show_28:           'No-show — 15–28 days ago',
+  no_show_7:            'No-show — never visited, last 7 days',
+  no_show_14:           'No-show — never visited, 8–14 days ago',
+  no_show_28:           'No-show — never visited, 15–28 days ago',
   surgery_no_show:      'Surgery scheduled — no-show',
+  missed_followup_7:    'Missed follow-up — visited before, last 7 days',
+  missed_followup_14:   'Missed follow-up — visited before, 8–14 days ago',
+  missed_followup_28:   'Missed follow-up — visited before, 15–28 days ago',
   healing_overdue_4w:   'Not healed — 2–4 weeks overdue',
   healing_overdue_8w:   'Not healed — 4–8 weeks overdue',
   healing_overdue_old:  'Not healed — 8+ weeks overdue',
@@ -56,6 +60,9 @@ export const CATEGORY_BADGE_LABEL: Record<string, string> = {
   no_show_14:           'No-show (14d)',
   no_show_28:           'No-show (28d)',
   surgery_no_show:      'Surgery missed',
+  missed_followup_7:    'Missed follow-up (7d)',
+  missed_followup_14:   'Missed follow-up (14d)',
+  missed_followup_28:   'Missed follow-up (28d)',
   healing_overdue_4w:   'Healing 2–4w',
   healing_overdue_8w:   'Healing 4–8w',
   healing_overdue_old:  'Healing 8w+',
@@ -82,6 +89,9 @@ export const CALL_TYPE_FOR_CATEGORY: Record<string, CallType> = {
   no_show_14: 'patient_recovery',
   no_show_28: 'patient_recovery',
   surgery_no_show: 'patient_recovery',
+  missed_followup_7: 'patient_recovery',
+  missed_followup_14: 'patient_recovery',
+  missed_followup_28: 'patient_recovery',
   healing_overdue_4w: 'patient_recovery',
   healing_overdue_8w: 'patient_recovery',
   healing_overdue_old: 'patient_recovery',
@@ -116,6 +126,9 @@ export const CATEGORY_BADGE_TONE: Record<string, string> = {
   no_show_14:           'bg-amber-100 text-amber-700',
   no_show_28:           'bg-amber-50 text-amber-600',
   surgery_no_show:      'bg-rose-100 text-rose-700',
+  missed_followup_7:    'bg-pink-100 text-pink-700',
+  missed_followup_14:   'bg-pink-50 text-pink-600',
+  missed_followup_28:   'bg-pink-50 text-pink-500',
   healing_overdue_4w:   'bg-orange-100 text-orange-700',
   healing_overdue_8w:   'bg-orange-50 text-orange-600',
   healing_overdue_old:  'bg-slate-100 text-slate-500',
@@ -140,6 +153,7 @@ export const QUICK_FILTERS: { key: string; label: string; categories?: string[] 
   { key: 'no_show_14',    label: 'No-show 14d',  categories: ['no_show_14'] },
   { key: 'no_show_28',    label: 'No-show 28d',  categories: ['no_show_28'] },
   { key: 'surgery',       label: 'Surgery',      categories: ['surgery_no_show'] },
+  { key: 'missed_followup', label: 'Missed Follow-up', categories: ['missed_followup_7','missed_followup_14','missed_followup_28'] },
   { key: 'healing',       label: 'Healing',      categories: ['healing_overdue_4w','healing_overdue_8w','healing_overdue_old'] },
   { key: 'wound',         label: 'Wound',        categories: ['wound_no_appt_7','wound_no_appt_14','wound_no_appt_28','wound_no_appt_old'] },
   { key: 'screening',     label: 'Screening',    categories: ['screening_no_appt_7','screening_no_appt_14','screening_no_appt_28','screening_no_appt_old'] },
