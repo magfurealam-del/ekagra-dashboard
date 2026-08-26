@@ -32,11 +32,11 @@ function millisecondsUntilNextDhakaSix() {
   return Math.max(1000, next.getTime() - dhaka.getTime())
 }
 
-// Keep the daily 100-patient sheet representative instead of allowing the
+// Keep the daily sheet representative instead of allowing the
 // largest low-priority bucket to consume the entire slice. Higher-priority
 // rows are always selected first; the remaining slots are distributed across
 // the next priority bands and then filled from the lower-priority backlog.
-function selectBalancedQueue(rows: any[], limit = 100) {
+function selectBalancedQueue(rows: any[], limit = 250) {
   // Website appointment requests are pinned to the very top (category_rank 0,
   // pinned_to_top = true at the DB level) and are never subject to the
   // per-band quota below — every one of them must appear on the sheet.
@@ -84,7 +84,9 @@ export default function OutgoingCallsPage() {
   const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const cacheKey = `ekagra-outbound-sheet:${outboundWindowKey()}`
+  // Version the cache whenever queue-selection rules change so agents do not
+  // remain stuck on a stale daily sheet until the next 6 AM refresh.
+  const cacheKey = `ekagra-outbound-sheet:v2:${outboundWindowKey()}`
 
   async function load(force = false) {
     setLoading(true)
@@ -193,7 +195,7 @@ export default function OutgoingCallsPage() {
 
     // The outcome RPC has already resolved this attempt in Supabase. Remove
     // it from the in-memory daily sheet immediately so the visible count drops
-    // from 100 to 99 (and so on) without waiting for the next 6 AM refresh.
+    // immediately without waiting for the next 6 AM refresh.
     const nextRows = rows.filter((row) => row.attempt_id !== completedAttemptId)
     setRows(nextRows)
     try {
