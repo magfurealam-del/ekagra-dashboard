@@ -12,6 +12,13 @@ import AppointmentStatusChanges from '@/components/calendar/AppointmentStatusCha
 const calendarCache: { key: string; data: any[]; fetchedAt: number } = { key: '', data: [], fetchedAt: 0 }
 const CALENDAR_TTL_MS = 30 * 60 * 1000
 
+// Build date-only query bounds from local calendar parts. Using toISOString()
+// here shifts Dhaka midnight into the previous UTC day and drops month-end
+// appointments (for example, August 31).
+function localDateString(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export default function CalendarPage() {
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
@@ -30,8 +37,8 @@ export default function CalendarPage() {
   const [doctorFilter, setDoctorFilter] = useState<string>('all')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const start = useMemo(() => new Date(year, month, 1).toISOString().slice(0, 10), [year, month])
-  const end   = useMemo(() => new Date(year, month + 1, 0).toISOString().slice(0, 10), [year, month])
+  const start = useMemo(() => localDateString(new Date(year, month, 1)), [year, month])
+  const end   = useMemo(() => localDateString(new Date(year, month + 1, 0)), [year, month])
 
   async function loadCalendarData(force = false) {
     const cacheKey = `${start}|${end}`
