@@ -160,9 +160,9 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
             <div className="font-semibold text-green-800">Website Appointment Request — call to confirm and schedule</div>
             <div><span className="font-medium">Name:</span> {row.patient_name || lead?.lead_name || 'Not provided'}</div>
             <div><span className="font-medium">Phone:</span> {row.phone || lead?.phone || 'Not provided'}</div>
-            <div><span className="font-medium">Problem:</span> {lead?.main_problem || 'Not provided'}</div>
-            <div><span className="font-medium">Requested doctor:</span> {lead?.preferred_doctor || 'Not specified'}</div>
-            <div><span className="font-medium">Preferred visit day:</span> {lead?.preferred_visit_date || 'Not specified'}</div>
+            <div><span className="font-medium">Problem:</span> {row.booking_main_problem || lead?.main_problem || 'Not provided'}</div>
+            <div><span className="font-medium">Requested doctor:</span> {row.doctor_service || lead?.preferred_doctor || 'Not specified'}</div>
+            <div><span className="font-medium">Preferred visit day:</span> {row.booking_preferred_visit_date || lead?.preferred_visit_date || 'Not specified'}</div>
           </div>
         )}
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500 mt-2">
