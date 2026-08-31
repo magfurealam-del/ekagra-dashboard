@@ -23,14 +23,8 @@ function outboundWindowKey() {
   return `${dhaka.getFullYear()}-${String(dhaka.getMonth() + 1).padStart(2, '0')}-${String(dhaka.getDate()).padStart(2, '0')}`
 }
 
-function millisecondsUntilNextDhakaSix() {
-  const now = new Date()
-  const dhaka = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
-  const next = new Date(dhaka)
-  next.setHours(6, 0, 0, 0)
-  if (dhaka >= next) next.setDate(next.getDate() + 1)
-  return Math.max(1000, next.getTime() - dhaka.getTime())
-}
+const QUEUE_CACHE_TTL_MS = 30 * 1000
+const QUEUE_REFRESH_MS = 60 * 1000
 
 // Keep the daily sheet representative instead of allowing the
 // largest low-priority bucket to consume the entire slice. Higher-priority
@@ -86,7 +80,7 @@ export default function OutgoingCallsPage() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Version the cache whenever queue-selection rules change so agents do not
   // remain stuck on a stale daily sheet until the next 6 AM refresh.
-  const cacheKey = `ekagra-outbound-sheet:v3:${outboundWindowKey()}`
+  const cacheKey = `ekagra-outbound-sheet:v4:${outboundWindowKey()}`
 
   async function load(force = false) {
     setLoading(true)
@@ -95,7 +89,7 @@ export default function OutgoingCallsPage() {
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
-        if (cached && cached.windowKey === outboundWindowKey()) {
+        if (cached && cached.windowKey === outboundWindowKey() && Date.now() - (cached.fetchedAt || 0) < QUEUE_CACHE_TTL_MS) {
           setRows(cached.rows || [])
           setMetrics(cached.metrics || null)
           setAgent(cached.agent || '')
@@ -148,7 +142,7 @@ export default function OutgoingCallsPage() {
       setRows(nextRows)
       setMetrics(nextMetrics)
       setAgent(nextAgent)
-      localStorage.setItem(cacheKey, JSON.stringify({ windowKey: outboundWindowKey(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
+      localStorage.setItem(cacheKey, JSON.stringify({ windowKey: outboundWindowKey(), fetchedAt: Date.now(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
     }
 
     setLoading(false)
@@ -160,7 +154,7 @@ export default function OutgoingCallsPage() {
       refreshTimer.current = setTimeout(async () => {
         await load(true)
         scheduleNextRefresh()
-      }, millisecondsUntilNextDhakaSix())
+      }, QUEUE_REFRESH_MS)
     }
     scheduleNextRefresh()
     return () => {
