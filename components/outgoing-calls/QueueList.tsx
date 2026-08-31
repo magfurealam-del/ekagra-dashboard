@@ -95,6 +95,13 @@ export default function QueueList({
                 <div className="text-xs text-slate-500 truncate">
                   {r.phone}{r.final_location ? ` · ${r.final_location}` : ''}
                 </div>
+                {(r.doctor_service || r.booking_main_problem || r.booking_preferred_visit_date) && (
+                  <div className="mt-1 text-[11px] text-slate-500 space-y-0.5">
+                    {r.doctor_service && <div><span className="font-medium text-slate-600">Doctor:</span> {r.doctor_service}</div>}
+                    {r.booking_main_problem && <div className="truncate"><span className="font-medium text-slate-600">Problem:</span> {r.booking_main_problem}</div>}
+                    {r.booking_preferred_visit_date && <div><span className="font-medium text-slate-600">Preferred:</span> {formatQueueDate(r.booking_preferred_visit_date)}</div>}
+                  </div>
+                )}
 
                 {/* Dates section */}
                 <div className="mt-1.5 grid grid-cols-2 gap-x-2 text-[11px]">

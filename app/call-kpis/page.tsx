@@ -16,6 +16,7 @@ const kpiCache: { key: string; data: any; fetchedAt: number } = { key: '', data:
 const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
 
 function toISO(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+function normalizePhone(value: string | null | undefined) { return (value || '').replace(/\D/g, '').replace(/^880/, '0') }
 
 function rangeFor(key: RangeKey, customStart: string, customEnd: string) {
   const today = new Date()
@@ -244,6 +245,7 @@ export default function CallKpisPage() {
 
   const [metrics, setMetrics] = useState<any | null>(null)
   const [adAttribution, setAdAttribution] = useState<Record<string, AdAttribution>>({})
+  const [websiteLeadContext, setWebsiteLeadContext] = useState<Record<string, Record<string, string | null>>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null)
@@ -317,6 +319,7 @@ export default function CallKpisPage() {
       setLastFetchedAt(kpiCache.fetchedAt)
       setLoading(false)
       loadAdAttribution(start, end)
+      loadWebsiteLeadContext(start, end)
       return
     }
     setLoading(true)
@@ -332,6 +335,7 @@ export default function CallKpisPage() {
       kpiCache.data = data
       kpiCache.fetchedAt = Date.now()
       setMetrics(data)
+      loadWebsiteLeadContext(start, end)
       setLastFetchedAt(kpiCache.fetchedAt)
       loadAdAttribution(start, end)
     } catch (err) {
@@ -339,6 +343,24 @@ export default function CallKpisPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadWebsiteLeadContext(startDate: string, endDate: string) {
+    const inclusiveEnd = new Date(`${endDate}T00:00:00`)
+    inclusiveEnd.setDate(inclusiveEnd.getDate() + 1)
+    const { data, error } = await supabase
+      .from('crm_leads')
+      .select('phone, preferred_doctor, preferred_visit_date, main_problem, urgency, notes, lead_status')
+      .eq('source_system', 'website')
+      .gte('created_at', `${startDate}T00:00:00`)
+      .lt('created_at', `${toISO(inclusiveEnd)}T00:00:00`)
+    if (error || !data) return
+    const next: Record<string, Record<string, string | null>> = {}
+    for (const lead of data as any[]) {
+      const key = normalizePhone(lead.phone)
+      if (key) next[key] = lead
+    }
+    setWebsiteLeadContext(next)
   }
 
   useEffect(() => {
@@ -426,11 +448,17 @@ export default function CallKpisPage() {
     if (sortDir === 'desc') sorted.reverse()
     return sorted.map((row) => {
       const attribution = (row.patient_id != null && adAttribution[`patient:${row.patient_id}`]) || (row.phone && adAttribution[`phone:${row.phone}`])
-      return attribution
-        ? { ...row, details: { ...(row.details || {}), facebook_ad_id: attribution.facebookAdId, campaign_short_name: attribution.campaignName } }
+      const websiteContext = row.direction === 'Outbound'
+        ? websiteLeadContext[normalizePhone(row.phone)]
+        : null
+      const enriched = websiteContext
+        ? { ...row, doctor_service: row.doctor_service || websiteContext.preferred_doctor, details: { ...(row.details || {}), preferred_doctor: websiteContext.preferred_doctor, preferred_visit_date: websiteContext.preferred_visit_date, main_problem: websiteContext.main_problem, urgency: websiteContext.urgency, booking_status: websiteContext.lead_status } }
         : row
+      return attribution
+        ? { ...enriched, details: { ...(enriched.details || {}), facebook_ad_id: attribution.facebookAdId, campaign_short_name: attribution.campaignName } }
+        : enriched
     })
-  }, [metrics, adAttribution, directionFilter, search, sortKey, sortDir])
+  }, [metrics, adAttribution, websiteLeadContext, directionFilter, search, sortKey, sortDir])
 
   function SortHeader({ label, k }: { label: string; k: SortKey }) {
     return (

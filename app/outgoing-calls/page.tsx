@@ -86,7 +86,7 @@ export default function OutgoingCallsPage() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Version the cache whenever queue-selection rules change so agents do not
   // remain stuck on a stale daily sheet until the next 6 AM refresh.
-  const cacheKey = `ekagra-outbound-sheet:v2:${outboundWindowKey()}`
+  const cacheKey = `ekagra-outbound-sheet:v3:${outboundWindowKey()}`
 
   async function load(force = false) {
     setLoading(true)
