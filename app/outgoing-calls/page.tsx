@@ -23,8 +23,16 @@ function outboundWindowKey() {
   return `${dhaka.getFullYear()}-${String(dhaka.getMonth() + 1).padStart(2, '0')}-${String(dhaka.getDate()).padStart(2, '0')}`
 }
 
+function millisecondsUntilNextDhakaSix() {
+  const now = new Date()
+  const dhaka = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
+  const next = new Date(dhaka)
+  next.setHours(6, 0, 0, 0)
+  if (dhaka >= next) next.setDate(next.getDate() + 1)
+  return Math.max(1000, next.getTime() - dhaka.getTime())
+}
+
 const QUEUE_CACHE_TTL_MS = 30 * 1000
-const QUEUE_REFRESH_MS = 60 * 1000
 
 // Keep the daily sheet representative instead of allowing the
 // largest low-priority bucket to consume the entire slice. Higher-priority
@@ -154,13 +162,22 @@ export default function OutgoingCallsPage() {
       refreshTimer.current = setTimeout(async () => {
         await load(true)
         scheduleNextRefresh()
-      }, QUEUE_REFRESH_MS)
+      }, millisecondsUntilNextDhakaSix())
     }
     scheduleNextRefresh()
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('outgoing-call-sheet-events')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, () => load(true))
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const agentOptions = useMemo(() => {
     const set = new Set(rows.map((r) => r.assigned_agent).filter(Boolean))
