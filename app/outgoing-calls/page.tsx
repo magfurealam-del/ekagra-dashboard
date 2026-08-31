@@ -178,7 +178,9 @@ export default function OutgoingCallsPage() {
       if (qf?.categories && !qf.categories.includes(r.category)) return false
       if (leadTypeFilter !== 'all' && r.category !== leadTypeFilter) return false
       if (callTypeFilter !== 'all' && callTypeForCategory(r.category) !== callTypeFilter) return false
-      if (agentFilter !== 'all' && r.assigned_agent !== agentFilter) return false
+      // Website booking requests are shared intake work, not owned by the
+      // scheduled agent. Keep them visible in every agent's filtered list.
+      if (agentFilter !== 'all' && r.category !== 'website_appointment_made' && r.assigned_agent !== agentFilter) return false
       return true
     })
   }, [rows, search, quickFilter, leadTypeFilter, callTypeFilter, agentFilter])
