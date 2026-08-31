@@ -448,9 +448,7 @@ export default function CallKpisPage() {
     if (sortDir === 'desc') sorted.reverse()
     return sorted.map((row) => {
       const attribution = (row.patient_id != null && adAttribution[`patient:${row.patient_id}`]) || (row.phone && adAttribution[`phone:${row.phone}`])
-      const websiteContext = row.direction === 'Outbound'
-        ? websiteLeadContext[normalizePhone(row.phone)]
-        : null
+      const websiteContext = websiteLeadContext[normalizePhone(row.phone)]
       const enriched = websiteContext
         ? { ...row, doctor_service: row.doctor_service || websiteContext.preferred_doctor, details: { ...(row.details || {}), preferred_doctor: websiteContext.preferred_doctor, preferred_visit_date: websiteContext.preferred_visit_date, main_problem: websiteContext.main_problem, urgency: websiteContext.urgency, booking_status: websiteContext.lead_status } }
         : row
