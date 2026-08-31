@@ -88,7 +88,7 @@ export default function OutgoingCallsPage() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Version the cache whenever queue-selection rules change so agents do not
   // remain stuck on a stale daily sheet until the next 6 AM refresh.
-  const cacheKey = `ekagra-outbound-sheet:v4:${outboundWindowKey()}`
+  const cacheKey = `ekagra-outbound-sheet:v5:${outboundWindowKey()}`
 
   async function load(force = false) {
     setLoading(true)
@@ -120,10 +120,17 @@ export default function OutgoingCallsPage() {
             .select('*')
             .lte('relevant_date', date)
             .eq('attempt_status', 'pending')
+            // Match the view's canonical ordering and add stable tie-breakers
+            // so every browser sees the same queue (especially for website
+            // bookings sharing the same date and priority).
+            .order('pinned_to_top', { ascending: false })
+            .order('confidence_score', { ascending: false })
             .order('category_rank')
             .order('followup_number', { ascending: true })
             .order('relevant_date', { ascending: true })
-            .limit(250),
+            .order('queue_created_at', { ascending: true })
+            .order('attempt_id', { ascending: true })
+            .limit(1000),
         timeoutMs: 15000,
         retries: 2,
       },
