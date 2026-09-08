@@ -120,7 +120,7 @@ export default function QueueList({
                 <div className="text-[11px] text-slate-400 mt-0.5">
                   Last contact:{' '}
                   {r.called_at ? new Date(r.called_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'none'}
-                  {' · '}{r.assigned_agent}
+                  {' · '}{r.assigned_agent === 'Shared' ? 'Shared queue' : r.assigned_agent}
                 </div>
               </button>
             )

@@ -8,7 +8,7 @@ import SummaryBar from '@/components/outgoing-calls/SummaryBar'
 import QueueList from '@/components/outgoing-calls/QueueList'
 import PatientDetailPanel from '@/components/outgoing-calls/PatientDetailPanel'
 import OutcomePanel from '@/components/outgoing-calls/OutcomePanel'
-import { CATEGORY_LABEL, QUICK_FILTERS, CALL_TYPE_LABEL, callTypeForCategory } from '@/components/outgoing-calls/types'
+import { CATEGORY_LABEL, QUICK_FILTERS, CALL_TYPE_LABEL, callTypeForCategory, isProspectCategory } from '@/components/outgoing-calls/types'
 
 function todayDhaka() {
   const now = new Date()
@@ -88,7 +88,7 @@ export default function OutgoingCallsPage() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Version the cache whenever queue-selection rules change so agents do not
   // remain stuck on a stale daily sheet until the next 6 AM refresh.
-  const cacheKey = `ekagra-outbound-sheet:v5:${outboundWindowKey()}`
+  const cacheKey = `ekagra-outbound-sheet:v6:${outboundWindowKey()}`
 
   async function load(force = false) {
     setLoading(true)
@@ -202,9 +202,9 @@ export default function OutgoingCallsPage() {
       if (qf?.categories && !qf.categories.includes(r.category)) return false
       if (leadTypeFilter !== 'all' && r.category !== leadTypeFilter) return false
       if (callTypeFilter !== 'all' && callTypeForCategory(r.category) !== callTypeFilter) return false
-      // Website booking requests are shared intake work, not owned by the
-      // scheduled agent. Keep them visible in every agent's filtered list.
-      if (agentFilter !== 'all' && r.category !== 'website_appointment_made' && r.assigned_agent !== agentFilter) return false
+      // Prospect calls are shared intake work, not owned by the scheduled
+      // recovery agent. Keep them visible in every agent's filtered list.
+      if (agentFilter !== 'all' && !isProspectCategory(r.category) && r.assigned_agent !== agentFilter) return false
       return true
     })
   }, [rows, search, quickFilter, leadTypeFilter, callTypeFilter, agentFilter])
@@ -234,8 +234,9 @@ export default function OutgoingCallsPage() {
           <div>
             <h1 className="text-2xl font-semibold">Outbound Call Sheet</h1>
             <p className="text-sm text-slate-500">
-              Agent-first outbound follow-up workflow · {date} · On duty:{' '}
+              Agent-first outbound follow-up workflow · {date} · Recovery on duty:{' '}
               <span className="font-medium text-slate-700">{agent || '—'}</span>
+              {' '}· Prospects: <span className="font-medium text-teal-700">shared queue</span>
             </p>
           </div>
         </div>

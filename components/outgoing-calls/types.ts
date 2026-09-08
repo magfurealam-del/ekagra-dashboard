@@ -120,6 +120,10 @@ export function callTypeForCategory(category: string): CallType {
   return CALL_TYPE_FOR_CATEGORY[category] ?? 'patient_recovery'
 }
 
+export function isProspectCategory(category: string): boolean {
+  return callTypeForCategory(category) === 'lead_gen'
+}
+
 export const CATEGORY_BADGE_TONE: Record<string, string> = {
   website_appointment_made: 'bg-green-600 text-white',
   no_show_7:            'bg-rose-100 text-rose-700',
