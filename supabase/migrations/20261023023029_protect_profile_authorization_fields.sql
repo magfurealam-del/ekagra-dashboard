@@ -21,7 +21,9 @@ GRANT UPDATE (full_name) ON TABLE public.user_profiles TO authenticated;
 -- Keep privileged code in the non-exposed internal schema. The public RPC is
 -- an invoker wrapper so the PostgREST endpoint itself does not run as owner.
 CREATE SCHEMA IF NOT EXISTS mis_internal;
-REVOKE ALL ON SCHEMA mis_internal FROM PUBLIC, anon, authenticated, service_role;
+-- Preserve any pre-existing service-role schema access. The new private RPCs
+-- grant only the specific function EXECUTE rights they need below.
+REVOKE ALL ON SCHEMA mis_internal FROM PUBLIC, anon, authenticated;
 GRANT USAGE ON SCHEMA mis_internal TO authenticated;
 
 CREATE OR REPLACE FUNCTION mis_internal.complete_password_change()

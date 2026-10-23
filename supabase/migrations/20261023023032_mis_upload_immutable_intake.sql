@@ -2,7 +2,9 @@
 -- This migration creates no bucket, source-table trigger, worker, or schedule.
 
 CREATE SCHEMA IF NOT EXISTS mis_internal;
-REVOKE ALL ON SCHEMA mis_internal FROM PUBLIC, anon, authenticated, service_role;
+-- Preserve any pre-existing service-role schema access; the new private
+-- tables receive no service-role table grants in this migration.
+REVOKE ALL ON SCHEMA mis_internal FROM PUBLIC, anon, authenticated;
 GRANT USAGE, CREATE ON SCHEMA mis_internal TO postgres;
 -- The schema must remain absent from PostgREST's exposed-schema list. The
 -- authenticated grant is only for the public invoker RPC to call its private

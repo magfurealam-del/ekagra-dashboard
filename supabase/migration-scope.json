@@ -9,13 +9,13 @@
       "version": "20261023023029",
       "name": "protect_profile_authorization_fields",
       "file": "20261023023029_protect_profile_authorization_fields.sql",
-      "sha256": "17264f4991e9237e29537c18d9bf3eb1d203371b58cfc40f554b012aa27cbccc"
+      "sha256": "15cc863aac24d0a98785f3264c8ab817ea967e2b3556020dcf884baee2ab447f"
     },
     {
       "version": "20261023023032",
       "name": "mis_upload_immutable_intake",
       "file": "20261023023032_mis_upload_immutable_intake.sql",
-      "sha256": "2c3efc112ccc94abd4398f4ec3d6996def6df0dd8657957bc332e53806333ce2"
+      "sha256": "cee96e375dd5a5b2bb0ace786a8131f441c8f5fe224749fa6e748d82ac11a6d2"
     },
     {
       "version": "20261023101823",
