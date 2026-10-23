@@ -21,7 +21,8 @@ The following sources were checked on October 23, 2026:
 
 - Local Git history and unreachable Git objects contain only the earlier July–September migration trees; no October 21–22 SQL was recoverable.
 - GitHub `main` ends at commit `8886261316a4ffef3993fe1e6090d081aa6ecf0a` from September 8, 2026. The repository's pull requests 1–23 contain no SQL migration file diffs. The repository has no `.github/workflows` path, and no workflow run was associated with the September 8 `main` commit.
-- The connected GitHub branch search found no source branch holding the October SQL, and Supabase reports no development branches for this project.
+- The connected GitHub branch search found only `main` and this implementation branch; no source branch holds the October SQL. Supabase reports no development branches for this project.
+- The available `ekagra-dashboard*.zip` archives in Downloads contain no migration entries.
 - The Supabase migration ledger returns only version/name pairs. It does not include the SQL bodies.
 
 This establishes that migration-source recovery cannot proceed from the connected checkout, its GitHub history, or the Supabase ledger. Remaining authoritative sources would be an owner-held source branch/export, CI artifact or database backup containing the migration files. If none exists, use a separately reviewed schema-first baseline bootstrap; do not invent historical SQL or mark old versions applied based on names alone.
