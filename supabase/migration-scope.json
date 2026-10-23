@@ -1,0 +1,32 @@
+{
+  "purpose": "Explicit local allowlist for the MIS upload gateway schema delta. This is not proof of current remote migration state; always inspect a live CLI dry run before deployment.",
+  "target_project_ref": "youqgrwovfyqqsnbtcnm",
+  "baseline_captured_at_utc": "2026-10-23T02:34:00.088924+00:00",
+  "baseline_latest_version": "20261022235907",
+  "baseline_ledger_sha256": "19bf82924a62874595ab25fb7a0641e9d337e7b244abdfc3e80eb696983e61ae",
+  "active_migrations": [
+    {
+      "version": "20261023023029",
+      "name": "protect_profile_authorization_fields",
+      "file": "20261023023029_protect_profile_authorization_fields.sql",
+      "sha256": "17264f4991e9237e29537c18d9bf3eb1d203371b58cfc40f554b012aa27cbccc"
+    },
+    {
+      "version": "20261023023032",
+      "name": "mis_upload_immutable_intake",
+      "file": "20261023023032_mis_upload_immutable_intake.sql",
+      "sha256": "2c3efc112ccc94abd4398f4ec3d6996def6df0dd8657957bc332e53806333ce2"
+    },
+    {
+      "version": "20261023101823",
+      "name": "mis_upload_reservation_and_staging_rpc",
+      "file": "20261023101823_mis_upload_reservation_and_staging_rpc.sql",
+      "sha256": "9312ba8649c1e6303edeee1053a38262c5c2f3b4a1663afb2d88e7f7cdb6a3fc"
+    }
+  ],
+  "deployment_gates": [
+    "live_supabase_db_push_dry_run_matches_allowlist",
+    "migration_sql_reviewed_against_live_schema",
+    "separate_deployment_approval"
+  ]
+}

@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:mis-parser": "node --experimental-strip-types --test lib/mis-upload/parser.test.ts",
-    "audit:mis-baseline": "node scripts/mis-upload/compare-baseline.mjs"
+    "audit:mis-baseline": "node scripts/mis-upload/compare-baseline.mjs",
+    "check:mis-upload-deploy-scope": "node scripts/mis-upload/check-deploy-scope.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
