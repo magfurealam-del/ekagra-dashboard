@@ -22,8 +22,9 @@ if (hash(await readFile(join(root, 'docs/database-baseline/applied-migrations-20
 }
 if (JSON.stringify(activeNames) !== JSON.stringify(expectedNames)) errors.push('Active migration files differ from the explicit deployment allowlist.')
 
-const appliedVersions = new Set(baseline.migrations.map(({ version }) => version))
+const appliedNamesByVersion = new Map(baseline.migrations.map(({ version, name }) => [version, name]))
 const pending = []
+const applied = []
 for (const migration of scope.active_migrations) {
   const bytes = await readFile(join(activeDir, migration.file)).catch(() => null)
   if (!bytes) {
@@ -31,8 +32,16 @@ for (const migration of scope.active_migrations) {
     continue
   }
   if (hash(bytes) !== migration.sha256) errors.push(`Allowlisted migration content changed: ${migration.file}`)
-  if (appliedVersions.has(migration.version)) errors.push(`Allowlisted migration is already recorded in the captured ledger: ${migration.version}`)
-  else pending.push({ version: migration.version, name: migration.name, sha256: migration.sha256 })
+  const appliedName = appliedNamesByVersion.get(migration.version)
+  if (appliedName !== undefined) {
+    if (appliedName !== migration.name) {
+      errors.push(`Allowlisted migration version is recorded with a different name: ${migration.version}`)
+    } else {
+      applied.push({ version: migration.version, name: migration.name, sha256: migration.sha256 })
+    }
+  } else {
+    pending.push({ version: migration.version, name: migration.name, sha256: migration.sha256 })
+  }
 }
 
 const archivedNames = (await readdir(archiveDir)).filter((name) => /^\d{14}_.+\.sql$/.test(name)).sort()
@@ -47,14 +56,15 @@ const localVersions = new Set([...activeNames, ...archivedNames].map((name) => n
 const exactVersionSourceGaps = baseline.migrations.filter(({ version }) => !localVersions.has(version)).length
 
 console.log(JSON.stringify({
-  status: errors.length ? 'blocked' : 'ready_for_live_dry_run',
+  status: errors.length ? 'blocked' : pending.length === 0 ? 'current' : 'ready_for_live_dry_run',
   target_project_ref: scope.target_project_ref,
   baseline_latest_version: scope.baseline_latest_version,
   active_migration_count: activeNames.length,
+  applied_against_current_ledger: applied,
   pending_against_captured_ledger: pending,
   archived_legacy_migration_count: archivedNames.length,
   remote_ledger_entries_without_exact_versioned_source: exactVersionSourceGaps,
-  requires_live_db_push_dry_run: true,
+  requires_live_db_push_dry_run: pending.length > 0,
   production_deployment_approved_by_this_check: false,
   errors,
 }, null, 2))
