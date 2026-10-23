@@ -11,7 +11,20 @@ The files contain no patient rows, source file contents, API keys, passwords, or
 
 ## Recovered facts and remaining gap
 
-The inspected checkout started at 8886261316a4ffef3993fe1e6090d081aa6ecf0a, with 15 local migration files. The live ledger has 602 entries: 601 have no matching local versioned file, and one of the local files matches a live version. Fourteen local files have no matching applied ledger version. The especially relevant 38 MIS/CRM entries dated October 21–22 are included in the gap. The local and live migration histories therefore cannot be applied in order safely. Their names and versions are preserved in the applied-ledger artifact; migration source text is not stored in supabase_migrations.schema_migrations.
+The clean implementation branch starts at `8886261316a4ffef3993fe1e6090d081aa6ecf0a` and contains 15 versioned-looking migration files after adding this PR's two new migrations. One matches the live ledger; 14 are pending. The original shared checkout also contained 16 pre-existing untracked migration files. Including those and the two new PR files, 31 migration files were present in that working tree: one exact version/name match and 30 pending versions. Those untracked files remain in the shared checkout and are not copied into this PR. They are not counted as recovered applied migrations because their versions do not match the live ledger.
+
+The live ledger has 602 entries, of which 601 have no matching local versioned file. All 39 entries dated October 21–22 are in that gap. The local and live migration histories therefore cannot be applied in order safely. Their names and versions are preserved in the applied-ledger artifact; migration source text is not stored in `supabase_migrations.schema_migrations`.
+
+## Read-only source recovery audit
+
+The following sources were checked on October 23, 2026:
+
+- Local Git history and unreachable Git objects contain only the earlier July–September migration trees; no October 21–22 SQL was recoverable.
+- GitHub `main` ends at commit `8886261316a4ffef3993fe1e6090d081aa6ecf0a` from September 8, 2026. The repository's pull requests 1–23 contain no SQL migration file diffs. The repository has no `.github/workflows` path, and no workflow run was associated with the September 8 `main` commit.
+- The connected GitHub branch search found no source branch holding the October SQL, and Supabase reports no development branches for this project.
+- The Supabase migration ledger returns only version/name pairs. It does not include the SQL bodies.
+
+This establishes that migration-source recovery cannot proceed from the connected checkout, its GitHub history, or the Supabase ledger. Remaining authoritative sources would be an owner-held source branch/export, CI artifact or database backup containing the migration files. If none exists, use a separately reviewed schema-first baseline bootstrap; do not invent historical SQL or mark old versions applied based on names alone.
 
 The connected read-only SQL tool provides the current schema surface and function definitions for inspection, but the local Supabase CLI has no access token in this checkout. Its db dump --linked command therefore cannot export DDL. This PR records a reproducible schema fingerprint baseline and the exact migration gap. It does not claim that the missing historical SQL files have been recovered. Obtain those files from their source branch/CI artifacts or approve a schema-first baseline bootstrap before applying migrations or building a clean clone from scratch. Do not mark missing migrations applied by name alone.
 
