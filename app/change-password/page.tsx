@@ -23,7 +23,12 @@ export default function ChangePasswordPage() {
     if (updateError) { setSaving(false); setError(updateError.message); return }
 
     if (session) {
-      await supabase.from('user_profiles').update({ must_change_password: false }).eq('id', session.user.id)
+      const { error: profileError } = await supabase.rpc('complete_password_change')
+      if (profileError) {
+        setSaving(false)
+        setError('Your password was updated, but the account setup flag could not be cleared. Please contact an administrator.')
+        return
+      }
     }
     setSaving(false)
     window.location.href = '/'

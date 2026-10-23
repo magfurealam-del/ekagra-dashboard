@@ -9,10 +9,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:mis-parser": "node --experimental-strip-types --test lib/mis-upload/parser.test.ts",
+    "audit:mis-baseline": "node scripts/mis-upload/compare-baseline.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
+    "csv-parse": "7.0.3",
     "next": "^16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4"
