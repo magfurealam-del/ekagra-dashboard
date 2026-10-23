@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
@@ -311,6 +312,12 @@ export default function AdminDashboardPage() {
             <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />
             Compare to previous period
           </label>
+          <Link
+            href="/admin/mis-upload"
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-800"
+          >
+            Upload MIS CSV
+          </Link>
         </div>
       </div>
 
