@@ -3,6 +3,7 @@ import { parse } from 'csv-parse/sync'
 
 export const MIS_CSV_SCHEMA_VERSION = 'ekagra-mis-csv-v1'
 export const MIS_CSV_PARSER_VERSION = 'mis-csv-parser-v1'
+export const MIS_CSV_NORMALIZATION_VERSION = 'mis-normalization-v1'
 export const DEFAULT_MIS_REFERENCE_YEAR = 2026
 export const MAX_MIS_CSV_BYTES = 20 * 1024 * 1024
 export const MAX_MIS_CSV_ROWS = 50_000

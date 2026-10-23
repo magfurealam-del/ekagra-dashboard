@@ -16,8 +16,27 @@ BEGIN
     RAISE EXCEPTION 'safe profile name update was removed';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.complete_password_change()', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.complete_password_change()', 'EXECUTE') THEN
+     OR has_function_privilege('anon', 'public.complete_password_change()', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'mis_internal.complete_password_change()', 'EXECUTE')
+     OR has_function_privilege('anon', 'mis_internal.complete_password_change()', 'EXECUTE') THEN
     RAISE EXCEPTION 'password completion function grants are incorrect';
+  END IF;
+  IF (
+    SELECT p.prosecdef FROM pg_proc p
+    WHERE p.oid = 'public.complete_password_change()'::regprocedure
+  ) THEN
+    RAISE EXCEPTION 'public password completion RPC must be SECURITY INVOKER';
+  END IF;
+  IF NOT (
+    SELECT p.prosecdef FROM pg_proc p
+    WHERE p.oid = 'mis_internal.complete_password_change()'::regprocedure
+  ) THEN
+    RAISE EXCEPTION 'internal password completion implementation must be SECURITY DEFINER';
+  END IF;
+  IF NOT has_schema_privilege('authenticated', 'mis_internal', 'USAGE')
+     OR has_schema_privilege('anon', 'mis_internal', 'USAGE')
+     OR has_schema_privilege('service_role', 'mis_internal', 'USAGE') THEN
+    RAISE EXCEPTION 'mis_internal schema usage grants are incorrect';
   END IF;
 
   FOREACH v_table IN ARRAY ARRAY[

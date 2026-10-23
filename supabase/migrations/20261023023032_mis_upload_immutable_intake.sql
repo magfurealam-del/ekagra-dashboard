@@ -4,6 +4,11 @@
 CREATE SCHEMA IF NOT EXISTS mis_internal;
 REVOKE ALL ON SCHEMA mis_internal FROM PUBLIC, anon, authenticated, service_role;
 GRANT USAGE, CREATE ON SCHEMA mis_internal TO postgres;
+-- The schema must remain absent from PostgREST's exposed-schema list. The
+-- authenticated grant is only for the public invoker RPC to call its private
+-- SECURITY DEFINER implementation; it grants no table access.
+GRANT USAGE ON SCHEMA mis_internal TO authenticated;
+GRANT EXECUTE ON FUNCTION mis_internal.complete_password_change() TO authenticated;
 
 CREATE TABLE mis_internal.mis_upload_files (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
