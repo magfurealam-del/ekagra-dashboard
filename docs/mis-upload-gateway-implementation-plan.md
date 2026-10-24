@@ -19,7 +19,7 @@ The first implementation includes the baseline/fixture audit harness, immutable 
 | Repository | `magfurealam-del/ekagra-dashboard`, local `ekagra-dashboard/`, HEAD `8886261316a4ffef3993fe1e6090d081aa6ecf0a` | High; local working tree has existing modifications and untracked migrations; leave them intact |
 | Framework | App Router under `app/`; local package declares Next `^16.2.10`, React `19.2.4`, supabase-js `^2.109.0`; no upload/parser/test framework dependencies | High for checkout, not deployed build |
 | Instructions | `AGENTS.md` requires reading installed Next docs before coding | This phase creates documentation only; implementation must read `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` |
-| Project binding | `supabase/.temp/project-ref` and connector agree: `youqgrwovfyqqsnbtcnm`, “Ekagra Dhanmondi Finance and Call Center” | High |
+| Project binding | Confirmed against the connected project at deployment time; its identifier stays in local configuration. | High |
 | Database | PostgreSQL 17.6, ACTIVE_HEALTHY, Tokyo region | Connector project metadata |
 | Audit clock | Live `now()` = `2026-10-23T02:14:26Z` at initial inventory; client date October 22 in America/New_York | Consistent across time zones; use database UTC for evidence and Asia/Dhaka for business dates |
 | Migration ledger | Live latest `20261022235907_mis_admin_only_pipeline_health_endpoint_20261023`; local files stop at September 28 | Serious drift; October worker/attribution definitions absent locally. Earlier local and applied migration timestamps also differ |

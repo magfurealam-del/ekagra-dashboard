@@ -14,7 +14,9 @@ BEGIN
     'public.ingest_mis_upload(uuid,uuid,text,bigint,jsonb,text)',
     'public.stage_mis_upload_rows(uuid,uuid,uuid,jsonb)',
     'public.seal_mis_upload_parse(uuid,uuid,uuid)',
-    'public.list_mis_uploads(uuid,integer)'
+    'public.list_mis_uploads(uuid,integer)',
+    'public.get_mis_upload_review(uuid,uuid)',
+    'public.preview_mis_upload_candidates(uuid,uuid)'
   ] LOOP
     IF NOT has_function_privilege('service_role', v_signature, 'EXECUTE')
        OR has_function_privilege('anon', v_signature, 'EXECUTE')

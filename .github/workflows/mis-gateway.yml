@@ -1,0 +1,29 @@
+name: MIS gateway verification
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: build-placeholder
+      MIS_UPLOADS_ENABLED: 'false'
+      MIS_INGESTION_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:mis-parser
+      - run: npm run test:mis-gateway
+      - run: npm run check:mis-upload-deploy-scope
+      - run: npm audit --audit-level=high
+      - run: npm run build -- --webpack
+      - run: node scripts/mis-upload/smoke-http.mjs

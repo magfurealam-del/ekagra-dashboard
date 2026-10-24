@@ -4,7 +4,6 @@ import { parse } from 'csv-parse/sync'
 export const MIS_CSV_SCHEMA_VERSION = 'ekagra-mis-csv-v1'
 export const MIS_CSV_PARSER_VERSION = 'mis-csv-parser-v1'
 export const MIS_CSV_NORMALIZATION_VERSION = 'mis-normalization-v1'
-export const DEFAULT_MIS_REFERENCE_YEAR = 2026
 export const MAX_MIS_CSV_BYTES = 20 * 1024 * 1024
 export const MAX_MIS_CSV_ROWS = 50_000
 export const MAX_MIS_CSV_RECORD_SIZE = 64 * 1024
@@ -48,7 +47,22 @@ const CANONICAL_HEADERS = new Map(
   HEADER_FIELDS.map(([source, target]) => [normalizeHeader(source), target]),
 )
 
-const REQUIRED_TEXT_FIELDS = ['hospital_number', 'invoice_id', 'item_id'] as const
+// These fields are NOT NULL in the current public.mis_reports contract. Keep
+// rows with missing values in immutable staging, but prevent them from being
+// treated as import-ready until the canonical schema/business contract changes.
+const REQUIRED_TEXT_FIELDS = [
+  'hospital_number',
+  'patient_name',
+  'phone_mobile',
+  'patient_type',
+  'bill_module_name',
+  'invoice_id',
+  'invoice_by',
+  'parent_item_type_name',
+  'item_type_name',
+  'item_id',
+  'item_name',
+] as const
 const REQUIRED_MONEY_FIELDS = [
   'sales_amount',
   'item_discount',
@@ -146,12 +160,12 @@ function parseAge(value: string, referenceYear: number): { years: number; birthY
 
 function parseMoney(value: string): string | null {
   const trimmed = value.trim()
-  if (!/^-?\d+(?:\.\d{1,4})?$/.test(trimmed)) return null
+  if (!/^-?(?:\d+(?:\.\d{1,4})?|\.\d{1,4})$/.test(trimmed)) return null
 
   const negative = trimmed.startsWith('-')
   const unsigned = negative ? trimmed.slice(1) : trimmed
   const [wholeText, fraction = ''] = unsigned.split('.')
-  const whole = wholeText.replace(/^0+(?=\d)/, '')
+  const whole = (wholeText || '0').replace(/^0+(?=\d)/, '')
   if (whole.length > 14) return null // numeric(18,4)
 
   const normalizedFraction = fraction.replace(/0+$/, '')
@@ -163,12 +177,14 @@ export function parseMisCsv(
   input: Uint8Array,
   options: { referenceYear?: number } = {},
 ): ParsedMisCsv {
+  const candidateReferenceYear = options.referenceYear
   if (input.byteLength > MAX_MIS_CSV_BYTES) {
     throw new MisCsvParseError('CSV exceeds the 20 MiB intake limit.', 'file_too_large')
   }
-  if (!Number.isInteger(options.referenceYear ?? DEFAULT_MIS_REFERENCE_YEAR) ||
-    (options.referenceYear ?? DEFAULT_MIS_REFERENCE_YEAR) < 1890 ||
-    (options.referenceYear ?? DEFAULT_MIS_REFERENCE_YEAR) > 2200) {
+  if (typeof candidateReferenceYear !== 'number' ||
+    !Number.isInteger(candidateReferenceYear) ||
+    candidateReferenceYear < 1890 ||
+    candidateReferenceYear > 2200) {
     throw new MisCsvParseError('Reference year is outside the supported range.', 'invalid_reference_year')
   }
   if (input.includes(0)) throw new MisCsvParseError('NUL bytes are not allowed in CSV.', 'not_csv')
@@ -212,7 +228,7 @@ export function parseMisCsv(
     throw new MisCsvParseError('CSV exceeds the 50,000 record intake limit.', 'too_many_rows')
   }
 
-  const referenceYear = options.referenceYear ?? DEFAULT_MIS_REFERENCE_YEAR
+  const referenceYear = candidateReferenceYear
   const headerSha256 = sha256(JSON.stringify(canonicalHeaders))
   const rowset = createHash('sha256')
   const rows: ParsedMisRow[] = []
@@ -249,6 +265,7 @@ export function parseMisCsv(
         if (!value.trim()) {
           normalizedValues.age_years = null
           normalizedValues.birth_year = null
+          issues.push({ sourceRowNumber, field, code: 'required_value_missing' })
         } else {
           const age = parseAge(value, referenceYear)
           normalizedValues.age_years = age?.years ?? null
@@ -275,8 +292,10 @@ export function parseMisCsv(
         issues.push({ sourceRowNumber, field, code: 'required_value_missing' })
       }
     }
-    if (!normalizedValues.invoice_date) {
-      issues.push({ sourceRowNumber, field: 'invoice_date', code: 'required_value_missing' })
+    for (const field of ['invoice_date', 'invoice_datetime'] as const) {
+      if (!normalizedValues[field]) {
+        issues.push({ sourceRowNumber, field, code: 'required_value_missing' })
+      }
     }
 
     const rowSha256 = sha256(JSON.stringify(rawCells))

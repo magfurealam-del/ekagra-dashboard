@@ -3,7 +3,9 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const baselinePath = join(root, 'docs/database-baseline/applied-migrations-2026-10-23.json')
+const scope = await readFile(join(root, 'supabase/migration-scope.local.json'), 'utf8').then(JSON.parse).catch(() => null)
+if (!scope) { console.log('Skipped: captured migration history is kept in ignored local evidence.'); process.exit(0) }
+const baselinePath = join(root, 'docs/database-baseline/private', scope.baseline_ledger_file)
 const migrationsPath = join(root, 'supabase/migrations')
 
 const baseline = JSON.parse(await readFile(baselinePath, 'utf8'))
