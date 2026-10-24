@@ -7,20 +7,33 @@ import {
   MisCsvParseError,
 } from '@/lib/mis-upload/parser'
 import { BUCKET, jsonError, requireActiveAdmin, uploadsEnabled } from '@/lib/server/mis-upload-admin'
+import { ingestionEnabled } from '@/lib/server/mis-gateway-worker'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-type RouteContext = { params: Promise<{ attemptId: string }> }
+// The finalize URL contains an attempt ID; use the same dynamic segment name
+// as the other upload routes so Next.js has one unambiguous route tree.
+type RouteContext = { params: Promise<{ uploadId: string }> }
 
 export async function POST(request: Request, context: RouteContext) {
   if (!uploadsEnabled()) return jsonError('MIS upload intake is not enabled.', 404)
   const access = await requireActiveAdmin(request)
   if ('response' in access) return access.response
 
-  const { attemptId } = await context.params
+  const { uploadId: attemptId } = await context.params
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attemptId)) {
     return jsonError('Upload attempt was not found.', 404)
+  }
+
+  let referenceYear: unknown
+  try {
+    ({ referenceYear } = await request.json())
+  } catch {
+    return jsonError('A reference year is required to derive age fields.')
+  }
+  if (!Number.isInteger(referenceYear) || Number(referenceYear) < 1890 || Number(referenceYear) > 2200) {
+    return jsonError('Reference year must be an integer from 1890 through 2200.')
   }
 
   const { data: reserved, error: attemptError } = await access.admin.rpc('get_mis_upload_attempt', {
@@ -51,7 +64,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   let parsed
   try {
-    parsed = parseMisCsv(bytes)
+    parsed = parseMisCsv(bytes, { referenceYear: Number(referenceYear) })
   } catch (error) {
     const parseCode = error instanceof MisCsvParseError ? error.code : 'invalid_csv'
     const { data: receipt, error: receiptError } = await access.admin.rpc('ingest_mis_upload', {
@@ -64,7 +77,7 @@ export async function POST(request: Request, context: RouteContext) {
     })
     if (receiptError) return jsonError('The source could not be staged. Contact an administrator.', 500)
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'CSV validation failed.',
+      error: 'CSV validation failed. Check the approved headers, encoding and record structure.',
       code: parseCode,
       uploadId: receipt.uploadId,
       state: receipt.state,
@@ -81,21 +94,14 @@ export async function POST(request: Request, context: RouteContext) {
     headerSha256: parsed.headerSha256,
     rowsetSha256: parsed.rowsetSha256,
   }
-  const { data: ingest, error: ingestError } = await access.admin.rpc('ingest_mis_upload', {
+  const { data: ingest, error: ingestError } = await access.admin.rpc('prepare_mis_upload', {
     p_actor_id: access.actorId,
     p_attempt_id: attemptId,
-    p_source_file_sha256: sha256,
-    p_actual_byte_count: bytes.byteLength,
-    p_parse: manifest,
-    p_error_code: null,
+    p_sha256: sha256,
+    p_byte_count: bytes.byteLength,
+    p_manifest: manifest,
   })
   if (ingestError) return jsonError('The validated CSV could not be recorded.', 500)
-  if (ingest.duplicate) {
-    // The existing receipt already retains the exact same bytes by hash; this
-    // reservation's path is therefore an unreferenced duplicate object.
-    await access.admin.storage.from(BUCKET).remove([reserved.object_key])
-    return NextResponse.json({ ...ingest, validationCount: 0 })
-  }
 
   const issuesByRow = new Map<number, typeof parsed.issues>()
   for (const issue of parsed.issues) {
@@ -104,7 +110,7 @@ export async function POST(request: Request, context: RouteContext) {
     issuesByRow.set(issue.sourceRowNumber, issues)
   }
 
-  for (let offset = 0; offset < parsed.rows.length; offset += 250) {
+  for (let offset = 0; !ingest.sealed && offset < parsed.rows.length; offset += 250) {
     const batch = parsed.rows.slice(offset, offset + 250).map((row) => ({
       sourceRowNumber: row.sourceRowNumber,
       rawCells: row.rawCells,
@@ -128,10 +134,31 @@ export async function POST(request: Request, context: RouteContext) {
   })
   if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
 
+  let pipeline = null
+  let pipelineError = null
+  if (ingestionEnabled() && parsed.issues.length === 0) {
+    const queued = await access.admin.rpc('enqueue_mis_upload', { p_actor_id: access.actorId, p_upload_id: ingest.uploadId })
+    pipeline = queued.data
+    if (queued.error) pipelineError = queued.error.code === '22023'
+      ? 'Invoice validation blocked ingestion. Review conflicting header fields or invoices exceeding 1,000 lines.'
+      : 'Source is retained. Retry queueing from the upload history.'
+  }
+
+  const issueCounts = parsed.issues.reduce<Record<string, number>>((counts, issue) => {
+    const key = `${issue.field}:${issue.code}`
+    counts[key] = (counts[key] ?? 0) + 1
+    return counts
+  }, {})
+  const validationSummary = Object.entries(issueCounts).map(([issue, count]) => ({ issue, count }))
+
   return NextResponse.json({
     ...sealed,
+    duplicate: ingest.duplicate,
+    pipeline,
+    pipelineError,
     validRowCount: parsed.sourceRowCount - new Set(parsed.issues.map((issue) => issue.sourceRowNumber)).size,
     rejectedRowCount: new Set(parsed.issues.map((issue) => issue.sourceRowNumber)).size,
     blankRecordCount: parsed.blankRecordCount,
+    validationSummary,
   })
 }

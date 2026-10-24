@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "overrides": {
-    "postcss": "8.5.19"
+    "postcss": "8.5.31"
   },
   "scripts": {
     "dev": "next dev",
@@ -11,23 +11,25 @@
     "start": "next start",
     "lint": "eslint",
     "test:mis-parser": "node --experimental-strip-types --test lib/mis-upload/parser.test.ts",
+    "test:mis-gateway": "node scripts/mis-upload/test-gateway.mjs && node --experimental-strip-types --test lib/mis-upload/worker.test.ts",
     "audit:mis-baseline": "node scripts/mis-upload/compare-baseline.mjs",
     "check:mis-upload-deploy-scope": "node scripts/mis-upload/check-deploy-scope.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
     "csv-parse": "7.0.3",
-    "next": "^16.2.10",
+    "next": "^16.4.3",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "^16.4.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

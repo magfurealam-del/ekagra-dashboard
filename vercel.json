@@ -6,6 +6,10 @@
   "installCommand": "npm install",
   "crons": [
     {
+      "path": "/api/cron/mis-ingestion",
+      "schedule": "*/5 0-1,18-23 * * *"
+    },
+    {
       "path": "/api/cron/populate-outgoing-calls",
       "schedule": "0 0 * * *"
     },
