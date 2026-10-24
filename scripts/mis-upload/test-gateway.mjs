@@ -49,7 +49,7 @@ try {
  // Intake immutability triggers are part of the live contract, not function mocks.
  const intake = await read('supabase/migrations/20261023130728_mis_upload_immutable_intake.sql')
  await db.exec(intake.slice(intake.indexOf('CREATE OR REPLACE FUNCTION mis_internal.reject_mis_upload_history_mutation()'),intake.indexOf('DO $rls$')))
- for (const file of ['20261024133348_mis_upload_authoritative_pipeline.sql','20261024133408_mis_upload_resumable_intake.sql','20261024133414_mis_upload_publication_barriers.sql']) {
+ for (const file of ['20261024123917_mis_upload_review_detail.sql','20261024133348_mis_upload_authoritative_pipeline.sql','20261024133408_mis_upload_resumable_intake.sql','20261024133414_mis_upload_publication_barriers.sql','20261024203229_mis_upload_allow_line_level_department_attribution.sql','20261024203816_mis_upload_review_rpc_named_parameters.sql','20261024212502_mis_upload_skip_verified_unchanged_inventory_invoices.sql','20261024212638_mis_upload_clear_stale_unchanged_job_errors.sql','20261024212832_mis_upload_safe_shadow_rebuild_deletes.sql','20261024213735_mis_upload_resumable_lifetime_publication.sql','20261024214007_mis_upload_safe_contact_history_rebuild.sql']) {
   await db.exec(await read(`supabase/migrations/${file}`))
  }
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
@@ -84,9 +84,21 @@ try {
  }
  const first=await enqueue([base,{...base,item_id:'TEST-OTHER',item_name:'Second consultation'}])
  assert.equal((await apply(first.job)).status,'completed'); tests++
+ assert.deepEqual((await scalar(`SELECT proargnames FROM pg_proc WHERE oid='public.get_mis_upload_review(uuid,uuid)'::regprocedure`)).proargnames,['p_actor_id','p_upload_id'])
+ assert.equal((await scalar('SELECT public.get_mis_upload_review(p_actor_id=>$1,p_upload_id=>$2) r',[actor,first.upload])).r.fileName,'synthetic.csv'); tests++
  assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),2)
  const repeated=await enqueue([{...base,item_id:'TEST-OTHER',item_name:'Second consultation'},base])
  assert.equal((await apply(repeated.job)).action,'unchanged'); tests++
+ const canonical=await scalar(`SELECT i.id invoice_id,l.id line_id FROM public.invoices i JOIN public.invoice_line_items l ON l.invoice_id=i.id WHERE lower(i.invoice_no)='test-1' ORDER BY l.id LIMIT 1`)
+ await db.query(`UPDATE mis_internal.mis_gateway_jobs SET status='superseded' WHERE invoice_key='test-1' AND status='completed'`)
+ await db.query(`INSERT INTO public.invoice_inventory_movements(invoice_line_item_id,invoice_id,movement_type,movement_date,item_name,quantity,source,status)
+  VALUES($1,$2,'consumption','2026-06-01','Synthetic inventory guard test',1,'test','posted')`,[canonical.line_id,canonical.invoice_id])
+ const firstAdoption=await enqueue([{...base,item_id:'TEST-OTHER',item_name:'Second consultation'},base])
+ await db.query(`UPDATE mis_internal.mis_gateway_jobs SET error_code='23503' WHERE id=$1`,[firstAdoption.job])
+ assert.equal((await apply(firstAdoption.job)).action,'unchanged')
+ assert.equal((await scalar(`SELECT error_code FROM mis_internal.mis_gateway_jobs WHERE id=$1`,[firstAdoption.job])).error_code,null)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM public.invoice_inventory_movements WHERE invoice_line_item_id=$1`,[canonical.line_id])).n),1); tests++
+ await db.query(`DELETE FROM public.invoice_inventory_movements WHERE invoice_line_item_id=$1`,[canonical.line_id])
  const corrected=await enqueue([{...base,hospital_number:'HNTEST2',patient_name:'Synthetic Corrected Patient',net_sales:'80.0000',item_discount:'20.0000',net_collection:'80.0000'}])
  assert.equal((await apply(corrected.job)).status,'completed')
  assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),1)
@@ -95,9 +107,17 @@ try {
  assert.equal(Number((await scalar(`SELECT jsonb_array_length(previous_rows) n FROM mis_internal.mis_gateway_invoice_history WHERE job_id=$1`,[corrected.job])).n),2); tests++
  const multis=await enqueue([base,base]); await apply(multis.job)
  assert.equal(Number((await scalar('SELECT count(*) n FROM public.invoice_line_items')).n),2); tests++
+ const lineAttribution=await enqueue([
+  {...base,invoice_id:'TEST-LINE-ATTRIBUTION',doctors_department:'Department A',contributor_doctor_name:'Doctor A'},
+  {...base,invoice_id:'TEST-LINE-ATTRIBUTION',item_id:'TEST-LINE-OTHER',item_name:'Second consultation',doctors_department:'Department B',contributor_doctor_name:'Doctor B'}
+ ])
+ assert.equal(lineAttribution.batch.invoiceCount,1)
+ assert.equal((await apply(lineAttribution.job)).status,'completed')
+ assert.deepEqual((await db.query(`SELECT doctors_department,contributor_doctor_name FROM public.mis_reports WHERE invoice_id_raw='test-line-attribution' ORDER BY item_id_raw`)).rows,
+  [{doctors_department:'Department A',contributor_doctor_name:'Doctor A'},{doctors_department:'Department B',contributor_doctor_name:'Doctor B'}]); tests++
  const bad=await enqueue([{...base,birth_year:2300}])
  await assert.rejects(apply(bad.job))
- assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),2)
+ assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),4)
  assert.equal(Number((await scalar('SELECT count(*) n FROM mis_internal.mis_gateway_invoice_history WHERE job_id=$1',[bad.job])).n),0); tests++
  await assert.rejects(db.query('DELETE FROM mis_internal.mis_gateway_invoice_history'))
  await assert.rejects(db.query('UPDATE mis_internal.mis_upload_rows SET normalized_values=\'{}\'')); tests++
@@ -157,12 +177,12 @@ try {
  // Run the REAL finance, lifetime and contact-ledger functions, not success stubs.
  await db.exec(`INSERT INTO public.dashboard_metric_snapshots(snapshot_key,start_date,end_date,metrics) VALUES('2026-06-01:2026-06-30','2026-06-01','2026-06-30','{}');`)
  const stages=[]
- for(let n=0;n<8;n++) {
+ for(let n=0;n<20;n++) {
   const r=(await scalar('SELECT mis_internal.mis_gateway_tick() r')).r
   stages.push(r)
   if(r.status==='idle') break
  }
- assert.deepEqual(stages.map(x=>x.status),['advanced','advanced','advanced','advanced','idle'],JSON.stringify(stages))
+ assert.deepEqual(stages.map(x=>x.status),[...Array(11).fill('advanced'),'idle'],JSON.stringify(stages))
  assert.equal((await scalar('SELECT mis_internal.gateway_publication_blocked() blocked')).blocked,false)
  assert.equal(Number((await scalar('SELECT count(*) n FROM mis_internal.shadow_invoice_attribution')).n),Number((await scalar('SELECT count(*) n FROM public.invoices')).n))
  assert.equal((await scalar('SELECT integrity_passed FROM mis_internal.shadow_attribution_runs ORDER BY id DESC LIMIT 1')).integrity_passed,true); tests++
