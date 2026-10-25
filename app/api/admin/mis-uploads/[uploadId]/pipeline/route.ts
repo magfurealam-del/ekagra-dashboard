@@ -28,8 +28,9 @@ export async function POST(request: Request, context: Context) {
   if ('response' in access) return access.response
   let action: unknown
   try { ({ action } = await request.json()) } catch { return jsonError('Invalid action.') }
-  if (action !== 'enqueue' && action !== 'retry') return jsonError('Invalid action.')
-  const { data, error } = await access.admin.rpc(action === 'enqueue' ? 'enqueue_mis_upload' : 'retry_mis_gateway', {
+  if (action !== 'enqueue' && action !== 'retry' && action !== 'refresh') return jsonError('Invalid action.')
+  const rpc = action === 'enqueue' ? 'enqueue_mis_upload' : action === 'retry' ? 'retry_mis_gateway' : 'request_marketing_reconciliation'
+  const { data, error } = await access.admin.rpc(rpc, {
     p_actor_id: access.actorId, p_upload_id: access.uploadId,
   })
   if (error) return jsonError(error.code === '22023' ? 'Invoice validation failed. Check that each invoice has consistent header fields and at most 1,000 lines.' : 'The pipeline action could not be recorded.', error.code === '22023' ? 422 : 503)

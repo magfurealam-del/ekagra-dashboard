@@ -31,6 +31,13 @@ try {
   }
   await db.exec(`CREATE TABLE ${t.schema}.${t.name} (${t.columns})`)
  }
+ const marketingContract=JSON.parse(await read('docs/database-baseline/private/gateway-marketing-schema-contract.json'))
+ for (const t of marketingContract) {
+  for (const match of t.columns.matchAll(/nextval\('([^']+)'::regclass\)/g)) await db.exec(`CREATE SEQUENCE IF NOT EXISTS ${match[1]}`)
+  await db.exec(`CREATE TABLE ${t.schema}.${t.name} (${t.columns})`)
+  for (const ddl of t.indexes) await db.exec(ddl)
+ }
+ await db.exec(await read('scripts/mis-upload/marketing-test-schema.sql'))
  for (const f of fixture.functions) await db.exec(f.ddl)
  // Views are loaded in dependency order, with no synthetic replacement of their SQL.
  let views=[...(fixture.views??[])]; let lastError
@@ -49,9 +56,11 @@ try {
  // Intake immutability triggers are part of the live contract, not function mocks.
  const intake = await read('supabase/migrations/20261023130728_mis_upload_immutable_intake.sql')
  await db.exec(intake.slice(intake.indexOf('CREATE OR REPLACE FUNCTION mis_internal.reject_mis_upload_history_mutation()'),intake.indexOf('DO $rls$')))
- for (const file of ['20261024123917_mis_upload_review_detail.sql','20261024133348_mis_upload_authoritative_pipeline.sql','20261024133408_mis_upload_resumable_intake.sql','20261024133414_mis_upload_publication_barriers.sql','20261024203229_mis_upload_allow_line_level_department_attribution.sql','20261024203816_mis_upload_review_rpc_named_parameters.sql','20261024212502_mis_upload_skip_verified_unchanged_inventory_invoices.sql','20261024212638_mis_upload_clear_stale_unchanged_job_errors.sql','20261024212832_mis_upload_safe_shadow_rebuild_deletes.sql','20261024213735_mis_upload_resumable_lifetime_publication.sql','20261024214007_mis_upload_safe_contact_history_rebuild.sql']) {
+ for (const file of ['20261024123917_mis_upload_review_detail.sql','20261024133348_mis_upload_authoritative_pipeline.sql','20261024133408_mis_upload_resumable_intake.sql','20261024133414_mis_upload_publication_barriers.sql','20261024203229_mis_upload_allow_line_level_department_attribution.sql','20261024203816_mis_upload_review_rpc_named_parameters.sql','20261024212502_mis_upload_skip_verified_unchanged_inventory_invoices.sql','20261024212638_mis_upload_clear_stale_unchanged_job_errors.sql','20261024212832_mis_upload_safe_shadow_rebuild_deletes.sql','20261024213735_mis_upload_resumable_lifetime_publication.sql','20261024214007_mis_upload_safe_contact_history_rebuild.sql','20261024220231_mis_gateway_reconciliation_row_counters_and_source_evidence.sql']) {
   await db.exec(await read(`supabase/migrations/${file}`))
  }
+ await db.exec(await read('supabase/migrations/20261025002551_mis_upload_marketing_reconciliation.sql'))
+ await db.exec(await read('supabase/migrations/20261025002604_marketing_spend_sync_gateway.sql'))
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
  await db.exec(`INSERT INTO public.user_profiles(id,role,is_active) VALUES('00000000-0000-4000-8000-000000000001','admin',true);
  INSERT INTO public.service_categories(id,name) VALUES(10,'Synthetic Medicine');
@@ -84,6 +93,8 @@ try {
  }
  const first=await enqueue([base,{...base,item_id:'TEST-OTHER',item_name:'Second consultation'}])
  assert.equal((await apply(first.job)).status,'completed'); tests++
+ assert.deepEqual(await scalar(`SELECT rows_read,rows_inserted,rows_updated,rows_skipped_duplicates,rows_rejected FROM public.mis_reconciliation_runs WHERE mis_import_id=(SELECT import_id FROM mis_internal.mis_gateway_jobs WHERE id=$1)`,[first.job]),
+  {rows_read:2,rows_inserted:2,rows_updated:0,rows_skipped_duplicates:0,rows_rejected:0}); tests++
  assert.deepEqual((await scalar(`SELECT proargnames FROM pg_proc WHERE oid='public.get_mis_upload_review(uuid,uuid)'::regprocedure`)).proargnames,['p_actor_id','p_upload_id'])
  assert.equal((await scalar('SELECT public.get_mis_upload_review(p_actor_id=>$1,p_upload_id=>$2) r',[actor,first.upload])).r.fileName,'synthetic.csv'); tests++
  assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),2)
@@ -171,22 +182,58 @@ try {
  assert.equal(resumed.parseId,prepared.parseId)
  await stage(secondReservation.attemptId,resumed.parseId)
  await assert.rejects(stage(secondReservation.attemptId,resumed.parseId,{...row,normalizedValues:{...row.normalizedValues,net_sales:'999'}}))
- await db.query('SELECT mis_internal.seal_mis_upload_parse($1,$2,$3)',[actor,secondReservation.attemptId,resumed.parseId])
+ const completed=(await scalar('SELECT mis_internal.complete_mis_upload($1,$2,$3,true) r',[actor,secondReservation.attemptId,resumed.parseId])).r
+ assert.ok(completed.pipeline.batchId)
+ assert.equal((await scalar('SELECT mis_internal.complete_mis_upload($1,$2,$3,true) r',[actor,secondReservation.attemptId,resumed.parseId])).r.pipeline.batchId,completed.pipeline.batchId); tests++
  assert.equal((await prepare(secondReservation.attemptId)).sealed,true)
  await assert.rejects(prepare(secondReservation.attemptId,{...manifest,referenceYear:2025})); tests++
+ // Campaign revenue must survive multiple appointments without multiplying invoices.
+ const adPatient=(await scalar(`SELECT id FROM public.patients WHERE hn='HNTEST1'`)).id
+ const adLead=(await scalar(`INSERT INTO public.crm_leads(patient_id,lead_name,phone,source,created_at) VALUES($1,'Synthetic Campaign Lead','01700000000','facebook','2026-05-01') RETURNING id`,[adPatient])).id
+ await db.query(`UPDATE public.crm_leads SET phone_normalized='+8801700000000',meta_ad_id='synthetic-ad' WHERE id=$1`,[adLead])
+ await db.query(`INSERT INTO public.crm_leads(patient_id,lead_name,phone,phone_normalized,source,created_at,meta_ad_id) VALUES($1,'Synthetic Campaign Lead Second Phone','01700000001','+8801700000001','facebook','2026-05-02','synthetic-ad')`,[adPatient])
+ await db.query(`INSERT INTO public.lead_attribution(lead_id,patient_id,source_category,attribution_level,attribution_confidence,first_touch_date,meta_campaign_id,meta_ad_id) VALUES($1,$2,'facebook','exact_ad',1,'2026-05-01','synthetic-campaign','synthetic-ad')`,[adLead,adPatient])
+ await db.query(`INSERT INTO public.crm_appointments(patient_id,lead_id,appointment_date,doctor_service,appointment_status) VALUES($1,$2,'2026-06-01','Synthetic Doctor','Scheduled'),($1,$2,'2026-06-01','Synthetic Other','Scheduled')`,[adPatient,adLead])
+ const preAcquisition=await enqueue([{...base,invoice_id:'PRE-ACQ',invoice_date:'2026-04-01',invoice_datetime:'2026-04-01',item_name:'Medicine',item_type_name:'Pharmacy',parent_item_type_name:'Pharmacy',bill_module_name:'Pharmacy'}])
+ await apply(preAcquisition.job)
  // Run the REAL finance, lifetime and contact-ledger functions, not success stubs.
  await db.exec(`INSERT INTO public.dashboard_metric_snapshots(snapshot_key,start_date,end_date,metrics) VALUES('2026-06-01:2026-06-30','2026-06-01','2026-06-30','{}');`)
  const stages=[]
- for(let n=0;n<20;n++) {
+ for(let n=0;n<40;n++) {
   const r=(await scalar('SELECT mis_internal.mis_gateway_tick() r')).r
   stages.push(r)
   if(r.status==='idle') break
  }
- assert.deepEqual(stages.map(x=>x.status),[...Array(11).fill('advanced'),'idle'],JSON.stringify(stages))
+ assert.equal(stages.at(-1)?.status,'idle',JSON.stringify(stages))
+ assert.ok(stages.every(x=>['completed','advanced','idle','superseded'].includes(x.status)),JSON.stringify(stages))
+ assert.ok(stages.some(x=>x.stage==='marketing'))
+ assert.equal((await scalar('SELECT rules_version FROM mis_internal.mis_gateway_publication')).rules_version,'marketing_pipeline_v2')
  assert.equal((await scalar('SELECT mis_internal.gateway_publication_blocked() blocked')).blocked,false)
  assert.equal(Number((await scalar('SELECT count(*) n FROM mis_internal.shadow_invoice_attribution')).n),Number((await scalar('SELECT count(*) n FROM public.invoices')).n))
  assert.equal((await scalar('SELECT integrity_passed FROM mis_internal.shadow_attribution_runs ORDER BY id DESC LIMIT 1')).integrity_passed,true); tests++
  assert.notDeepEqual((await scalar('SELECT metrics FROM public.dashboard_metric_snapshots')).metrics,{}); tests++
+ const adReport=(await scalar(`SELECT public.get_ad_attribution_report('2026-06-01','2026-06-30') r`)).r
+ const expectedRevenue=Number((await scalar(`SELECT sum(net_bill) revenue FROM public.invoices WHERE patient_id=$1 AND invoice_date BETWEEN '2026-06-01' AND '2026-06-30'`,[adPatient])).revenue)
+ assert.equal(Number(adReport.find(x=>x.campaign_id==='synthetic-campaign').revenue),expectedRevenue)
+ assert.equal(Number((await scalar(`SELECT sum(net_revenue_bdt) n FROM public.meta_phone_ad_outcomes_current WHERE meta_ad_id='synthetic-ad'`)).n),expectedRevenue)
+ assert.equal((await scalar(`SELECT a.attributed_source FROM mis_internal.shadow_invoice_attribution a JOIN public.invoices i ON i.id=a.invoice_id WHERE i.invoice_no='pre-acq'`)).attributed_source,null)
+ assert.equal((await scalar(`SELECT m.source_category FROM public.vw_finance_invoice_marketing m JOIN public.invoices i ON i.id=m.invoice_id WHERE i.invoice_no='pre-acq'`)).source_category,'unattributed'); tests++
+ const sourceReport=(await scalar(`SELECT public.get_admin_source_performance('2026-06-01','2026-06-30') r`)).r
+ const reportedRevenue=sourceReport.sources.reduce((sum,x)=>sum+Number(x.revenue_new)+Number(x.revenue_followup),0)
+ assert.equal(reportedRevenue,Number((await scalar(`SELECT sum(net_bill) n FROM public.invoices WHERE invoice_date BETWEEN '2026-06-01' AND '2026-06-30'`)).n)); tests++
+ // A source edit restarts marketing publication without replaying invoice jobs.
+ const priorRun=(await scalar('SELECT max(id) id FROM mis_internal.marketing_reconciliation_runs')).id
+ const sourceRowsBefore=Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n)
+ await db.query(`UPDATE public.crm_leads SET source='facebook' WHERE id=$1`,[lead])
+ assert.equal((await scalar('SELECT mis_internal.gateway_publication_blocked() b')).b,true)
+ assert.equal((await scalar('SELECT mis_internal.mis_gateway_tick() r')).r.stage,'marketing')
+ await db.query(`UPDATE public.crm_leads SET source='referral' WHERE id=$1`,[lead])
+ let sourceRefresh
+ for(let n=0;n<40;n++) { sourceRefresh=(await scalar('SELECT mis_internal.mis_gateway_tick() r')).r; if(sourceRefresh.status==='idle') break }
+ assert.equal(sourceRefresh.status,'idle')
+ assert.ok((await scalar('SELECT max(id) id FROM mis_internal.marketing_reconciliation_runs')).id>priorRun)
+ assert.ok(Number((await scalar(`SELECT count(*) n FROM mis_internal.marketing_reconciliation_runs WHERE status='superseded'`)).n)>0)
+ assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),sourceRowsBefore); tests++
  // A pharmacy-only bill must not change a booking or infer attendance/No-show.
  const negative=(await scalar(`INSERT INTO public.crm_appointments(patient_id,appointment_date,doctor_service,appointment_status)
   VALUES($1,'2026-06-01',$2,'No-show') RETURNING id`,[patient,doctor])).id

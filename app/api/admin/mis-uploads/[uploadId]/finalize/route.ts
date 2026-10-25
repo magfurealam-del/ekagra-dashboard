@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import {
   MIS_CSV_NORMALIZATION_VERSION,
   MIS_CSV_PARSER_VERSION,
@@ -7,7 +7,7 @@ import {
   MisCsvParseError,
 } from '@/lib/mis-upload/parser'
 import { BUCKET, jsonError, requireActiveAdmin, uploadsEnabled } from '@/lib/server/mis-upload-admin'
-import { ingestionEnabled } from '@/lib/server/mis-gateway-worker'
+import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -127,21 +127,19 @@ export async function POST(request: Request, context: RouteContext) {
     if (error) return jsonError('Some source rows could not be staged. The upload is retained and can be retried.', 503)
   }
 
-  const { data: sealed, error: sealError } = await access.admin.rpc('seal_mis_upload_parse', {
+  const { data: sealed, error: sealError } = await access.admin.rpc('complete_mis_upload', {
     p_actor_id: access.actorId,
     p_attempt_id: attemptId,
     p_parse_id: ingest.parseId,
+    p_enqueue: ingestionEnabled() && parsed.issues.length === 0,
   })
   if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
 
-  let pipeline = null
-  let pipelineError = null
-  if (ingestionEnabled() && parsed.issues.length === 0) {
-    const queued = await access.admin.rpc('enqueue_mis_upload', { p_actor_id: access.actorId, p_upload_id: ingest.uploadId })
-    pipeline = queued.data
-    if (queued.error) pipelineError = queued.error.code === '22023'
-      ? 'Invoice validation blocked ingestion. Review conflicting header fields or invoices exceeding 1,000 lines.'
-      : 'Source is retained. Retry queueing from the upload history.'
+  if (sealed.pipeline) {
+    after(async () => {
+      try { await runMisGateway() }
+      catch { console.error('MIS worker kickoff deferred; durable queue retained') }
+    })
   }
 
   const issueCounts = parsed.issues.reduce<Record<string, number>>((counts, issue) => {
@@ -154,8 +152,6 @@ export async function POST(request: Request, context: RouteContext) {
   return NextResponse.json({
     ...sealed,
     duplicate: ingest.duplicate,
-    pipeline,
-    pipelineError,
     validRowCount: parsed.sourceRowCount - new Set(parsed.issues.map((issue) => issue.sourceRowNumber)).size,
     rejectedRowCount: new Set(parsed.issues.map((issue) => issue.sourceRowNumber)).size,
     blankRecordCount: parsed.blankRecordCount,
