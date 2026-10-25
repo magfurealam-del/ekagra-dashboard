@@ -71,6 +71,8 @@ try {
  await db.exec(await read(`supabase/migrations/${reviewMigration}`))
  const reviewDetailsMigration=(await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_review_source_record_details.sql'))
  await db.exec(await read(`supabase/migrations/${reviewDetailsMigration}`))
+ const reviewPooledMigration=(await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_review_pooled_identity_guard.sql'))
+ await db.exec(await read(`supabase/migrations/${reviewPooledMigration}`))
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
  await db.exec(`INSERT INTO public.user_profiles(id,role,is_active) VALUES('00000000-0000-4000-8000-000000000001','admin',true);
  INSERT INTO public.service_categories(id,name) VALUES(10,'Synthetic Medicine');

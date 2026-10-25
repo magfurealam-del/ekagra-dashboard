@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { humanize, pipelineLabel, type CorrectionPayload, type LeadMatch, type MetaRow, type Pipeline, type RevenueRow, type ReviewDetail, type ReviewKind, type ReviewQueue } from '@/lib/marketing-review/types'
+import { humanize, isPooledIdentity, pipelineLabel, type CorrectionPayload, type LeadMatch, type MetaRow, type Pipeline, type RevenueRow, type ReviewDetail, type ReviewKind, type ReviewQueue } from '@/lib/marketing-review/types'
 import { validateCorrection } from '@/lib/marketing-review/validation'
 
 const money = (n: number | string) => `৳${Number(n).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -51,7 +51,7 @@ export default function MarketingReviewPage() {
   const [reference, setReference] = useState('')
   const [verifiedHn, setVerifiedHn] = useState('')
   const [attested, setAttested] = useState(false)
-  const [source, setSource] = useState('facebook')
+  const [source, setSource] = useState('')
   const [eventDate, setEventDate] = useState('')
   const [excluded, setExcluded] = useState<Array<{ table: string; id: string }>>([])
   const [leadQuery, setLeadQuery] = useState('')
@@ -101,7 +101,7 @@ export default function MarketingReviewPage() {
       if (sequence !== selectionSequence.current) return
       setDetail(result); setMatches(result.matches || [])
       setExcluded(result.sourceCorrection?.active ? result.sourceCorrection.excluded_evidence : [])
-      setSource(result.sourceCorrection?.source || 'facebook')
+      setSource(result.sourceCorrection?.source || '')
       setEventDate(result.sourceCorrection?.event_date || '')
       detailHeading.current?.focus({ preventScroll: true })
     } catch (e) { if (sequence === selectionSequence.current) setError(e instanceof Error ? e.message : 'Could not load the case.') }
@@ -162,6 +162,7 @@ export default function MarketingReviewPage() {
   const revenue = detail?.revenue || []
   const firstClinical = revenue.find(r => r.first_clinical_date)?.first_clinical_date
   const verification = ['confirm','duplicate','verify_source'].includes(action)
+  const pooled = isPooledIdentity(detail?.patient?.hn, detail?.patient?.full_name)
   const list = queue?.items || []
 
   return <main className="mx-auto max-w-[1440px] space-y-6 px-4 py-7 text-slate-900 sm:px-6 lg:px-10">
@@ -247,6 +248,7 @@ export default function MarketingReviewPage() {
           <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-600">{reasonDescriptions[detail.assessment?.reason || revenue[0]?.reason || ''] || 'Review the original evidence and document why the identity or source is valid. A phone match or imported timestamp alone is insufficient.'}</p>
           {kind === 'revenue' && pipeline?.snapshotRevision !== detail.pipeline.snapshotRevision && <p role="status" className="mt-3 rounded-lg bg-teal-50 p-3 text-sm text-teal-900">A newer validated revenue publication is available. Reload this case for its current figures; your unsaved notes stay here until you reload.</p>}
           {detail.case?.review_notes && <div className="mt-3 rounded-lg border border-slate-200 p-3 text-xs leading-5 text-slate-600"><p className="font-semibold">Existing review notes{detail.case.selected_crm_lead_id ? ` · Lead #${detail.case.selected_crm_lead_id}` : ''}</p><p className="mt-1 whitespace-pre-wrap">{detail.case.review_notes}</p></div>}
+          {pooled && <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">This is a pooled customer account. Its revenue may belong to several people, so one acquisition source cannot be assigned. Establish individual hospital identities through verified intake or a corrected MIS import first. You can retain a review note here.</p>}
           {kind === 'meta' ? <>
             {(detail.assessment?.proxy_language_present || detail.assessment?.contact_phone_conflict) && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{detail.assessment.proxy_language_present ? 'Possible relative or caregiver relationship. ' : ''}{detail.assessment.contact_phone_conflict ? 'Contact phone conflict. ' : ''}Explain how these conflicts were resolved before confirming.</p>}
             <details open className="mt-5 border-b border-slate-200 pb-5">
@@ -283,15 +285,15 @@ export default function MarketingReviewPage() {
             <fieldset disabled={saving || !!pending || !queue?.writesEnabled} className="mt-4 space-y-4 disabled:opacity-70">
               <label className="block text-sm font-medium">Decision<select className={input} value={action} onChange={e => { setAction(e.target.value); setAttested(false) }}>
                 <option value="needs_review">Keep open — more evidence needed</option>
-                {kind === 'meta' ? <><option value="confirm">Confirm same patient</option><option value="duplicate">Resolve duplicate CRM records to one patient</option><option value="reject">Reject identity match</option><option value="no_match">Reviewed — no CRM match</option><option value="reopen">Reopen / retract prior identity confirmation</option></> : <><option value="verify_source">Record verified acquisition source</option>{detail.sourceCorrection?.active && <option value="retract_source">Retract current source correction</option>}</>}
+                {kind === 'meta' ? <><option value="confirm">Confirm same patient</option><option value="duplicate">Resolve duplicate CRM records to one patient</option><option value="reject">Reject identity match</option><option value="no_match">Reviewed — no CRM match</option><option value="reopen">Reopen / retract prior identity confirmation</option></> : <>{!pooled && <option value="verify_source">Record verified acquisition source</option>}{detail.sourceCorrection?.active && <option value="retract_source">Retract current source correction</option>}</>}
               </select></label>
               {kind === 'meta' && verification && <div className="space-y-3 rounded-lg border border-teal-200 bg-teal-50/40 p-4">
                 <label className="block text-sm font-medium">Find an existing CRM lead<span className="flex gap-2"><input className={input} value={leadQuery} onChange={e => setLeadQuery(e.target.value)} maxLength={100} placeholder="Patient name, HN, phone or lead ID" /><button type="button" className={`${button} mt-1`} disabled={searchingLeads || leadQuery.trim().length < 2} onClick={searchLeads}>{searchingLeads ? 'Searching…' : 'Find'}</button></span></label>
-                <div className="max-h-56 space-y-2 overflow-auto">{matches.map(l => <label key={l.id} className={`flex cursor-pointer gap-3 rounded-lg border bg-white p-3 text-xs ${lead?.id === l.id ? 'border-teal-600' : 'border-slate-200'}`}><input type="radio" name="verified-lead" className="mt-1 accent-teal-700" checked={lead?.id === l.id} disabled={!l.patient_id || !l.hn} onChange={() => { setLead(l); setVerifiedHn(''); setAttested(false) }} /><span><strong className="text-sm">{l.full_name || l.lead_name}</strong><br />Lead #{l.id} · {l.hn || 'No canonical hospital number'}<br />{l.phone || 'No phone'} · {l.source || 'Source unknown'}{!l.patient_id && <span className="block text-amber-800">Link this lead to a verified patient in the CRM first.</span>}</span></label>)}</div>
+                <div className="max-h-56 space-y-2 overflow-auto">{matches.map(l => <label key={l.id} className={`flex cursor-pointer gap-3 rounded-lg border bg-white p-3 text-xs ${lead?.id === l.id ? 'border-teal-600' : 'border-slate-200'}`}><input type="radio" name="verified-lead" className="mt-1 accent-teal-700" checked={lead?.id === l.id} disabled={!l.patient_id || !l.hn || isPooledIdentity(l.hn,l.full_name)} onChange={() => { setLead(l); setVerifiedHn(''); setAttested(false) }} /><span><strong className="text-sm">{l.full_name || l.lead_name}</strong><br />Lead #{l.id} · {l.hn || 'No canonical hospital number'}<br />{l.phone || 'No phone'} · {l.source || 'Source unknown'}{!l.patient_id && <span className="block text-amber-800">Link this lead to a verified patient in the CRM first.</span>}{isPooledIdentity(l.hn,l.full_name) && <span className="block text-amber-800">Pooled account — individual patient identity required.</span>}</span></label>)}</div>
                 <p className="text-xs leading-5 text-slate-600">Duplicate resolution retains all original records. A relative’s phone can be shared; verify the actual patient. <Link href="/" className="font-semibold text-teal-800 underline">Open lead intake ↗</Link></p>
               </div>}
               {kind === 'revenue' && action === 'verify_source' && <div className="space-y-4 rounded-lg border border-teal-200 bg-teal-50/40 p-4">
-                <label className="block text-sm font-medium">Verified original acquisition source<select className={input} value={source} onChange={e => setSource(e.target.value)}><option value="facebook">Facebook / Meta</option><option value="google">Google</option><option value="referral">Referral / word of mouth</option><option value="doctor recommendation">Doctor recommendation</option><option value="organic_direct">Organic / direct walk-in</option></select></label>
+                <label className="block text-sm font-medium">Verified original acquisition source<select className={input} value={source} onChange={e => setSource(e.target.value)} required><option value="">Select the verified source</option><option value="facebook">Facebook / Meta</option><option value="google">Google</option><option value="referral">Referral / word of mouth</option><option value="doctor recommendation">Doctor recommendation</option><option value="organic_direct">Organic / direct walk-in</option></select></label>
                 <label className="block text-sm font-medium">Original acquisition date<input type="date" className={input} value={eventDate} onChange={e => setEventDate(e.target.value)} min="2000-01-01" required /></label>
                 <p className="text-xs leading-5 text-slate-600">Use the date of the verified acquisition event. This is separate from today’s review date. Campaign or ad attribution is not invented from a source label.</p>
                 {firstClinical && eventDate > firstClinical && <p role="status" className="rounded-lg bg-amber-100 p-3 text-xs leading-5 text-amber-900">This source date is after the first clinical invoice. The pipeline will retain the late-source exclusion; it will not automatically attribute this revenue.</p>}

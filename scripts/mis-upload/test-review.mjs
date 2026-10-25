@@ -43,6 +43,8 @@ try {
  await db.exec(await read('supabase/migrations/'+migration))
  const detailsMigration = (await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_review_source_record_details.sql'))
  await db.exec(await read('supabase/migrations/'+detailsMigration))
+ const pooledMigration = (await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_review_pooled_identity_guard.sql'))
+ await db.exec(await read('supabase/migrations/'+pooledMigration))
  const readCase = async (kind,id,who=actor,page=0,filter='',search='') => (await scalar('SELECT public.marketing_review_read($1,$2,$3,$4,$5,$6) r',[who,kind,id,page,filter,search])).r
  const version = async (kind,id) => (await readCase(kind,id)).version
  const resolve = async (kind,id,payload,opts={}) => (await scalar('SELECT public.marketing_review_resolve($1,$2,$3,$4,$5,$6) r',[opts.actor||actor,opts.requestId||randomUUID(),kind,id,opts.version||await version(kind,id),JSON.stringify(payload)])).r
@@ -69,6 +71,10 @@ try {
  await reject(readCase('meta',null,actor,-1),/Invalid review query/)
  check((await readCase('meta',1)).messages[0].native_inbound===false,'historical projected direction is not native proof')
  const source = {action:'verify_source',reason:notes,evidenceReference:'Synthetic original registration #1',source:'facebook',eventDate:'2026-05-01',attested:true,verifiedHn:'H1',excludedEvidence:[]}
+ await db.exec(`INSERT INTO public.patients(id,hn,full_name) VALUES(3,'GC','General Customer'); INSERT INTO public.crm_leads(id,patient_id,lead_name) VALUES(3,3,'Pooled customer');`)
+ await reject(resolve('revenue',3,{...source,verifiedHn:'GC'}),/Pooled customer accounts/)
+ const pooledLead=(await readCase('leads',null,actor,0,'','Pooled'))[0]
+ await reject(resolve('meta',1,{...source,action:'confirm',leadId:3,leadVersion:pooledLead.version,verifiedHn:'GC'}),/Pooled customer accounts/)
  await reject(resolve('revenue',1,{...source,attested:false}),/Verify the original/)
  await reject(resolve('revenue',1,{...source,verifiedHn:'H2'}),/hospital number/)
  await reject(resolve('revenue',1,{...source,eventDate:'2099-01-01'}),/Verify the original/)
