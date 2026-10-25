@@ -65,6 +65,7 @@ try {
  await db.exec(await read('supabase/migrations/20261025004303_marketing_publication_completion_guard.sql'))
  await db.exec(await read('supabase/migrations/20261025013715_verified_marketing_identity_evidence.sql'))
  await db.exec(await read('supabase/migrations/20261025014102_marketing_identity_bridge_invalidation.sql'))
+ await db.exec(await read('supabase/migrations/20261025014822_lifetime_refresh_publication_idempotency.sql'))
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
  await db.exec(`INSERT INTO public.user_profiles(id,role,is_active) VALUES('00000000-0000-4000-8000-000000000001','admin',true);
  INSERT INTO public.service_categories(id,name) VALUES(10,'Synthetic Medicine');
@@ -216,6 +217,16 @@ try {
  assert.equal(Number((await scalar('SELECT count(*) n FROM mis_internal.shadow_invoice_attribution')).n),Number((await scalar('SELECT count(*) n FROM public.invoices')).n))
  assert.equal((await scalar('SELECT integrity_passed FROM mis_internal.shadow_attribution_runs ORDER BY id DESC LIMIT 1')).integrity_passed,true); tests++
  assert.notDeepEqual((await scalar('SELECT metrics FROM public.dashboard_metric_snapshots')).metrics,{}); tests++
+ // Legacy scheduled calls cannot reopen a current completed publication.
+ const completedLifetime=(await scalar('SELECT max(id) id FROM mis_internal.shadow_attribution_runs')).id
+ assert.equal((await scalar('SELECT mis_internal.refresh_shadow_lifetime_attribution() r')).r.status,'idle_current_publication')
+ assert.equal((await scalar('SELECT max(id) id FROM mis_internal.shadow_attribution_runs')).id,completedLifetime);tests++
+ const redundant=(await scalar(`INSERT INTO mis_internal.shadow_attribution_runs(status,refresh_step,rule_version) VALUES('running','clear','source_evidence_v2') RETURNING id`)).id
+ await db.exec(`SET test.overnight='off'`)
+ assert.equal((await scalar('SELECT mis_internal.refresh_shadow_lifetime_attribution() r')).r.status,'idle_current_publication')
+ assert.equal((await scalar('SELECT status FROM mis_internal.shadow_attribution_runs WHERE id=$1',[redundant])).status,'deferred')
+ assert.equal(Number((await scalar('SELECT count(*) n FROM mis_internal.shadow_invoice_attribution')).n),Number((await scalar('SELECT count(*) n FROM public.invoices')).n));tests++
+ await db.exec(`SET test.overnight='on'`)
  const adReport=(await scalar(`SELECT public.get_ad_attribution_report('2026-06-01','2026-06-30') r`)).r
  const expectedRevenue=Number((await scalar(`SELECT sum(net_bill) revenue FROM public.invoices WHERE patient_id=$1 AND invoice_date BETWEEN '2026-06-01' AND '2026-06-30'`,[adPatient])).revenue)
  assert.equal(Number(adReport.find(x=>x.campaign_id==='synthetic-campaign').revenue),expectedRevenue)

@@ -17,6 +17,8 @@ Use a transaction with serialization, appropriate row locks and a worker advisor
 
 Audited legacy call repairs contribute source evidence only while their validated bridge remains valid. Changes to identity-key validation invalidate downstream publication even without a CSV upload. The ordinary processing window and scheduled worker remain in force.
 
+Legacy lifetime refreshes recognize a completed current gateway publication and return `idle_current_publication`. A redundant run still waiting at `clear`, with no derived rows written for that run, is closed as deferred and audited without touching the financial cache. Partially executed runs are never silently discarded. This prevents a late legacy schedule from reopening a current publication just before the processing window closes; schedules and window checks are unchanged.
+
 ## Verification
 
 Run the standalone marketing scenarios and full local gateway contract. Confirm audit immutability, missing-audit rejection, bridge-revocation retraction, and source-revision invalidation. After the live worker finishes, require completed marketing, lifetime, contact, ad-outcome and snapshot stages; a matching source/publication revision; balanced invoice totals; zero revenue before source evidence; and zero duplicate positive patient/ad revenue allocations. Check remaining review dispositions separately from financial completeness.
