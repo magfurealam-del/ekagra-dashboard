@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -66,6 +66,11 @@ try {
  await db.exec(await read('supabase/migrations/20261025013715_verified_marketing_identity_evidence.sql'))
  await db.exec(await read('supabase/migrations/20261025014102_marketing_identity_bridge_invalidation.sql'))
  await db.exec(await read('supabase/migrations/20261025014822_lifetime_refresh_publication_idempotency.sql'))
+ await db.exec(await read('scripts/mis-upload/review-test-schema.sql'))
+ const reviewMigration=(await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_attribution_review.sql'))
+ await db.exec(await read(`supabase/migrations/${reviewMigration}`))
+ const reviewDetailsMigration=(await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_review_source_record_details.sql'))
+ await db.exec(await read(`supabase/migrations/${reviewDetailsMigration}`))
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
  await db.exec(`INSERT INTO public.user_profiles(id,role,is_active) VALUES('00000000-0000-4000-8000-000000000001','admin',true);
  INSERT INTO public.service_categories(id,name) VALUES(10,'Synthetic Medicine');
@@ -254,6 +259,25 @@ try {
  assert.ok((await scalar('SELECT max(id) id FROM mis_internal.marketing_reconciliation_runs')).id>priorRun)
  assert.ok(Number((await scalar(`SELECT count(*) n FROM mis_internal.marketing_reconciliation_runs WHERE status='superseded'`)).n)>0)
  assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),sourceRowsBefore); tests++
+ // A review correction uses the same full worker, without replaying source files.
+ const reviewDetail=(await scalar('SELECT public.marketing_review_read($1,$2,$3) r',[actor,'revenue',adPatient])).r
+ const reviewedSource={action:'verify_source',reason:'Verified synthetic original acquisition record and hospital identity.',
+  evidenceReference:'Synthetic registration evidence #1',attested:true,verifiedHn:'HNTEST1',source:'google',eventDate:'2026-05-01',excludedEvidence:[]}
+ const correction=(await scalar('SELECT public.marketing_review_resolve($1,$2,$3,$4,$5,$6) r',[actor,randomUUID(),'revenue',adPatient,reviewDetail.version,JSON.stringify(reviewedSource)])).r
+ assert.ok(correction.sourceRevision>reviewDetail.pipeline.publishedRevision)
+ const correctedStages=[];let reviewTick
+ for(let n=0;n<40;n++) { reviewTick=(await scalar('SELECT mis_internal.mis_gateway_tick() r')).r;correctedStages.push(reviewTick.stage);if(reviewTick.status==='idle')break }
+ assert.equal(reviewTick.status,'idle',JSON.stringify(reviewTick))
+ assert.ok(['marketing','lifetime','contacts','ad_outcomes','snapshots'].every(stage=>correctedStages.includes(stage)))
+ const completedReview=(await scalar('SELECT public.marketing_review_read($1,$2,$3) r',[actor,'revenue',adPatient])).r
+ assert.equal(completedReview.pipeline.current,true)
+ assert.equal(completedReview.history[0].reconciled,true)
+ assert.equal((await scalar('SELECT validated_source FROM public.patient_marketing_attribution WHERE patient_id=$1',[adPatient])).validated_source,'google')
+ assert.equal((await scalar('SELECT source FROM mis_internal.shadow_patient_acquisitions WHERE patient_id=$1',[adPatient])).source,'google')
+ assert.equal((await scalar(`SELECT a.attributed_source FROM mis_internal.shadow_invoice_attribution a JOIN public.invoices i ON i.id=a.invoice_id WHERE i.patient_id=$1 AND i.invoice_date>='2026-05-01' LIMIT 1`,[adPatient])).attributed_source,'google')
+ assert.equal(Number((await scalar(`SELECT coalesce(sum(net_revenue_bdt),0) n FROM public.meta_phone_ad_outcomes_current WHERE meta_ad_id='synthetic-ad'`)).n),0)
+ assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),sourceRowsBefore)
+ assert.ok((await scalar('SELECT source_revision FROM mis_internal.marketing_review_snapshot_state')).source_revision>=correction.sourceRevision);tests++
  // A pharmacy-only bill must not change a booking or infer attendance/No-show.
  const negative=(await scalar(`INSERT INTO public.crm_appointments(patient_id,appointment_date,doctor_service,appointment_status)
   VALUES($1,'2026-06-01',$2,'No-show') RETURNING id`,[patient,doctor])).id

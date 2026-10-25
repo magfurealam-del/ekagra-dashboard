@@ -28,6 +28,7 @@ try {
  const id='00000000-0000-4000-8000-000000000001'
  const checks=[
   ['GET','/api/admin/mis-uploads'],['POST','/api/admin/mis-uploads'],
+  ['GET','/api/admin/marketing-reviews'],['POST','/api/admin/marketing-reviews'],
   ['POST',`/api/admin/mis-uploads/${id}/finalize`],
   ['GET',`/api/admin/mis-uploads/${id}/pipeline`],['POST',`/api/admin/mis-uploads/${id}/pipeline`],
   ['GET','/api/cron/mis-ingestion'],['GET','/api/cron/sync-invoice-corrections'],
@@ -38,7 +39,7 @@ try {
   assert.ok((await response.json()).error)
  }
  assert.equal((await fetch(url+'/api/cron/mis-ingestion',{headers:{Authorization:'Bearer incorrect'}})).status,401)
- console.log('PASS: 8 built HTTP authorization checks; no database requests or production secrets.')
+ console.log(`PASS: ${checks.length + 1} built HTTP authorization checks; no database requests or production secrets.`)
 } finally {
  child.kill()
  await once(child,'exit').catch(()=>{})

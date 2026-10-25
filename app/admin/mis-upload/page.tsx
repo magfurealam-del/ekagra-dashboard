@@ -3,6 +3,7 @@
 import { ChangeEvent, Fragment, useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
 
 type UploadItem = {
   uploadId: string
@@ -253,6 +254,7 @@ export default function MisUploadAdminPage() {
       <header>
         <p className="text-sm font-semibold uppercase tracking-wide text-teal-700">Administration</p>
         <h1 className="mt-2 text-3xl font-bold text-slate-900">MIS Uploads</h1>
+        <Link href="/admin/marketing-review" className="mt-2 inline-block text-sm font-semibold text-teal-700 underline">Review Meta identities and unattributed revenue →</Link>
         <p className="mt-2 max-w-3xl text-slate-600">
           Upload the approved MIS CSV export. The gateway preserves the original file, verifies its hash,
           and validates each invoice before queueing MIS and downstream reconciliation. Each invoice in the

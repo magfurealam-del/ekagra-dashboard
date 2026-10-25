@@ -12,6 +12,7 @@ const links = [
   { href: '/call-kpis', label: 'Call KPIs' },
   { href: '/admin-dashboard', label: 'Dashboard', adminOnly: true },
   { href: '/admin/mis-upload', label: 'MIS Uploads', adminOnly: true },
+  { href: '/admin/marketing-review', label: 'Attribution Review', adminOnly: true },
   { href: '/settings', label: 'Settings', adminOnly: true },
 ]
 
