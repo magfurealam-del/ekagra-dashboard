@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test:mis-parser": "node --experimental-strip-types --test lib/mis-upload/parser.test.ts",
     "test:mis-marketing": "node scripts/mis-upload/test-marketing.mjs",
+    "test:marketing-review": "node scripts/mis-upload/test-review.mjs && node --experimental-strip-types --test lib/marketing-review/validation.test.ts",
     "check:marketing-edge": "tsc --noEmit --target ES2022 --module esnext --moduleResolution bundler --strict --skipLibCheck scripts/mis-upload/edge-test-runtime.d.ts supabase/functions/marketing-spend-sync/index.ts",
     "test:mis-gateway": "node scripts/mis-upload/test-gateway.mjs && node --experimental-strip-types --test lib/mis-upload/worker.test.ts",
     "audit:mis-baseline": "node scripts/mis-upload/compare-baseline.mjs",

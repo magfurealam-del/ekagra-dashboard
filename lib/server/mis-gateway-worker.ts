@@ -6,11 +6,11 @@ export function ingestionEnabled() {
   return process.env.MIS_INGESTION_ENABLED === 'true'
 }
 
-export async function runMisGateway() {
+export async function runMisGateway(options: { syncMarketingSpend?: boolean } = {}) {
   const admin = getAdminSupabase()
   const started = Date.now()
-  let marketingSpend: unknown = { status: 'unavailable' }
-  try {
+  let marketingSpend: unknown = { status: 'not_requested' }
+  if (options.syncMarketingSpend !== false) try {
     const spend = await admin.functions.invoke('marketing-spend-sync', { body: {}, timeout: 85000 })
     if (spend.error) console.error('Marketing spend sync unavailable; MIS reconciliation continues and source freshness remains visible')
     else marketingSpend = spend.data
