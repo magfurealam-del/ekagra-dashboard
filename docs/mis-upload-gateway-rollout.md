@@ -41,6 +41,10 @@ Open an accepted upload to see invoice counts, publication stage, marketing pati
 
 Spend synchronization uses the existing Meta token and enabled ad-account catalog. It checkpoints weekly windows and pages, supports USD and BDT separately, catches up through yesterday in the account timezone, then refreshes the previous seven days daily. Each API page is retained immutably. External API failures appear in spend status while MIS processing continues. Do not treat an old spend date or a failed account status as zero advertising activity.
 
+`marketing_daily_spend` is the canonical daily insights cache. Verified rows also project into `meta_ad_spend_daily` for older reporting consumers. The compatibility projection requires a matching immutable API observation and keeps account, ad, date, currency and amount aligned. Its deployment captures the previous legacy cache in an immutable private baseline; older history absent from the current insights cache is retained. Manual or unverified cache rows cannot authenticate a projected amount.
+
 Review suggested Meta identities in the existing review workflow. A CSV cannot create a missing historical referral or prove which person used a shared phone. Correcting or confirming evidence automatically invalidates downstream publication; the worker rebuilds attribution and revenue on its next run.
+
+Publication requires the final `complete` stage as well as a matching batch and evidence revision. Rebuilding sources for an already-published upload must still refresh lifetime revenue, contact history, ad outcomes and snapshots. The source dashboard counts verified attendance directly; the absence of a recorded no-show is not attendance evidence. Lead-period and appointment-period counts are presented as separate activity measures rather than cohort conversion percentages.
 
 See [production acceptance and rollback](mis-upload-production-readiness.md) for release checks and current limitations.

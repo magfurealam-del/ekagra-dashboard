@@ -89,6 +89,17 @@ try {
  await db.exec(`SET request.jwt.claim.role='authenticated'`)
  await assert.rejects(claim());tests++
  await db.exec(`SET request.jwt.claim.role='service_role'`)
+ // Preserve legacy history and project only spend backed by immutable API pages.
+ await db.exec(`INSERT INTO public.meta_ad_spend_daily(spend_date,ad_account_id,currency,ad_id,amount_spent) VALUES(current_date-30,'123456','USD','historic',7);`)
+ await db.exec(await readFile(new URL('supabase/migrations/20261025003902_marketing_spend_compatibility_projection.sql',root),'utf8'))
+ assert.equal(Number((await scalar('SELECT count(*) n FROM mis_internal.marketing_spend_legacy_baseline')).n),1)
+ await assert.rejects(db.exec('DELETE FROM mis_internal.marketing_spend_legacy_baseline WHERE true'));tests++
+ assert.equal(Number((await scalar(`SELECT amount_spent FROM public.meta_ad_spend_daily WHERE ad_id='11111'`)).amount_spent),12.34)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM public.meta_ad_spend_daily WHERE ad_id='historic'`)).n),1);tests++
+ await db.exec(`UPDATE public.marketing_daily_spend SET updated_at=now() WHERE meta_ad_id='11111'`)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM public.meta_ad_spend_daily WHERE ad_id='11111'`)).n),1);tests++
+ await db.exec(`INSERT INTO public.marketing_daily_spend(date,meta_campaign_id,meta_adset_id,meta_ad_id,spend_usd,source_payload) VALUES(current_date,'33333','22222','forged',99,'{"integration":"meta_ads_insights","observation_id":"1","account_id":"123456","currency":"USD","data":{"ad_id":"forged"}}')`)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM public.meta_ad_spend_daily WHERE ad_id='forged'`)).n),0);tests++
  console.log(`PASS: ${tests} synthetic marketing evidence scenarios.`)
 } finally {await db.close()}
 
