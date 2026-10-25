@@ -16,6 +16,8 @@ Reopening or rejecting a prior confirmation removes its Messenger links only if 
 
 The queue groups unattributed invoices by canonical patient and attribution reason. It shows net bill, not cash collected or total patient lifetime revenue. Amounts come from the last integrity-checked lifetime publication, and stay stable while the worker clears and rebuilds its intermediate tables. A new validated publication refreshes the queue atomically.
 
+Pooled billing identities such as General Customer remain visible but cannot receive a single acquisition source or Meta identity confirmation. Establish individual hospital identities through genuine intake or a corrected MIS import first; the review page does not distribute pooled invoices by assumption.
+
 To correct acquisition evidence, verify the hospital identity, original source and original event date against a referenced record. The original event date is distinct from the review timestamp. Supported categories are Facebook/Meta, Google, referral, doctor recommendation and organic/direct. The correction does not infer an ad or campaign from a source label.
 
 If an existing source record is demonstrably wrong, explicitly select it under “Replace incorrect source evidence” and explain the correction. The original record remains unchanged. Attribution use of the selected patient/evidence pair and its derived CRM/lead-attribution copies is suppressed while the correction is active, including copies created by later reconciliation. Each patient has one current correction; later versions preserve the entire history. Retracting a correction restores the original evidence rules.
@@ -35,7 +37,7 @@ No cron schedule, source invoice, immutable upload history or financial amount i
 
 ## Delivery and verification
 
-Apply the additive `admin_attribution_review` and `admin_review_source_record_details` migrations before deploying the Next.js release. They create private history/correction/snapshot tables, service-only RPC entry points, bounded original-source detail panels and a publication-completion snapshot trigger. The initial seed reads existing validated attribution and does not make identity or revenue decisions.
+Apply the additive `admin_attribution_review`, `admin_review_source_record_details` and `admin_review_pooled_identity_guard` migrations before deploying the Next.js release. They create private history/correction/snapshot tables, service-only RPC entry points, bounded original-source detail panels, a pooled-account safeguard and a publication-completion snapshot trigger. The initial seed reads existing validated attribution and does not make identity or revenue decisions.
 
 Run `npm run test:marketing-review`, parser/marketing/gateway suites, TypeScript, lint for changed files, the production build and `scripts/mis-upload/smoke-http.mjs`. The review suite uses synthetic data and runs in CI without private schema exports. The locally available gateway contract additionally tests a review correction through the actual finance/marketing/lifetime/contact/ad/snapshot functions and verifies unchanged MIS row counts and revenue conservation.
 

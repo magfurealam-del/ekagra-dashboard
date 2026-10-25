@@ -56,6 +56,10 @@ export type CorrectionPayload = {
 export function humanize(value: string): string {
   return value.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase())
 }
+export function isPooledIdentity(hn: string | null | undefined, name: string | null | undefined): boolean {
+  return ['GC','GENERALCUSTOMER','GENERALPATIENT','CASHCUSTOMER','UNKNOWN','UNKNOWNPATIENT'].includes((hn || '').replace(/[^a-zA-Z0-9]/g,'').toUpperCase())
+    || /(general|cash|walk[ -]?in|unknown)\s+(customer|patient)/i.test(name || '')
+}
 export function pipelineLabel(p: Pipeline): string {
   if (p.current) return 'All downstream tables reconciled'
   if (!p.hasBatch) return 'Waiting for the first accepted MIS import'
