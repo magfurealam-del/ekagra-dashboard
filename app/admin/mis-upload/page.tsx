@@ -17,7 +17,7 @@ type UploadItem = {
 }
 
 type Reservation = { attemptId: string; objectKey: string; token: string }
-type Pipeline = { batchId: number; invoices: number; completed: number; superseded: number; failed: number; pending: number; attempts: number; published: boolean; publicationStage: string; errorCodes: string[]; publicationResult: { status?: string; code?: string } }
+type Pipeline = { batchId: number; invoices: number; completed: number; superseded: number; failed: number; pending: number; attempts: number; published: boolean; publicationStage: string; errorCodes: string[]; publicationResult: { status?: string; code?: string }; marketingRun?: { status: string; patientsProcessed: number }; attributionCoverage?: Record<string, { invoices: number; patients: number; net_bill: number | string }>; marketingFreshness?: { latestStoredSpendDate: string | null; spendAccounts: Array<{ status: string; through: string | null; lastSuccess: string | null; errorCode: string | null }>; metaIdentityReviewsOpen: number } }
 type UploadReview = {
   uploadId: string
   fileName: string
@@ -103,6 +103,21 @@ export default function MisUploadAdminPage() {
     return () => window.clearTimeout(timer)
   }, [session, profile?.id, profile?.role, profile?.is_active, loadUploads])
 
+  useEffect(() => {
+    if (!expandedReview) return
+    let cancelled = false
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const response = await fetch(`/api/admin/mis-uploads/${expandedReview}/pipeline`, { headers: await authHeaders(), cache: 'no-store' })
+        if (!response.ok) return
+        const body = await response.json()
+        if (!cancelled) setPipelines(current => ({ ...current, [expandedReview]: body.pipeline }))
+      } catch { /* The durable pipeline continues; the next poll retries. */ }
+    }, 5000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [expandedReview, authHeaders])
+
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null
     setFile(selected)
@@ -137,7 +152,7 @@ export default function MisUploadAdminPage() {
     }
   }
 
-  async function pipelineAction(uploadId: string, action: 'enqueue' | 'retry') {
+  async function pipelineAction(uploadId: string, action: 'enqueue' | 'retry' | 'refresh') {
     setReviewing(uploadId)
     setReviewError('')
     try {
@@ -220,6 +235,7 @@ export default function MisUploadAdminPage() {
       const input = document.getElementById('mis-upload-file') as HTMLInputElement | null
       if (input) input.value = ''
       await loadUploads()
+      if (result.uploadId) await toggleReview(result.uploadId)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Upload failed. The source may have been retained; check history before retrying.')
     } finally {
@@ -341,7 +357,21 @@ export default function MisUploadAdminPage() {
                                 return <div className="space-y-2 rounded-lg border border-teal-200 bg-white p-4">
                                   <p className="font-semibold">{pipeline.published ? 'Reconciled and published' : 'Reconciliation in progress'}</p>
                                   <p>{pipeline.completed} completed · {pipeline.pending} pending · {pipeline.failed} failed · {pipeline.superseded} superseded · {pipeline.invoices} invoices</p>
-                                  <p>Downstream publication: {pipeline.publicationStage}. Reopen Review to refresh.</p>
+                                  <p aria-live="polite">Downstream publication: {pipeline.publicationStage.replaceAll('_', ' ')}. Progress refreshes automatically.</p>
+                                  {pipeline.marketingRun && <p>Marketing reconciliation: {pipeline.marketingRun.status} · {pipeline.marketingRun.patientsProcessed} patient histories processed.</p>}
+                                  {pipeline.marketingFreshness && <div className="text-slate-600">
+                                    <p>Latest stored ad spend: {pipeline.marketingFreshness.latestStoredSpendDate ?? 'not available'}.</p>
+                                    {pipeline.marketingFreshness.spendAccounts.map((account, index) => <p key={index}>Ad account {index + 1}: {account.status} · coverage through {account.through ?? 'pending'}{account.errorCode ? ` · ${account.errorCode}` : ''}.</p>)}
+                                    <p>{pipeline.marketingFreshness.metaIdentityReviewsOpen} Meta identity matches need review before they can support verified attribution.</p>
+                                  </div>}
+                                  <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'refresh')} className="rounded bg-teal-800 px-3 py-2 font-semibold text-white disabled:opacity-50">Refresh sources and reconciliation</button>
+                                  {pipeline.attributionCoverage && <details>
+                                    <summary className="cursor-pointer font-medium">Latest completed acquisition-source coverage</summary>
+                                    <p className="mt-2 text-slate-600">Unassigned amounts retain their reason. Later engagement does not claim earlier revenue; campaign attribution requires supporting evidence.</p>
+                                    <table className="mt-2 w-full text-left"><thead><tr><th className="py-1">Evidence status</th><th>Invoices</th><th>Net bill (BDT)</th></tr></thead>
+                                      <tbody>{Object.entries(pipeline.attributionCoverage).map(([name, values]) => <tr key={name}><td className="py-1">{name.replaceAll('_', ' ')}</td><td>{values.invoices}</td><td>{Number(values.net_bill).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>)}</tbody>
+                                    </table>
+                                  </details>}
                                   {pipeline.errorCodes?.length > 0 && <p role="alert">Processing checks: {pipeline.errorCodes.join(', ')}. {pipeline.errorCodes.includes('23503') ? 'Inventory-linked lines require review before replacement.' : 'An administrator should inspect the failed job before retrying.'}</p>}
                                   {pipeline.publicationResult?.status === 'failed' && <p role="alert">Downstream refresh failed ({pipeline.publicationResult.code}); the batch is not published.</p>}
                                   {pipeline.failed > 0 && <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'retry')} className="font-semibold text-teal-800 underline disabled:opacity-50">Retry failed invoices</button>}

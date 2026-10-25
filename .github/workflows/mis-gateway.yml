@@ -22,6 +22,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:mis-parser
+      - run: npm run test:mis-marketing
+      - run: npm run check:marketing-edge
       - run: npm run test:mis-gateway
       - run: npm run check:mis-upload-deploy-scope
       - run: npm audit --audit-level=high
