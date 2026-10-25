@@ -61,6 +61,7 @@ try {
  }
  await db.exec(await read('supabase/migrations/20261025002551_mis_upload_marketing_reconciliation.sql'))
  await db.exec(await read('supabase/migrations/20261025002604_marketing_spend_sync_gateway.sql'))
+ await db.exec(await read('supabase/migrations/20261025003902_marketing_spend_compatibility_projection.sql'))
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
  await db.exec(`INSERT INTO public.user_profiles(id,role,is_active) VALUES('00000000-0000-4000-8000-000000000001','admin',true);
  INSERT INTO public.service_categories(id,name) VALUES(10,'Synthetic Medicine');
