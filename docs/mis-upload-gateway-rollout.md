@@ -45,4 +45,6 @@ Spend synchronization uses the existing Meta token and enabled ad-account catalo
 
 Review suggested Meta identities in the existing review workflow. A CSV cannot create a missing historical referral or prove which person used a shared phone. Correcting or confirming evidence automatically invalidates downstream publication; the worker rebuilds attribution and revenue on its next run.
 
+Publication requires the final `complete` stage as well as a matching batch and evidence revision. Rebuilding sources for an already-published upload must still refresh lifetime revenue, contact history, ad outcomes and snapshots. The source dashboard counts verified attendance directly; the absence of a recorded no-show is not attendance evidence. Lead-period and appointment-period counts are presented as separate activity measures rather than cohort conversion percentages.
+
 See [production acceptance and rollback](mis-upload-production-readiness.md) for release checks and current limitations.

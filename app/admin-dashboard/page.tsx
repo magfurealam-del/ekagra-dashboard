@@ -577,8 +577,8 @@ export default function AdminDashboardPage() {
               return <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-md p-3">{sourcePerfError}</div>
             }
             const sourceRows = ((sourcePerf?.sources || []) as SourcePerfRow[]).map(s => {
-              const attendedRate = s.appointments_eligible > 0
-                ? Math.round((1 - s.no_shows / s.appointments_eligible) * 1000) / 10
+              const attendedRate = s.appointments_set > 0
+                ? Math.round(((s.new_attended + s.old_attended) / s.appointments_set) * 1000) / 10
                 : null
               const newShare = s.leads > 0 ? Math.round((s.new_leads / s.leads) * 100) : null
               return { ...s, attendedRate, newShare }
@@ -593,29 +593,15 @@ export default function AdminDashboardPage() {
               <div className="space-y-4">
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 space-y-1.5">
                   <p>
-                    Source identity: <span className="font-medium text-slate-700">crm_leads → lead_attribution.source_category</span>,
-                    falling back to <span className="font-medium text-slate-700">crm_leads.source</span> when unattributed.
-                    Revenue: <span className="font-medium text-slate-700">crm_invoice_reconciliation</span> (matched/approved only) →{' '}
-                    <span className="font-medium text-slate-700">invoices</span>. Attendance: invoice-validated within ±7 days of the appointment,
-                    same rule used across the whole dashboard.
+                    Lead source reflects the recorded contact channel. Revenue uses eligible acquisition evidence at or before the first clinical visit; missing or late evidence remains unattributed. Attendance requires same-day qualifying clinical billing for the same patient and doctor. Missing billing alone does not prove a no-show.
                   </p>
                   <p>
-                    Every real source (<span className="font-medium text-slate-700">facebook</span>, <span className="font-medium text-slate-700">Facebook Page / Messenger</span>,{' '}
-                    <span className="font-medium text-slate-700">Facebook Ad</span>, etc.) is folded into one <span className="font-medium text-slate-700">Facebook</span> bucket
-                    instead of splitting the same channel across near-duplicate labels.
-                  </p>
-                  <p>
-                    Every appointment on this tab should trace back to a Lead Intake record (<span className="font-medium text-slate-700">crm_leads</span>) — that&apos;s the
-                    normal path and where source/agent/patient-type attribution comes from. Two buckets below are appointments that don&apos;t, by design or by history, not a bug:
-                    {' '}<span className="font-medium text-slate-700">Outbound Follow-up</span> — booked via the outbound call queue for an existing patient (has an agent and
-                    patient, just no lead, since the queue is fed from existing patients, not fresh leads); and{' '}
-                    <span className="font-medium text-slate-700">Unattributed / Historical</span> — bulk-imported from the old external call-center log before Lead Intake
-                    existed, with no attribution recoverable.
+                    Leads, appointments and invoices use their own dates within the selected period. Revenue may appear for a source with no new lead in this period. Outbound follow-up and historical appointments are shown separately from new intake leads.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <KPICard label="Active Sources" value={sourceRows.length} tone="text-slate-800"
+                  <KPICard label="Active Sources" value={sourceRows.filter(s => s.leads > 0).length} tone="text-slate-800"
                     tooltip="Distinct lead sources with at least one lead this period." />
                   <KPICard label="Top Source" value={byLeads[0]?.source ?? '—'} tone="text-teal-600"
                     sub={byLeads[0] ? `${byLeads[0].leads} leads` : undefined}
@@ -623,8 +609,8 @@ export default function AdminDashboardPage() {
                   <KPICard label="New vs Old Leads" value={`${totalNew} / ${totalOld}`} tone="text-indigo-600"
                     sub={totalLeads > 0 ? `${Math.round((totalNew / totalLeads) * 100)}% new` : undefined}
                     tooltip="New-patient leads vs returning/Old-patient leads, across all sources this period." />
-                  <KPICard label="New Patient Revenue" value={money(totalNewRevenue)} tone="text-emerald-600"
-                    tooltip="Invoice revenue (via crm_invoice_reconciliation) attributed to NEW patients whose lead traces to a source this period." />
+                  <KPICard label="First Clinical Day Revenue" value={money(totalNewRevenue)} tone="text-emerald-600"
+                    tooltip="Invoice revenue dated on each patient's first observed clinical day, including revenue without a known acquisition source." />
                 </div>
 
                 {(() => {
@@ -633,25 +619,12 @@ export default function AdminDashboardPage() {
                   const oldFunnel = ptFunnel.find(p => p.type === 'Old')
                   if (!newFunnel && !oldFunnel) return null
                   return (
-                    <Panel title="New vs Old Patient Funnel" subtitle="Leads → Appointments Set → Attended, combined across every source, split by patient type">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <div className="text-xs font-semibold text-indigo-700 mb-2">New Patients</div>
-                          <FunnelChart steps={[
-                            { label: 'Leads', count: newFunnel?.leads ?? 0, hint: 'first-time patients, created this period' },
-                            { label: 'Appointments Set', count: newFunnel?.appointments_set ?? 0, hint: 'appointments dated this period' },
-                            { label: 'Attended', count: newFunnel?.attended ?? 0, hint: 'invoice-validated show-up' },
-                          ]} />
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-slate-500 mb-2">Old / Returning Patients</div>
-                          <FunnelChart steps={[
-                            { label: 'Leads', count: oldFunnel?.leads ?? 0, hint: 'returning patients, created this period' },
-                            { label: 'Appointments Set', count: oldFunnel?.appointments_set ?? 0, hint: 'appointments dated this period' },
-                            { label: 'Attended', count: oldFunnel?.attended ?? 0, hint: 'invoice-validated show-up' },
-                          ]} />
-                        </div>
-                      </div>
+                    <Panel title="Period Activity by Patient Type" subtitle="Lead dates and appointment dates are separate period counts, rather than cohort conversion rates.">
+                      <DualBarChart rows={[
+                        { name: 'Leads', primary: newFunnel?.leads ?? 0, secondary: oldFunnel?.leads ?? 0 },
+                        { name: 'Appointments Dated', primary: newFunnel?.appointments_set ?? 0, secondary: oldFunnel?.appointments_set ?? 0 },
+                        { name: 'Verified Attendance', primary: newFunnel?.attended ?? 0, secondary: oldFunnel?.attended ?? 0 },
+                      ]} primaryLabel="New patient" secondaryLabel="Old / returning" sortDesc={false} />
                     </Panel>
                   )
                 })()}
@@ -669,17 +642,17 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Panel title="Attended Rate by Source" subtitle="Invoice-validated — share of that source's past appointments that were actually attended">
+                  <Panel title="Verified Attendance by Source" subtitle="Share of appointments in this period with same-day clinical evidence for the same patient and doctor. Future and unresolved appointments remain unverified.">
                     <StatusMeterList
-                      items={byAttended.map(s => ({ label: s.source, value: s.attendedRate ?? 0, sub: `${s.appointments_eligible - s.no_shows}/${s.appointments_eligible}` }))}
+                      items={byAttended.map(s => ({ label: s.source, value: s.attendedRate ?? 0, sub: `${s.new_attended + s.old_attended}/${s.appointments_set}` }))}
                       thresholds={{ warn: 80, critical: 60 }}
                       higherIsBetter
                     />
                   </Panel>
-                  <Panel title="Revenue by Source" subtitle="New patient revenue (the acquisition signal) vs follow-up, per source">
+                  <Panel title="Revenue by Source" subtitle="Invoice revenue by eligible acquisition source; missing or late evidence remains unattributed.">
                     <DualBarChart
                       rows={sourceRows.map(s => ({ name: s.source, primary: s.revenue_new, secondary: s.revenue_followup }))}
-                      primaryLabel="New patient" secondaryLabel="Follow-up" formatter={money}
+                      primaryLabel="First clinical day" secondaryLabel="Other invoice days" formatter={money}
                     />
                   </Panel>
                 </div>
@@ -1358,18 +1331,18 @@ function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number |
           <div className="text-sm font-bold text-slate-600 tabular-nums">{s.old_leads}</div>
         </div>
         <div className={`rounded-lg py-2 px-1 ${noShowTone}`}>
-          <div className="text-[10px] font-medium">No-show Rate</div>
+          <div className="text-[10px] font-medium">Recorded No-show Rate</div>
           <div className="text-sm font-bold tabular-nums">{noShowRate != null ? `${noShowRate}%` : '—'}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-center">
         <div>
-          <div className="text-[10px] text-slate-400">New Patient Revenue</div>
+          <div className="text-[10px] text-slate-400">First Clinical Day Revenue</div>
           <div className="text-xs font-semibold text-emerald-700 tabular-nums">{money(s.revenue_new)}</div>
         </div>
         <div>
-          <div className="text-[10px] text-slate-400">Follow-up Revenue</div>
+          <div className="text-[10px] text-slate-400">Other Invoice Days</div>
           <div className="text-xs font-semibold text-slate-600 tabular-nums">{money(s.revenue_followup)}</div>
         </div>
       </div>

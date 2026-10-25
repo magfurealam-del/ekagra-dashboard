@@ -62,6 +62,7 @@ try {
  await db.exec(await read('supabase/migrations/20261025002551_mis_upload_marketing_reconciliation.sql'))
  await db.exec(await read('supabase/migrations/20261025002604_marketing_spend_sync_gateway.sql'))
  await db.exec(await read('supabase/migrations/20261025003902_marketing_spend_compatibility_projection.sql'))
+ await db.exec(await read('supabase/migrations/20261025004303_marketing_publication_completion_guard.sql'))
  const scalar = async (sql, params=[]) => (await db.query(sql,params)).rows[0]
  await db.exec(`INSERT INTO public.user_profiles(id,role,is_active) VALUES('00000000-0000-4000-8000-000000000001','admin',true);
  INSERT INTO public.service_categories(id,name) VALUES(10,'Synthetic Medicine');
@@ -224,14 +225,19 @@ try {
  assert.equal(reportedRevenue,Number((await scalar(`SELECT sum(net_bill) n FROM public.invoices WHERE invoice_date BETWEEN '2026-06-01' AND '2026-06-30'`)).n)); tests++
  // A source edit restarts marketing publication without replaying invoice jobs.
  const priorRun=(await scalar('SELECT max(id) id FROM mis_internal.marketing_reconciliation_runs')).id
+ const priorLifetimeRun=(await scalar('SELECT max(id) id FROM mis_internal.shadow_attribution_runs')).id
  const sourceRowsBefore=Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n)
  await db.query(`UPDATE public.crm_leads SET source='facebook' WHERE id=$1`,[lead])
  assert.equal((await scalar('SELECT mis_internal.gateway_publication_blocked() b')).b,true)
  assert.equal((await scalar('SELECT mis_internal.mis_gateway_tick() r')).r.stage,'marketing')
  await db.query(`UPDATE public.crm_leads SET source='referral' WHERE id=$1`,[lead])
  let sourceRefresh
- for(let n=0;n<40;n++) { sourceRefresh=(await scalar('SELECT mis_internal.mis_gateway_tick() r')).r; if(sourceRefresh.status==='idle') break }
+ const sourceStages=[]
+ for(let n=0;n<40;n++) { sourceRefresh=(await scalar('SELECT mis_internal.mis_gateway_tick() r')).r; sourceStages.push(sourceRefresh.stage); if(sourceRefresh.status==='idle') break }
  assert.equal(sourceRefresh.status,'idle')
+ assert.equal((await scalar('SELECT stage FROM mis_internal.mis_gateway_publication')).stage,'complete')
+ assert.ok((await scalar('SELECT max(id) id FROM mis_internal.shadow_attribution_runs')).id>priorLifetimeRun)
+ assert.ok(['lifetime','contacts','ad_outcomes','snapshots'].every(stage=>sourceStages.includes(stage)))
  assert.ok((await scalar('SELECT max(id) id FROM mis_internal.marketing_reconciliation_runs')).id>priorRun)
  assert.ok(Number((await scalar(`SELECT count(*) n FROM mis_internal.marketing_reconciliation_runs WHERE status='superseded'`)).n)>0)
  assert.equal(Number((await scalar('SELECT count(*) n FROM public.mis_reports')).n),sourceRowsBefore); tests++
