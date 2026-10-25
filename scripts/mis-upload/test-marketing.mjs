@@ -100,6 +100,18 @@ try {
  assert.equal(Number((await scalar(`SELECT count(*) n FROM public.meta_ad_spend_daily WHERE ad_id='11111'`)).n),1);tests++
  await db.exec(`INSERT INTO public.marketing_daily_spend(date,meta_campaign_id,meta_adset_id,meta_ad_id,spend_usd,source_payload) VALUES(current_date,'33333','22222','forged',99,'{"integration":"meta_ads_insights","observation_id":"1","account_id":"123456","currency":"USD","data":{"ad_id":"forged"}}')`)
  assert.equal(Number((await scalar(`SELECT count(*) n FROM public.meta_ad_spend_daily WHERE ad_id='forged'`)).n),0);tests++
+ await db.exec(await readFile(new URL('supabase/migrations/20261025013715_verified_marketing_identity_evidence.sql',root),'utf8'))
+ await db.exec(await readFile(new URL('supabase/migrations/20261025014102_marketing_identity_bridge_invalidation.sql',root),'utf8'))
+ await db.exec(`INSERT INTO public.call_center_logs(id,patient_id,matched_patient_id,log_date,lead_source,matched_method) VALUES(90,5,5,'2026-05-01','facebook','validated_legacy_patient_bridge');
+ INSERT INTO public.patient_identity_keys(patient_id,key_type,key_value,is_validated) VALUES(5,'crm_legacy_patient_id','900',true);`)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM mis_internal.marketing_source_evidence_v2 WHERE evidence_id='90' AND authenticated`)).n),0);tests++
+ await db.exec(`INSERT INTO mis_internal.marketing_evidence_resolution_audit(run_id,kind,row_table,row_id,rule_version,before_data,after_data,evidence) VALUES(gen_random_uuid(),'validated_legacy_call_bridge','public.call_center_logs','90','verified_records_v1','{"patient_id":900}','{"patient_id":5}','{"legacy_patient_id":"900"}');`)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM mis_internal.marketing_source_evidence_v2 WHERE evidence_id='90' AND authenticated`)).n),1);tests++
+ await assert.rejects(db.exec('DELETE FROM mis_internal.marketing_evidence_resolution_audit WHERE true'));tests++
+ const beforeBridgeRevision=(await scalar('SELECT revision FROM mis_internal.marketing_reconciliation_state')).revision
+ await db.exec(`UPDATE public.patient_identity_keys SET is_validated=false WHERE key_value='900'`)
+ assert.ok((await scalar('SELECT revision FROM mis_internal.marketing_reconciliation_state')).revision>beforeBridgeRevision)
+ assert.equal(Number((await scalar(`SELECT count(*) n FROM mis_internal.marketing_source_evidence_v2 WHERE evidence_id='90' AND authenticated`)).n),0);tests++
  console.log(`PASS: ${tests} synthetic marketing evidence scenarios.`)
 } finally {await db.close()}
 
