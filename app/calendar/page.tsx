@@ -8,6 +8,7 @@ import CalendarGrid, { DayCellData, DayPill, TypeCount } from '@/components/cale
 import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
 import AppointmentStatusChanges from '@/components/calendar/AppointmentStatusChanges'
+import { SchedulingInsights } from '@/components/calendar/SchedulingInsights'
 
 const calendarCache: { key: string; data: any[]; fetchedAt: number } = { key: '', data: [], fetchedAt: 0 }
 const CALENDAR_TTL_MS = 30 * 60 * 1000
@@ -175,6 +176,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {!loadingGrid && <SchedulingInsights rows={filteredRows} />}
       {/* Appointment-type dashboard — cards appear only for types with bookings this month */}
       {!sheetOpen && <CalendarKPIs typeTotals={monthTypeTotals} />}
 

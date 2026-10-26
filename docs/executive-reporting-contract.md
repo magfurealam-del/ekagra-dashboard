@@ -1,5 +1,15 @@
 # Executive dashboard reporting contract
 
+## Decision dashboard v3
+
+The current interface calls `get_decision_dashboard(start, end, compare)`. This admin-guarded stable read retains the v2 populations and adds aggregate insights: date-aligned billed revenue and verified-visit trends, fixed-horizon contact cohorts, full open-queue aging, structured outbound attempt outcomes, evidence aging/reasons and source completeness. The private helper has no anonymous or authenticated execution grant; the public entrypoint explicitly rejects non-admins. The security advisor's authenticated SECURITY DEFINER finding is expected for this guarded aggregate endpoint and is covered by access tests.
+
+Cohorts use distinct contact records, not unique patients. A contact is mature when contact date plus the selected 7/14/30-day horizon is at or before the attendance eligibility cutoff. Scheduled and verified visits must occur between the contact date and contact date plus the horizon, inclusive. This measures time to the scheduled visit, not the timestamp when booking was entered. Later or earlier appointments do not count toward that window. Evidence is evaluated as of the current report. Minimum linked visit dates are computed in one pass, rather than scanning appointments repeatedly for every horizon.
+
+The queue is all open outgoing queue records, independently of the reporting range. Its age is measured from creation date, not a due date; missing or future dates are explicit. Evidence reasons and aging partition unresolved eligible appointments. Source-field completeness measures presence rather than truth. Ad period detail keeps contacts, all appointments, eligible appointments and acquisition-attributed billed revenue separate; its verified percentage uses eligible appointments.
+
+The UI consolidates repeated charts, removes the free-text positive-outcome funnel and agent trophies, and provides exact values/data tables. Call performance includes confirmation calls and uses Bangladesh date presets. Scheduling mix and doctor hours are operational views, not utilization claims. Unsupported spend efficiency, collections and telephony metrics remain deferred. See `docs/decision-dashboard-plan.md` for the implementation plan.
+
 ## Interface and reporting
 
 The dashboard uses official shadcn/ui (Radix Nova), Recharts, Tailwind and a bundled Geist font. Grouped navigation replaces horizontal overflow. Definitions, daily chart data, mobile navigation, keyboard focus and explicit errors support executive review.
