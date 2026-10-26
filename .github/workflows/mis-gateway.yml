@@ -25,6 +25,7 @@ jobs:
       - run: npm run test:dashboard:sql
       - run: npm run test:publication-recovery
       - run: npm run test:public-intake-security
+      - run: node scripts/mis-upload/test-evidence-revision.mjs
       - run: npm run test:mis-parser
       - run: npm run test:mis-marketing
       - run: npm run test:marketing-review
