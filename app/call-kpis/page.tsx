@@ -563,7 +563,8 @@ export default function CallKpisPage() {
             {(metrics.by_agent || []).length === 0 ? (
               <p className="text-sm text-slate-400">No agent-attributed calls this period.</p>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto" role="region" aria-label="Agent call performance table" tabIndex={0}>
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="text-xs text-slate-400 uppercase">
                   <tr>
                     <th className="text-left py-1" rowSpan={2}>Agent</th>
@@ -601,6 +602,7 @@ export default function CallKpisPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
