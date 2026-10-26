@@ -1,18 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { Tooltip as HelpTooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Info } from 'lucide-react'
 
-// ── Tooltip (CSS-only) ────────────────────────────────────────────────────────
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
-  return (
-    <div className="relative group/tip inline-block w-full">
-      {children}
-      <div className="pointer-events-none absolute z-20 left-1/2 -translate-x-1/2 bottom-full mb-2 w-max max-w-[260px] rounded-md bg-slate-900 text-white text-[11px] leading-snug px-2.5 py-1.5 opacity-0 scale-95 group-hover/tip:opacity-100 group-hover/tip:scale-100 transition-all duration-150 shadow-lg whitespace-normal">
-        {text}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
-      </div>
-    </div>
-  )
+  return <HelpTooltip><TooltipTrigger asChild><div tabIndex={0} aria-label={text}>{children}</div></TooltipTrigger><TooltipContent className="max-w-72 text-sm">{text}</TooltipContent></HelpTooltip>
 }
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
@@ -23,8 +16,8 @@ export function Panel({
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-slate-800 text-sm">{title}</h2>
-          {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+          <h2 className="font-semibold text-slate-800 text-base">{title}</h2>
+          {subtitle && <p className="text-xs text-slate-600 mt-0.5">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -46,21 +39,21 @@ export function KPICard({
       <div className="text-xs text-slate-500 flex items-center gap-1">
         {label}
         {tooltip && (
-          <span className="text-slate-300 text-[10px] border border-slate-300 rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none flex-shrink-0">?</span>
+          <HelpTooltip><TooltipTrigger asChild><button type="button" aria-label={`Definition: ${label}`} className="inline-flex size-7 shrink-0 items-center justify-center rounded hover:bg-slate-100"><Info className="size-3.5" /></button></TooltipTrigger><TooltipContent className="max-w-72 text-sm">{tooltip}</TooltipContent></HelpTooltip>
         )}
       </div>
       <div className="flex items-baseline gap-1.5 flex-wrap">
         <div className={`text-2xl font-bold mt-1 ${tone}`}>{value}</div>
         {delta != null && isFinite(delta) && (
-          <span className={`text-xs font-medium ${delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+          <span className={`text-xs font-medium text-slate-600`}>
             {delta > 0 ? '↑' : delta < 0 ? '↓' : '·'}{Math.abs(delta)}%
           </span>
         )}
       </div>
-      {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
+      {sub && <div className="text-xs text-slate-600 mt-0.5">{sub}</div>}
     </div>
   )
-  return tooltip ? <Tooltip text={tooltip}>{card}</Tooltip> : card
+  return card
 }
 
 // ── GaugeMeter ────────────────────────────────────────────────────────────────
@@ -99,7 +92,7 @@ export function GaugeMeter({
         <text x="60" y="56" textAnchor="middle" fontSize="22" fontWeight="800" fill={color}>{value}%</text>
       </svg>
       <p className="text-xs font-semibold text-slate-700 -mt-1">{label}</p>
-      {sublabel && <p className="text-[10px] text-slate-400 mt-0.5">{sublabel}</p>}
+      {sublabel && <p className="text-[10px] text-slate-600 mt-0.5">{sublabel}</p>}
     </div>
   )
 }
@@ -108,7 +101,7 @@ export function GaugeMeter({
 type TrendPoint = { date: string; leads: number; appointments: number }
 
 export function DailyTrendBars({ data }: { data: TrendPoint[] }) {
-  if (data.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  if (data.length === 0) return <p className="text-sm text-slate-600">No data for this period.</p>
 
   const max = Math.max(1, ...data.map(d => Math.max(d.leads, d.appointments)))
   const barAreaH = 140
@@ -129,7 +122,7 @@ export function DailyTrendBars({ data }: { data: TrendPoint[] }) {
 
   return (
     <div>
-      <div className="flex gap-4 text-[11px] text-slate-400 mb-2">
+      <div className="flex gap-4 text-[11px] text-slate-600 mb-2">
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-500 inline-block" />Leads received</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />Appointments scheduled</span>
       </div>
@@ -140,7 +133,7 @@ export function DailyTrendBars({ data }: { data: TrendPoint[] }) {
               <div className="w-1.5 bg-teal-500 rounded-t-sm hover:bg-teal-600" style={{ height: `${Math.max(2, (d.leads / max) * 100)}%` }} />
               <div className="w-1.5 bg-indigo-500 rounded-t-sm hover:bg-indigo-600" style={{ height: `${Math.max(2, (d.appointments / max) * 100)}%` }} />
             </div>
-            <span className="text-[8px] text-slate-400 mt-1 whitespace-nowrap">{labelIdxs.has(i) ? fmt(d.date) : ''}</span>
+            <span className="text-[8px] text-slate-600 mt-1 whitespace-nowrap">{labelIdxs.has(i) ? fmt(d.date) : ''}</span>
           </div>
         ))}
       </div>
@@ -155,9 +148,9 @@ export function DonutChart({
   items, centerLabel,
 }: { items: { label: string; count: number }[]; centerLabel?: string }) {
   const [active, setActive] = useState<number | null>(null)
-  if (items.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  if (items.length === 0) return <p className="text-sm text-slate-600">No data for this period.</p>
   const total = items.reduce((s, i) => s + i.count, 0)
-  if (total === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  if (total === 0) return <p className="text-sm text-slate-600">No data for this period.</p>
 
   const visible = items.slice(0, 8)
   const R = 58, r = 36, cx = 78, cy = 78, GAP = 0.025
@@ -240,7 +233,7 @@ export function HBarList({
   const visible = items.slice(0, maxItems)
   const max = Math.max(1, ...visible.map(i => i.count))
   const total = visible.reduce((s, i) => s + i.count, 0)
-  if (visible.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
+  if (visible.length === 0) return <p className="text-sm text-slate-600">No data for this period.</p>
   return (
     <div className="space-y-2">
       {visible.map((item, i) => {
@@ -300,7 +293,7 @@ export function FunnelChart({ steps }: { steps: { label: string; count: number; 
             {i > 0 && (
               <div className="flex items-center gap-2 my-1.5 ml-3">
                 <div className="w-px h-4 bg-slate-200" />
-                <span className="text-[10px] text-slate-400 font-medium">
+                <span className="text-[10px] text-slate-600 font-medium">
                   {pctOfPrev}% conversion · {dropOff}% dropped off
                 </span>
               </div>
@@ -338,7 +331,7 @@ export function FunnelChart({ steps }: { steps: { label: string; count: number; 
 export function AgentTable({
   rows,
 }: { rows: { agent: string; leads: number; booked: number; booking_rate: number | null }[] }) {
-  if (rows.length === 0) return <p className="text-sm text-slate-400">No agent-attributed leads this period.</p>
+  if (rows.length === 0) return <p className="text-sm text-slate-600">No agent-attributed leads this period.</p>
   const maxLeads = Math.max(1, ...rows.map(r => r.leads))
   return (
     <div className="space-y-3">
@@ -349,7 +342,7 @@ export function AgentTable({
           <div key={r.agent}>
             <div className="flex items-center justify-between text-xs mb-1 gap-2">
               <span className="font-medium text-slate-700 truncate">{r.agent}</span>
-              <span className="flex items-center gap-3 text-slate-400 flex-shrink-0">
+              <span className="flex items-center gap-3 text-slate-600 flex-shrink-0">
                 <span className="tabular-nums">{r.leads} leads</span>
                 <span className="tabular-nums">{r.booked} booked</span>
                 <span className={`font-bold tabular-nums ${rateColor}`}>{rate}%</span>
@@ -362,7 +355,7 @@ export function AgentTable({
           </div>
         )
       })}
-      <div className="flex gap-4 text-[10px] text-slate-400 pt-1">
+      <div className="flex gap-4 text-[10px] text-slate-600 pt-1">
         <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 bg-slate-200 rounded-full inline-block" />Total leads</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 bg-teal-500 rounded-full inline-block" />Booked</span>
       </div>
@@ -376,12 +369,12 @@ function money(n: number) { return `৳${Math.round(n).toLocaleString()}` }
 export function DoctorTable({
   rows,
 }: { rows: { doctor: string; appointments: number; no_show_rate: number | null; revenue: number }[] }) {
-  if (rows.length === 0) return <p className="text-sm text-slate-400">No appointments this period.</p>
+  if (rows.length === 0) return <p className="text-sm text-slate-600">No appointments this period.</p>
   return (
     <div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-xs text-slate-400 uppercase border-b border-slate-100">
+          <tr className="text-xs text-slate-600 uppercase border-b border-slate-100">
             <th className="text-left pb-2 font-medium">Doctor</th>
             <th className="text-right pb-2 font-medium pr-2">Appts</th>
             <th className="pb-2 font-medium w-32">No-show rate</th>
@@ -416,7 +409,7 @@ export function DoctorTable({
           })}
         </tbody>
       </table>
-      <p className="text-[10px] text-slate-400 mt-2">
+      <p className="text-[10px] text-slate-600 mt-2">
         No-show rate is invoice-validated — attended = matching invoice exists nearby, across all invoice types
       </p>
     </div>

@@ -2,26 +2,16 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
-import { KPICard, BarList, TrendChart, Panel, FunnelChart, DonutChart, GaugeMeter, AgentTable, DoctorTable } from '@/components/admin/DashboardCharts'
+import { KPICard, BarList, Panel, FunnelChart, DonutChart, AgentTable } from '@/components/admin/DashboardCharts'
 
-type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
-type Tab = 'overview' | 'agents' | 'channels' | 'funnel' | 'revenue' | 'sources' | 'quality' | 'ad_attribution'
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'agents', label: 'Agents' },
-  { key: 'channels', label: 'Sources & Channels' },
-  { key: 'funnel', label: 'Funnel & Follow-ups' },
-  { key: 'revenue', label: 'Revenue' },
-  { key: 'sources', label: 'Marketing Attribution' },
-  { key: 'quality', label: 'Data Quality' },
-  { key: 'ad_attribution', label: 'Ad Attribution' },
-]
+import { ExecutiveHeader } from '@/components/admin/ExecutiveHeader'
+import { ExecutiveOverview } from '@/components/admin/ExecutiveOverview'
+import { Skeleton } from '@/components/ui/skeleton'
+import { clinicDate, rangeFor, previousRangeFor, validRange, DASHBOARD_TABS, type RangeKey, type DashboardTab as Tab } from '@/lib/dashboard-presentation'
 
 // Fixed categorical color per channel, used consistently across every chart
 // on the Agents tab so "outbound" is always the same color everywhere.
@@ -37,7 +27,7 @@ interface AgentDetailRow {
   outbound_outcomes: { outcome: string; count: number }[]
   outbound_appointments_set: number; outbound_appointments_eligible: number; outbound_appointments_attended: number
   confirmation: number; confirmation_confirmed: number
-  appointments_set: number; no_shows: number; no_show_rate: number | null
+  appointments_set: number; appointments_eligible: number; no_shows: number; no_show_rate: number | null
   revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
   trend: { date: string; leads: number; booked: number }[]
   booked_to_completed: number; booked_to_no_show: number
@@ -90,25 +80,6 @@ interface SourcePerfRow {
   attendedRate: number | null; newShare: number | null
 }
 
-function toISO(d: Date) { return d.toISOString().slice(0, 10) }
-function daysBetween(a: string, b: string) { return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1 }
-
-function rangeFor(key: RangeKey, customStart: string, customEnd: string) {
-  const today = new Date()
-  if (key === 'today') return { start: toISO(today), end: toISO(today) }
-  if (key === '7d') { const s = new Date(today); s.setDate(s.getDate() - 6); return { start: toISO(s), end: toISO(today) } }
-  if (key === '30d') { const s = new Date(today); s.setDate(s.getDate() - 29); return { start: toISO(s), end: toISO(today) } }
-  if (key === 'month') { const s = new Date(today.getFullYear(), today.getMonth(), 1); return { start: toISO(s), end: toISO(today) } }
-  return { start: customStart, end: customEnd }
-}
-
-function previousRangeFor(start: string, end: string) {
-  const len = daysBetween(start, end)
-  const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1)
-  const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - (len - 1))
-  return { start: toISO(prevStart), end: toISO(prevEnd) }
-}
-
 function pctDelta(curr: number, prev: number): number | null {
   if (prev === 0) return curr === 0 ? 0 : null
   return Math.round(((curr - prev) / prev) * 1000) / 10
@@ -122,23 +93,9 @@ const SOURCE_COLORS: Record<string, string> = {
   'Unknown': 'bg-slate-400',
 }
 
-const OUTCOME_COLORS: Record<string, string> = {
-  'Appointment Booked': 'bg-teal-500',
-  'No Appointment Yet': 'bg-amber-500',
-  'No-show': 'bg-rose-500',
-  'Not Interested': 'bg-slate-400',
-  'General Inquiry': 'bg-sky-500',
-  'Call Back Later': 'bg-indigo-500',
-  'Suppressed': 'bg-slate-300',
-}
-
 function money(n: number) {
   return `৳${Math.round(n).toLocaleString()}`
 }
-
-const adminCache: { key: string; data: any; prevData: any; fetchedAt: number } = { key: '', data: null, prevData: null, fetchedAt: 0 }
-const ADMIN_TTL_MS = 30 * 60 * 1000
-function snapshotKey(start: string, end: string) { return `${start}:${end}` }
 
 export default function AdminDashboardPage() {
   const router = useRouter()
@@ -150,260 +107,101 @@ export default function AdminDashboardPage() {
 
   const [tab, setTab] = useState<Tab>('overview')
   const [rangeKey, setRangeKey] = useState<RangeKey>('month')
-  const [customStart, setCustomStart] = useState(toISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))
-  const [customEnd, setCustomEnd] = useState(toISO(new Date()))
-  const [compare, setCompare] = useState(false)
+  const [customStart, setCustomStart] = useState(() => `${clinicDate().slice(0, 7)}-01`)
+  const [customEnd, setCustomEnd] = useState(() => clinicDate())
+  const [compare, setCompare] = useState(true)
   const { start, end } = useMemo(() => rangeFor(rangeKey, customStart, customEnd), [rangeKey, customStart, customEnd])
-  const prevRange = useMemo(() => previousRangeFor(start, end), [start, end])
+  const rangeValid = validRange(start, end)
+  const prevRange = useMemo(() => validRange(start, end) ? previousRangeFor(start, end) : { start: '', end: '' }, [start, end])
+  const [reloadKey, setReloadKey] = useState(0)
+  const [refreshedAt, setRefreshedAt] = useState<string | null>(null)
+  const [prevRefreshedAt, setPrevRefreshedAt] = useState<string | null>(null)
+  const [reconciliation, setReconciliation] = useState<{ pending?: boolean; published_at?: string; crm_updated_at?: string; billing_updated_at?: string } | null>(null)
 
   const [metrics, setMetrics] = useState<any | null>(null)
   const [prevMetrics, setPrevMetrics] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [syncing, setSyncing] = useState(false)
-  const [syncMsg, setSyncMsg] = useState('')
-
   const [adRows, setAdRows] = useState<any[] | null>(null)
-  const [adLoading, setAdLoading] = useState(false)
-  const [adError, setAdError] = useState('')
-
-  useEffect(() => {
-    if (!isAdmin || tab !== 'ad_attribution') return
-    let cancelled = false
-    setAdLoading(true)
-    setAdError('')
-    supabase.rpc('get_ad_attribution_report', { p_start_date: start, p_end_date: end }).then(({ data, error }) => {
-      if (cancelled) return
-      if (error) { setAdError(error.message); setAdLoading(false); return }
-      setAdRows(Array.isArray(data) ? data : [])
-      setAdLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [tab, start, end, isAdmin])
-
   const [agentPerf, setAgentPerf] = useState<any | null>(null)
-  const [agentPerfLoading, setAgentPerfLoading] = useState(false)
-  const [agentPerfError, setAgentPerfError] = useState('')
-
-  useEffect(() => {
-    if (!isAdmin || tab !== 'agents') return
-    let cancelled = false
-    setAgentPerfLoading(true)
-    setAgentPerfError('')
-    supabase.rpc('get_admin_agent_performance', { p_start_date: start, p_end_date: end }).then(({ data, error }) => {
-      if (cancelled) return
-      if (error) { setAgentPerfError(error.message); setAgentPerfLoading(false); return }
-      setAgentPerf(data)
-      setAgentPerfLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [tab, start, end, isAdmin])
-
   const [sourcePerf, setSourcePerf] = useState<any | null>(null)
-  const [sourcePerfLoading, setSourcePerfLoading] = useState(false)
-  const [sourcePerfError, setSourcePerfError] = useState('')
+  const adLoading = loading
+  const agentPerfLoading = loading
+  const sourcePerfLoading = loading
+  const adError = error
+  const agentPerfError = error
+  const sourcePerfError = error
 
   useEffect(() => {
-    if (!isAdmin || tab !== 'channels') return
+    if (!isAdmin || !rangeValid) return
     let cancelled = false
-    setSourcePerfLoading(true)
-    setSourcePerfError('')
-    supabase.rpc('get_admin_source_performance', { p_start_date: start, p_end_date: end }).then(({ data, error }) => {
-      if (cancelled) return
-      if (error) { setSourcePerfError(error.message); setSourcePerfLoading(false); return }
-      setSourcePerf(data)
-      setSourcePerfLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [tab, start, end, isAdmin])
-
-  useEffect(() => {
-    if (!isAdmin) return
-    let cancelled = false
-    const cacheKey = `${start}|${end}|${compare}|${prevRange.start}|${prevRange.end}`
-    if (adminCache.key === cacheKey && Date.now() - adminCache.fetchedAt < ADMIN_TTL_MS) {
-      setMetrics(adminCache.data)
-      setPrevMetrics(adminCache.prevData)
-      setLoading(false)
-      return
-    }
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 20000)
     setLoading(true)
     setError('')
-    Promise.all([
-      supabase.from('dashboard_metric_snapshots').select('metrics, refreshed_at').eq('snapshot_key', snapshotKey(start, end)).maybeSingle(),
-      compare ? supabase.from('dashboard_metric_snapshots').select('metrics').eq('snapshot_key', snapshotKey(prevRange.start, prevRange.end)).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    ]).then(([curr, prev]) => {
-      if (cancelled) return
-      if (curr.error) { setError(curr.error.message); setLoading(false); return }
-      if (!curr.data) { setError('No scheduled snapshot is available for this range yet. Use Refresh on the home page or wait for the 6:00 AM Bangladesh refresh.'); setLoading(false); return }
-      adminCache.key = cacheKey
-      adminCache.data = curr.data.metrics
-      adminCache.prevData = prev.data?.metrics ?? null
-      adminCache.fetchedAt = Date.now()
-      setMetrics(curr.data.metrics)
-      setPrevMetrics(prev.data?.metrics ?? null)
-      setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [start, end, compare, prevRange.start, prevRange.end, isAdmin])
+    setMetrics(null)
+    setPrevMetrics(null)
+    setRefreshedAt(null)
+    setPrevRefreshedAt(null)
+    setReconciliation(null)
+    setAdRows(null)
+    setAgentPerf(null)
+    setSourcePerf(null)
+    Promise.resolve(supabase.rpc('get_executive_dashboard', { p_start_date: start, p_end_date: end, p_compare: compare }).abortSignal(controller.signal))
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) throw error
+        if (!data || data.contract_version !== 2) throw new Error('The reporting contract is unavailable.')
+        setMetrics(data.metrics)
+        setPrevMetrics(data.previous)
+        setRefreshedAt(data.refreshed_at)
+        setPrevRefreshedAt(data.previous ? data.refreshed_at : null)
+        setAgentPerf(data.agents)
+        setSourcePerf(data.sources)
+        setAdRows(data.ads)
+        setReconciliation(data.reconciliation)
+      }).catch((error: { message?: string }) => {
+        if (!cancelled) setError(error.message || 'The report could not be loaded. Select Refresh report to try again.')
+      }).finally(() => { window.clearTimeout(timeout); if (!cancelled) setLoading(false) })
+    return () => { cancelled = true; window.clearTimeout(timeout); controller.abort() }
+  }, [start, end, compare, isAdmin, profile?.id, rangeValid, reloadKey])
 
-  async function reloadMetrics() {
-    const { data, error } = await supabase.rpc('refresh_dashboard_metric_snapshot', { p_start_date: start, p_end_date: end })
-    if (error) { setSyncMsg(error.message); return }
-    if (data?.metrics) {
-      adminCache.key = ''  // invalidate so next mount re-fetches
-      setMetrics(data.metrics)
+  function reloadSnapshot() { setReloadKey(key => key + 1) }
+  useEffect(() => {
+    const onPop = () => {
+      const section = new URLSearchParams(window.location.search).get('section')
+      setTab(DASHBOARD_TABS.some(item => item.key === section) ? section as Tab : 'overview')
     }
-  }
-
-  // Recomputes appointment_status from the invoice source of truth for
-  // appointments on/after sinceDate — lets an admin re-trigger the June-
-  // onwards correction (or any range) without needing direct DB access.
-  async function recomputeStatusFromInvoices(sinceDate: string | null) {
-    setSyncing(true)
-    setSyncMsg('')
-    const { data, error } = await supabase.rpc('sync_appointment_status_from_invoices', {
-      p_only_pending: false,
-      p_since_date: sinceDate,
-    })
-    setSyncing(false)
-    if (error) { setSyncMsg('Error: ' + error.message); return }
-    setSyncMsg(`Updated ${data} appointment${data === 1 ? '' : 's'}.`)
-    reloadMetrics()
+    onPop()
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+  function selectTab(value: Tab) {
+    setTab(value)
+    const url = new URL(window.location.href)
+    url.searchParams.set('section', value)
+    window.history.pushState(null, '', url)
   }
 
   if (!isAdmin) return null
 
-  const bookingRate = metrics && metrics.total_leads > 0 ? Math.round((metrics.booked_leads / metrics.total_leads) * 100) : 0
-  const prevBookingRate = prevMetrics && prevMetrics.total_leads > 0 ? Math.round((prevMetrics.booked_leads / prevMetrics.total_leads) * 100) : 0
   const d = (curr: number, key: string) => compare && prevMetrics ? pctDelta(curr, prevMetrics[key]) : undefined
 
   return (
-    <div className="space-y-4 pb-20">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
-          <p className="text-sm text-slate-500">Call center performance, patient mix, revenue, and follow-up funnel</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {([
-            { key: 'today', label: 'Today' },
-            { key: '7d', label: 'Last 7 Days' },
-            { key: '30d', label: 'Last 30 Days' },
-            { key: 'month', label: 'This Month' },
-            { key: 'custom', label: 'Custom' },
-          ] as { key: RangeKey; label: string }[]).map(r => (
-            <button
-              key={r.key}
-              onClick={() => setRangeKey(r.key)}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${rangeKey === r.key ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {r.label}
-            </button>
-          ))}
-          {rangeKey === 'custom' && (
-            <div className="flex items-center gap-1">
-              <input type="date" className="input py-1.5 text-xs" value={customStart} onChange={e => setCustomStart(e.target.value)} />
-              <span className="text-slate-400 text-xs">to</span>
-              <input type="date" className="input py-1.5 text-xs" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
-            </div>
-          )}
-          <label className="flex items-center gap-1.5 text-xs text-slate-600 pl-2 border-l border-slate-200 ml-1">
-            <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />
-            Compare to previous period
-          </label>
-          <Link
-            href="/admin/mis-upload"
-            className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-teal-800"
-          >
-            Upload MIS CSV
-          </Link>
-        </div>
-      </div>
-
-      {compare && (
-        <p className="text-xs text-slate-400">
-          Comparing to {prevRange.start} → {prevRange.end} (same length, immediately prior)
-        </p>
-      )}
-
-      {error && <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-md p-3">{error}</div>}
-
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200 -mb-px">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`text-sm px-3 py-2 border-b-2 transition-colors ${tab === t.key ? 'border-teal-600 text-teal-700 font-medium' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {loading || !metrics ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map(i => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}
-        </div>
-      ) : (
+    <div className="space-y-5 pb-12">
+      <ExecutiveHeader rangeKey={rangeKey} setRangeKey={setRangeKey} customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd} start={start} end={end} compare={compare} setCompare={setCompare} refreshedAt={refreshedAt} loading={loading} reload={reloadSnapshot} tab={tab} setTab={selectTab} />
+      {compare && rangeValid && <p className="text-xs text-slate-600">Comparing with {prevRange.start} – {prevRange.end} (equal-length prior period).{prevRefreshedAt && <> Comparison read: {new Date(prevRefreshedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })} BDT.</>}{!loading && metrics && !prevMetrics && ' No comparison is available; changes are not estimated.'}</p>}
+      {reconciliation && <div className={`rounded-lg border p-3 text-xs leading-relaxed ${reconciliation.pending ? 'border-amber-200 bg-amber-50 text-amber-900' : 'bg-white text-slate-600'}`} role="status">
+        All sections and comparison periods share one database read. Contact dates use Bangladesh time.
+        {reconciliation.published_at && <> Evidence publication: {new Date(reconciliation.published_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })} BDT.</>}
+        {reconciliation.pending && <strong className="block mt-1">Reconciliation is pending. CRM activity is current; invoice and acquisition evidence may still change after publication.</strong>}
+      </div>}
+      {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>}
+      {!rangeValid || error ? null : loading ? (
+        <div role="status" aria-label="Loading dashboard" className="space-y-5"><div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-44 rounded-xl" />)}</div><Skeleton className="h-80 rounded-xl" /></div>
+      ) : metrics ? (
         <>
-          {tab === 'overview' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-                <KPICard label="Total Leads" value={metrics.total_leads} tone="text-slate-800" delta={d(metrics.total_leads, 'total_leads')}
-                  tooltip="Every call/contact logged in Lead Intake during this period, regardless of outcome." />
-                <KPICard label="Booked" value={metrics.booked_leads} tone="text-teal-600" delta={d(metrics.booked_leads, 'booked_leads')}
-                  tooltip="Leads from this period whose intake outcome was 'Appointment Booked'." />
-                <KPICard label="Booking Rate" value={`${bookingRate}%`} tone="text-teal-600" delta={compare && prevMetrics ? pctDelta(bookingRate, prevBookingRate) : undefined}
-                  tooltip="Booked ÷ Total Leads. How often a call turns into a scheduled visit." />
-                <KPICard label="Appointments" value={metrics.total_appointments} tone="text-indigo-600" delta={d(metrics.total_appointments, 'total_appointments')}
-                  tooltip="All appointments with a visit date inside this period, booked at any time." />
-                <KPICard label="Attended" value={metrics.attended} tone="text-emerald-600" delta={d(metrics.attended, 'attended')}
-                  tooltip="Invoice-validated: only counted if a matching invoice exists for that patient nearby — not just the agent-set status." />
-                <KPICard label="Show Rate" value={metrics.show_rate != null ? `${metrics.show_rate}%` : '—'} tone="text-emerald-600" delta={compare && prevMetrics ? pctDelta(metrics.show_rate || 0, prevMetrics.show_rate || 0) : undefined}
-                  tooltip="Attended ÷ (Attended + No-Shows) among appointments already in the past. Excludes upcoming/Scheduled visits." />
-                <KPICard label="No-Shows" value={metrics.no_shows} tone="text-rose-600" delta={d(metrics.no_shows, 'no_shows')}
-                  tooltip="Past-dated, non-cancelled appointments with no matching invoice found — see Data Quality tab for the full reconciliation." />
-                <KPICard label="Pending Callbacks" value={metrics.pending_callbacks} tone="text-amber-600"
-                  tooltip="Snapshot right now (not date-range filtered): open items in the Outgoing Calls queue." />
-              </div>
-
-              {/* Gauge row — headline rates at a glance */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <GaugeMeter
-                  value={bookingRate}
-                  label="Booking Rate"
-                  sublabel="Booked ÷ Total Leads"
-                  good={60} warn={30}
-                />
-                <GaugeMeter
-                  value={metrics.show_rate ?? 0}
-                  label="Show Rate"
-                  sublabel="Invoice-validated"
-                  good={70} warn={45}
-                />
-                <div className="col-span-2 hidden md:block" />
-              </div>
-
-              <Panel title="Daily Trend" subtitle="Leads received vs appointments scheduled, per day">
-                <TrendChart data={metrics.daily_trend || []} />
-              </Panel>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Panel title="Intake Call Outcomes" subtitle="What happened on the intake call itself">
-                  <DonutChart
-                    items={(metrics.by_intake_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
-                  />
-                </Panel>
-                <Panel title="New vs Returning Patients">
-                  <DonutChart
-                    items={(metrics.by_patient_type || []).map((s: any) => ({ label: s.type, count: s.count }))}
-                  />
-                </Panel>
-              </div>
-            </div>
-          )}
+          {tab === 'overview' && <ExecutiveOverview metrics={metrics} previous={prevMetrics} compare={compare} onSelect={selectTab} />}
 
           {tab === 'agents' && (() => {
             type AgentPerfRow = {
@@ -414,7 +212,7 @@ export default function AdminDashboardPage() {
               outbound_outcomes: { outcome: string; count: number }[]
               outbound_appointments_set: number; outbound_appointments_eligible: number; outbound_appointments_attended: number
               confirmation: number; confirmation_confirmed: number
-              appointments_set: number; no_shows: number; no_show_rate: number | null
+              appointments_set: number; appointments_eligible: number; no_shows: number; no_show_rate: number | null
               revenue_new: number; revenue_followup: number; attempts_per_booking: number | null
               trend: { date: string; leads: number; booked: number }[]
               booked_to_completed: number; booked_to_no_show: number
@@ -454,7 +252,6 @@ export default function AdminDashboardPage() {
             const byConversion = [...rows].sort((a, b) => (b.conversionRate ?? 0) - (a.conversionRate ?? 0))
             const byNoShow = [...rows].filter(a => a.no_show_rate != null).sort((a, b) => (a.no_show_rate ?? 0) - (b.no_show_rate ?? 0))
             const byAgentRank = new Map(byConversion.map((a, i) => [a.agent, i]))
-            const totalPatientsWithAppointments = agentPerf?.total_patients_with_appointments ?? 0
             const invoiceWorkflowStatusChanges = agentPerf?.invoice_workflow_status_changes ?? { booked_to_completed: 0, booked_to_no_show: 0 }
             return (
               <div className="space-y-4">
@@ -466,9 +263,9 @@ export default function AdminDashboardPage() {
                     tooltip="Highest blended conversion rate (incoming + outgoing + outbound appointments set ÷ calls) among agents with 5+ calls." />
                   <KPICard label="Avg Conversion Rate" value={avgConversion != null ? `${avgConversion}%` : '—'} tone="text-teal-600"
                     tooltip="Total appointments set ÷ total calls, blended across incoming, outgoing follow-up, and outbound." />
-                  <KPICard label="New Patient Revenue" value={money(totalNewRevenue)} tone="text-emerald-600"
-                    sub={`Follow-up: ${money(totalFollowupRevenue)}`}
-                    tooltip="Invoice revenue attributed to NEW patients whose appointment was set by an agent this period — the number that reflects that agent's acquisition effort. Follow-up/returning-patient revenue is shown separately since it isn't driven by this period's calls." />
+                  <KPICard label="CRM revenue · New lead type" value={money(totalNewRevenue)} tone="text-emerald-600"
+                    sub={`Other lead types: ${money(totalFollowupRevenue)}`}
+                    tooltip="CRM-linked invoice revenue by invoice date and recorded lead patient type. This is not first-visit acquisition revenue or an estimate of agent causality." />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -503,13 +300,12 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Panel title="No-Show Rate by Agent" subtitle="Invoice-validated — share of that agent's past appointments with no matching invoice">
+                  <Panel title="No-Show Rate by Agent" subtitle="Recorded no-shows divided by eligible appointments; missing invoices are unresolved">
                     <StatusMeterList
-                      items={byNoShow.map(a => ({ label: a.agent, value: a.no_show_rate ?? 0, sub: `${a.no_shows}/${a.appointments_set}` }))}
-                      thresholds={{ warn: 20, critical: 40 }}
+                      items={byNoShow.map(a => ({ label: a.agent, value: a.no_show_rate ?? 0, sub: `${a.no_shows}/${a.appointments_eligible}` }))}
                     />
                   </Panel>
-                  <Panel title="Revenue by Agent" subtitle="New patient revenue (the effort signal) vs. follow-up revenue, shown side by side">
+                  <Panel title="Revenue by Agent" subtitle="CRM-linked invoices by invoice date, split by recorded lead patient type; not a measure of agent causality">
                     <DualBarChart
                       rows={rows.map(a => ({ name: a.agent, primary: a.revenue_new, secondary: a.revenue_followup }))}
                       primaryLabel="New patient" secondaryLabel="Follow-up" formatter={money}
@@ -517,35 +313,11 @@ export default function AdminDashboardPage() {
                   </Panel>
                 </div>
 
-                <Panel
-                  title="Calendar Status Changes by Agent"
-                  subtitle={`Appointments moved from Booked → Completed or Booked → No-show — by agent and by the automated invoice-reconciliation workflow — against the ${totalPatientsWithAppointments.toLocaleString()} total patients with an appointment this period`}
-                >
-                  <StatusChangeStackedChart
-                    rows={[
-                      ...rows.map(a => ({ name: a.agent, completed: a.booked_to_completed, noShow: a.booked_to_no_show, total: totalPatientsWithAppointments })),
-                      {
-                        name: 'Invoice Workflow (Automated)',
-                        completed: invoiceWorkflowStatusChanges.booked_to_completed,
-                        noShow: invoiceWorkflowStatusChanges.booked_to_no_show,
-                        total: totalPatientsWithAppointments,
-                      },
-                    ]}
-                    totalLabel="Total patients with appointments"
-                  />
-                </Panel>
-
-                <Panel
-                  title="Calendar Status Changes — All Agents Combined"
-                  subtitle="Every Booked → Completed/No-show change this period, stacked together into one bar and color-coded by who made it — the gray segment is how many of this period's appointments still haven't been updated at all"
-                >
-                  <CombinedStatusChangeStackedChart
-                    rows={[
-                      ...rows.map(a => ({ name: a.agent, changed: a.booked_to_completed + a.booked_to_no_show })),
-                      { name: 'Invoice Workflow (Automated)', changed: invoiceWorkflowStatusChanges.booked_to_completed + invoiceWorkflowStatusChanges.booked_to_no_show },
-                    ]}
-                    total={totalPatientsWithAppointments}
-                  />
+                <Panel title="Workflow status change events" subtitle="Recorded Booked → Completed or No-show changes by change date. An appointment can have multiple events; these are not unique patients or visit evidence.">
+                  <DualBarChart rows={[
+                    ...rows.map(a => ({name:a.agent,primary:a.booked_to_completed,secondary:a.booked_to_no_show})),
+                    {name:'Invoice Workflow (Automated)',primary:invoiceWorkflowStatusChanges.booked_to_completed,secondary:invoiceWorkflowStatusChanges.booked_to_no_show},
+                  ]} primaryLabel="Booked → Completed" secondaryLabel="Booked → No-show" />
                 </Panel>
 
                 <div>
@@ -577,8 +349,8 @@ export default function AdminDashboardPage() {
               return <div className="bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-md p-3">{sourcePerfError}</div>
             }
             const sourceRows = ((sourcePerf?.sources || []) as SourcePerfRow[]).map(s => {
-              const attendedRate = s.appointments_set > 0
-                ? Math.round(((s.new_attended + s.old_attended) / s.appointments_set) * 1000) / 10
+              const attendedRate = s.appointments_eligible > 0
+                ? Math.round(((s.new_attended + s.old_attended) / s.appointments_eligible) * 1000) / 10
                 : null
               const newShare = s.leads > 0 ? Math.round((s.new_leads / s.leads) * 100) : null
               return { ...s, attendedRate, newShare }
@@ -593,7 +365,7 @@ export default function AdminDashboardPage() {
               <div className="space-y-4">
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 space-y-1.5">
                   <p>
-                    Lead source reflects the recorded contact channel. Revenue uses eligible acquisition evidence at or before the first clinical visit; missing or late evidence remains unattributed. Attendance requires same-day qualifying clinical billing for the same patient and doctor. Missing billing alone does not prove a no-show.
+                    Lead source reflects the recorded contact channel. Revenue uses eligible acquisition evidence at or before the first clinical visit; missing or late evidence remains unattributed. Verified attendance uses the same eligible cohort and strict patient, date, physician, paid-invoice evidence as the overview. Missing billing alone does not prove a no-show.
                   </p>
                   <p>
                     Leads, appointments and invoices use their own dates within the selected period. Revenue may appear for a source with no new lead in this period. Outbound follow-up and historical appointments are shown separately from new intake leads.
@@ -607,9 +379,9 @@ export default function AdminDashboardPage() {
                     sub={byLeads[0] ? `${byLeads[0].leads} leads` : undefined}
                     tooltip="Source with the most leads this period." />
                   <KPICard label="New vs Old Leads" value={`${totalNew} / ${totalOld}`} tone="text-indigo-600"
-                    sub={totalLeads > 0 ? `${Math.round((totalNew / totalLeads) * 100)}% new` : undefined}
+                    sub={`${totalLeads} total · ${totalLeads - totalNew - totalOld} unknown type`}
                     tooltip="New-patient leads vs returning/Old-patient leads, across all sources this period." />
-                  <KPICard label="First Clinical Day Revenue" value={money(totalNewRevenue)} tone="text-emerald-600"
+                  <KPICard label="First Clinical Day Revenue (all patients)" value={money(totalNewRevenue)} tone="text-emerald-600"
                     tooltip="Invoice revenue dated on each patient's first observed clinical day, including revenue without a known acquisition source." />
                 </div>
 
@@ -642,11 +414,9 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Panel title="Verified Attendance by Source" subtitle="Share of appointments in this period with same-day clinical evidence for the same patient and doctor. Future and unresolved appointments remain unverified.">
+                  <Panel title="Verified Attendance by Source" subtitle="Verified visits divided by eligible appointments after one full clinic-calendar day. Cancelled, rescheduled, recent and future appointments are excluded.">
                     <StatusMeterList
-                      items={byAttended.map(s => ({ label: s.source, value: s.attendedRate ?? 0, sub: `${s.new_attended + s.old_attended}/${s.appointments_set}` }))}
-                      thresholds={{ warn: 80, critical: 60 }}
-                      higherIsBetter
+                      items={byAttended.map(s => ({ label: s.source, value: s.attendedRate ?? 0, sub: `${s.new_attended + s.old_attended}/${s.appointments_eligible}` }))}
                     />
                   </Panel>
                   <Panel title="Revenue by Source" subtitle="Invoice revenue by eligible acquisition source; missing or late evidence remains unattributed.">
@@ -720,7 +490,7 @@ export default function AdminDashboardPage() {
 
                 <div>
                   <h3 className="text-sm font-semibold text-slate-700 mb-1">Source Detail</h3>
-                  <p className="text-xs text-slate-400 mb-3">Full funnel per source — leads in, appointments set, and who actually showed up.</p>
+                  <p className="text-xs text-slate-400 mb-3">Full funnel per source — contact-date leads, visit-date appointments, and eligible MIS-verified visits. These are separate period populations.</p>
                   {sourceRows.length === 0 ? (
                     <p className="text-sm text-slate-400">No source activity this period.</p>
                   ) : (
@@ -737,11 +507,11 @@ export default function AdminDashboardPage() {
 
           {tab === 'funnel' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Panel title="Lead → Appointment Funnel" subtitle="From first contact to a completed visit">
+              <Panel title="Contact cohort to verified visit" subtitle="Distinct contacts dated in this period, followed through their linked appointments as of this report. Later cohorts have had less time to convert.">
                 <FunnelChart steps={[
-                  { label: 'Leads', count: metrics.total_leads, hint: 'every logged call this period' },
-                  { label: 'Booked', count: metrics.booked_leads, hint: 'intake outcome was Appointment Booked' },
-                  { label: 'Attended', count: metrics.attended, hint: 'invoice-validated visit, not just agent-set status' },
+                  { label: 'Contacts', count: metrics.lead_cohort?.leads ?? 0, hint: 'original contact date in this period' },
+                  { label: 'With appointment', count: metrics.lead_cohort?.with_appointment ?? 0, hint: 'at least one linked non-cancelled appointment' },
+                  { label: 'With verified visit', count: metrics.lead_cohort?.with_verified_visit ?? 0, hint: 'at least one eligible MIS-verified completed visit' },
                 ]} />
               </Panel>
               <Panel title="Follow-up Funnel" subtitle="Outbound follow-up calls in this period">
@@ -757,7 +527,7 @@ export default function AdminDashboardPage() {
               </Panel>
               <Panel title="Pending Callback Queue" subtitle="Point-in-time snapshot, not filtered by date range">
                 <KPICard label="Open in Queue" value={metrics.pending_callbacks} tone="text-amber-600"
-                  tooltip="Outgoing Calls queue items still awaiting a call attempt, right now." />
+                  tooltip="Outgoing Calls queue items open when this snapshot was refreshed." />
               </Panel>
             </div>
           )}
@@ -765,15 +535,18 @@ export default function AdminDashboardPage() {
           {tab === 'revenue' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <KPICard label="Total Revenue" value={money(metrics.total_revenue)} tone="text-emerald-600" delta={d(metrics.total_revenue, 'total_revenue')}
+                <KPICard label="CRM-attributed revenue" value={money(metrics.total_revenue)} tone="text-emerald-600" delta={d(metrics.total_revenue, 'total_revenue')}
                   tooltip="Sum of invoice revenue attributed back to a lead's source, for invoices dated in this period." />
-                <KPICard
-                  label="Revenue / Booked Lead"
-                  value={metrics.booked_leads > 0 ? money(metrics.total_revenue / metrics.booked_leads) : '—'}
-                  tone="text-emerald-600"
-                  tooltip="Total Revenue ÷ Booked leads. A rough per-booking value, not a true per-patient average."
-                />
+                <KPICard label="Linked invoices" value={metrics.validation?.attributed_invoice_count ?? '—'} tooltip="Distinct valid invoices attributed to CRM leads in this invoice-date period. Duplicate or ambiguous ownership is excluded." />
               </div>
+              <Panel title="Revenue populations and attribution coverage" subtitle="These totals describe different invoice populations; they are not interchangeable.">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <KPICard label="CRM-linked subset" value={money(metrics.total_revenue)} />
+                  <KPICard label="Acquisition ledger total" value={metrics.revenue_scope ? money(metrics.revenue_scope.acquisition_ledger_total) : '—'} />
+                  <KPICard label="Unattributed / historical" value={metrics.revenue_scope ? money(metrics.revenue_scope.unattributed_acquisition) : '—'} />
+                </div>
+                <p className="mt-3 text-xs text-slate-600">Acquisition includes reconciled invoices for patients without a CRM lead. Unattributed is a subset of that acquisition ledger, not an amount to add to CRM revenue. Channel spend and an agreed attribution window are required before calculating ROI.</p>
+              </Panel>
               <Panel title="Revenue by Source" subtitle="Attributed via matched invoices (crm_billing_links), not every lead has a matched invoice yet">
                 <BarList
                   items={(metrics.revenue_by_source || []).map((s: any) => ({ label: s.source, count: Math.round(s.revenue) }))}
@@ -820,13 +593,8 @@ export default function AdminDashboardPage() {
                   colorFor={(label) => appointmentTypeColor(label).dot}
                 />
               </Panel>
-              <Panel title="Doctor Performance" subtitle="Appointments, no-show rate, and revenue per doctor">
-                <DoctorTable rows={(metrics.by_doctor_performance || []).map((d: any) => ({
-                  doctor: d.doctor,
-                  appointments: d.appointments,
-                  no_show_rate: d.no_show_rate,
-                  revenue: d.revenue,
-                }))} />
+              <Panel title="Appointment mix by doctor" subtitle="Scheduled appointment counts; this does not attribute invoice revenue to a physician.">
+                <BarList items={(metrics.by_doctor || []).map((row: any) => ({ label: row.doctor, count: row.count }))} />
               </Panel>
               <Panel title="Agent Performance" subtitle="Leads vs bookings per agent — bar shows leads (grey) and booked (teal)">
                 <AgentTable rows={(metrics.by_agent || []).map((a: any) => ({
@@ -842,38 +610,19 @@ export default function AdminDashboardPage() {
 
           {tab === 'quality' && (
             <div className="space-y-4">
-              <Panel
-                title="No-Show / Attendance Validation"
-                subtitle="Cross-checks the CRM's reported appointment status against the invoice source of truth (OCR/Google-Sheet fed, all invoice types — daycare, pathology, pharmacy, IPD)"
-              >
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                  <KPICard label="CRM: Completed" value={metrics.attendance_validation?.crm_completed ?? 0} tone="text-emerald-600" />
-                  <KPICard
-                    label="…with a matching invoice"
-                    value={metrics.attendance_validation?.crm_completed_with_invoice ?? 0}
-                    tone="text-emerald-600"
-                    sub={metrics.attendance_validation?.crm_completed > 0
-                      ? `${Math.round(100 * (metrics.attendance_validation.crm_completed_with_invoice / metrics.attendance_validation.crm_completed))}% of Completed`
-                      : undefined}
-                  />
-                  <KPICard label="CRM: No-show" value={metrics.attendance_validation?.crm_no_show ?? 0} tone="text-rose-600" />
-                  <KPICard
-                    label="…but has an invoice anyway"
-                    value={metrics.attendance_validation?.crm_no_show_with_invoice ?? 0}
-                    tone="text-amber-600"
-                    sub="worth a second look"
-                  />
-                </div>
-                <div className="bg-sky-50 border border-sky-200 rounded-md p-3 text-xs text-sky-800">
-                  The Overview tab&apos;s <strong>Attended</strong>/<strong>No-Shows</strong>/<strong>Show Rate</strong> now
-                  use this invoice-validated definition directly (not the agent-set status alone) — an appointment
-                  only counts as attended if a matching invoice exists for that patient within a few days, across
-                  every invoice type. The table here is the transparency layer: it shows where the CRM&apos;s status
-                  and the invoice record disagree, so &quot;No-show but has an invoice anyway&quot; is the case worth
-                  double-checking first.
-                </div>
+              <Panel title="Attendance evidence" subtitle="Strict MIS evidence and explicit clinic statuses; unavailable fields are not treated as zero">
+                <div className="grid gap-3 sm:grid-cols-3"><KPICard label="MIS-verified completed visits" value={metrics.mis_verified_attended ?? '—'} /><KPICard label="Completed, awaiting MIS evidence" value={metrics.completed_appointments_without_mis_visit_proof ?? '—'} /><KPICard label="Recorded CRM no-shows" value={metrics.explicit_crm_no_shows ?? '—'} /></div>
+                <p className="text-sm text-slate-600">MIS evidence requires patient, encounter date, physician, and a paid invoice. No-charge care requires separate clinical evidence. Missing billing evidence does not establish nonattendance.</p>
               </Panel>
-
+              <Panel title="Attendance evidence coverage" subtitle="One eligible appointment population, after one complete Bangladesh calendar day for evidence to arrive.">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <KPICard label="Eligible appointments" value={metrics.attendance?.eligible ?? '—'} />
+                  <KPICard label="Verified coverage" value={metrics.show_rate == null ? '—' : metrics.show_rate + '%'} tooltip="MIS-verified completed visits divided by all eligible appointments. Unresolved evidence remains in the denominator; this is evidence coverage, not a final clinical show rate." />
+                  <KPICard label="Unresolved evidence" value={metrics.attendance?.unresolved ?? '—'} />
+                  <KPICard label="Evidence conflicts" value={metrics.attendance?.evidence_conflicts ?? '—'} />
+                </div>
+                <p className="mt-3 text-xs text-slate-600">Eligible = verified + recorded no-show + unresolved. Cancelled/rescheduled: {metrics.attendance?.excluded ?? '—'}. Within grace period or future: {metrics.attendance?.awaiting_maturity ?? '—'}. Eligibility cutoff: {metrics.attendance?.eligible_through ?? '—'}. No-charge care remains unresolved until a separate clinical evidence source is available.</p>
+              </Panel>
               <Panel
                 title="Field Confirmations"
                 subtitle="Staff-confirmed edits to appointment status, patient name/phone, or hospital ID from the Calendar's confirmation call sheet"
@@ -898,34 +647,13 @@ export default function AdminDashboardPage() {
                 </div>
               </Panel>
 
-              <Panel
-                title="Recompute Appointment Status"
-                subtitle="Overwrites appointment_status (Completed/No-show) from the invoice source of truth for the chosen range — Scheduled/Cancelled/Rescheduled are left alone"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => recomputeStatusFromInvoices('2026-06-01')}
-                    disabled={syncing}
-                    className="bg-teal-600 text-white px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
-                  >
-                    {syncing ? 'Recomputing…' : 'Recompute June 2026 onward'}
-                  </button>
-                  <button
-                    onClick={() => recomputeStatusFromInvoices(null)}
-                    disabled={syncing}
-                    className="border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    {syncing ? 'Recomputing…' : 'Recompute entire history'}
-                  </button>
-                  {syncMsg && <span className="text-xs text-slate-500">{syncMsg}</span>}
-                </div>
-              </Panel>
+
             </div>
           )}
         </>
-      )}
+      ) : null}
 
-      {tab === 'ad_attribution' && (
+      {rangeValid && !loading && !error && metrics && tab === 'ad_attribution' && (
         <div className="space-y-4">
           <Panel
             title="Facebook Ad Attribution"
@@ -1002,44 +730,12 @@ export default function AdminDashboardPage() {
 }
 
 // ── StatusMeterList — a labeled row of status-colored meters (good/warn/critical) ──
-function StatusMeterList({
-  items, thresholds, higherIsBetter = false,
-}: {
-  items: { label: string; value: number; sub?: string }[]
-  thresholds: { warn: number; critical: number }
-  higherIsBetter?: boolean
-}) {
-  if (items.length === 0) return <p className="text-sm text-slate-400">No eligible data for this period.</p>
-  const statusFor = (v: number) => higherIsBetter
-    ? (v <= thresholds.critical ? 'critical' : v <= thresholds.warn ? 'warn' : 'good')
-    : (v >= thresholds.critical ? 'critical' : v >= thresholds.warn ? 'warn' : 'good')
-  const barColor = { good: 'bg-emerald-500', warn: 'bg-amber-500', critical: 'bg-rose-500' }
-  const textColor = { good: 'text-emerald-600', warn: 'text-amber-600', critical: 'text-rose-600' }
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 text-[10px] text-slate-400">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Good</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />Warning</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />Critical</span>
-      </div>
-      {items.map(item => {
-        const status = statusFor(item.value)
-        return (
-          <div key={item.label}>
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="font-medium text-slate-700">{item.label}</span>
-              <span className={`font-bold tabular-nums ${textColor[status]}`}>
-                {item.value}% {item.sub && <span className="font-normal text-slate-400">({item.sub})</span>}
-              </span>
-            </div>
-            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${barColor[status]}`} style={{ width: `${Math.min(100, item.value)}%` }} />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+function StatusMeterList({ items }: { items: { label: string; value: number; sub?: string }[] }) {
+  if (!items.length) return <p className="text-sm text-slate-600">No eligible data for this period.</p>
+  return <div className="space-y-3">{items.map(item => <div key={item.label}>
+    <div className="flex items-center justify-between text-xs mb-1"><span>{item.label}</span><span className="tabular-nums">{item.value}% {item.sub && <span className="text-slate-600">({item.sub})</span>}</span></div>
+    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full bg-teal-600" style={{ width: Math.min(100, item.value) + '%' }} /></div>
+  </div>)}</div>
 }
 
 // ── DualBarChart — emphasis form: a primary metric (bold color) against a
@@ -1084,121 +780,6 @@ function DualBarChart({
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-// ── StatusChangeStackedChart — Booked→Completed and Booked→No-show stack
-// into a single cumulative bar per agent (since both are agent-driven
-// changes off the same starting "Booked" pool, not independent metrics), with
-// a muted reference bar underneath showing the total patients-with-appointments
-// figure they're being measured against. ──
-function StatusChangeStackedChart({
-  rows, totalLabel,
-}: {
-  rows: { name: string; completed: number; noShow: number; total: number }[]
-  totalLabel: string
-}) {
-  if (rows.length === 0) return <p className="text-sm text-slate-400">No data for this period.</p>
-  const max = Math.max(1, ...rows.map(r => Math.max(r.completed + r.noShow, r.total)))
-  const sorted = [...rows].sort((x, y) => (y.completed + y.noShow) - (x.completed + x.noShow))
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-emerald-500" />Booked → Completed</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-rose-500" />Booked → No-show</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-slate-400" />{totalLabel}</span>
-      </div>
-      {sorted.map(r => {
-        const changed = r.completed + r.noShow
-        return (
-          <div key={r.name}>
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="font-medium text-slate-700">{r.name}</span>
-              <span className="text-slate-500 tabular-nums">
-                <span className="text-emerald-700 font-semibold">{r.completed}</span>
-                {' + '}
-                <span className="text-rose-700 font-semibold">{r.noShow}</span>
-                {' = '}
-                <span className="font-semibold text-slate-700">{changed}</span>
-              </span>
-            </div>
-            <div
-              className="flex h-3.5 bg-slate-100 rounded-full overflow-hidden mb-1"
-              title={`${r.completed} Booked → Completed, ${r.noShow} Booked → No-show`}
-            >
-              {r.completed > 0 && <div className="h-full bg-emerald-500" style={{ width: `${(r.completed / max) * 100}%` }} />}
-              {r.noShow > 0 && <div className="h-full bg-rose-500" style={{ width: `${(r.noShow / max) * 100}%` }} />}
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-slate-400 rounded-full" style={{ width: `${(r.total / max) * 100}%` }} />
-              </div>
-              <div className="w-20 text-right text-xs text-slate-500 tabular-nums">{r.total}</div>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// Same categorical palette as DonutChart (components/admin/DashboardCharts.tsx),
-// so an agent's color reads consistently across charts on this tab.
-const AGENT_PALETTE_HEX = ['#0d9488', '#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#e87ba4', '#eb6834']
-
-// ── CombinedStatusChangeStackedChart — every changer (agents + the automated
-// invoice workflow) combined into ONE bar, color-coded per changer, so the
-// total volume and the coverage gap (patients whose appointment was never
-// updated at all) read at a glance instead of needing to sum per-agent rows. ──
-function CombinedStatusChangeStackedChart({
-  rows, total,
-}: {
-  rows: { name: string; changed: number }[]
-  total: number
-}) {
-  if (total <= 0) return <p className="text-sm text-slate-400">No data for this period.</p>
-  const withVolume = rows.filter(r => r.changed > 0).sort((a, b) => b.changed - a.changed)
-  const totalChanged = withVolume.reduce((s, r) => s + r.changed, 0)
-  const missing = Math.max(0, total - totalChanged)
-  return (
-    <div className="space-y-3">
-      <div className="flex items-baseline justify-between flex-wrap gap-1">
-        <div className="text-sm text-slate-600">
-          <span className="font-semibold text-slate-800 tabular-nums">{totalChanged.toLocaleString()}</span> of{' '}
-          <span className="font-semibold text-slate-800 tabular-nums">{total.toLocaleString()}</span> patients updated
-        </div>
-        <div className={`text-xs font-semibold tabular-nums ${missing > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-          {missing.toLocaleString()} still not updated
-        </div>
-      </div>
-      <div className="flex h-6 bg-slate-100 rounded-full overflow-hidden">
-        {withVolume.map((r, i) => (
-          <div
-            key={r.name}
-            className="h-full"
-            style={{ width: `${(r.changed / total) * 100}%`, backgroundColor: AGENT_PALETTE_HEX[i % AGENT_PALETTE_HEX.length] }}
-            title={`${r.name}: ${r.changed}`}
-          />
-        ))}
-        {missing > 0 && (
-          <div className="h-full bg-slate-300" style={{ width: `${(missing / total) * 100}%` }} title={`Not yet updated: ${missing}`} />
-        )}
-      </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
-        {withVolume.map((r, i) => (
-          <span key={r.name} className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm inline-block flex-shrink-0" style={{ backgroundColor: AGENT_PALETTE_HEX[i % AGENT_PALETTE_HEX.length] }} />
-            {r.name} <span className="font-semibold text-slate-700 tabular-nums">{r.changed}</span>
-          </span>
-        ))}
-        {missing > 0 && (
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm inline-block bg-slate-300 flex-shrink-0" />
-            Not yet updated <span className="font-semibold text-slate-700 tabular-nums">{missing}</span>
-          </span>
-        )}
-      </div>
     </div>
   )
 }
@@ -1338,7 +919,7 @@ function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number |
 
       <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 text-center">
         <div>
-          <div className="text-[10px] text-slate-400">First Clinical Day Revenue</div>
+          <div className="text-[10px] text-slate-400">First Clinical Day Revenue (all patients)</div>
           <div className="text-xs font-semibold text-emerald-700 tabular-nums">{money(s.revenue_new)}</div>
         </div>
         <div>
