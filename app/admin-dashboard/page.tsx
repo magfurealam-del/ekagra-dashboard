@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/AuthContext";
+import { useClinicDay } from "@/hooks/useClinicDay";
 import { ExecutiveHeader } from "@/components/admin/ExecutiveHeader";
 import { DecisionPanels } from "@/components/admin/DecisionPanels";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,9 +39,10 @@ export default function AdminDashboardPage() {
   );
   const [customEnd, setCustomEnd] = useState(() => clinicDate());
   const [compare, setCompare] = useState(true);
+  const { day, refreshDay } = useClinicDay();
   const { start, end } = useMemo(
-    () => rangeFor(rangeKey, customStart, customEnd),
-    [rangeKey, customStart, customEnd],
+    () => rangeFor(rangeKey, customStart, customEnd, new Date(`${day}T12:00:00+06:00`)),
+    [rangeKey, customStart, customEnd, day],
   );
   const rangeValid = validRange(start, end);
   const prevRange = useMemo(
@@ -82,6 +84,7 @@ export default function AdminDashboardPage() {
     setLoading(true);
     setError("");
     setMetrics(null);
+    setInsights(null);
     setPrevMetrics(null);
     setRefreshedAt(null);
     setPrevRefreshedAt(null);
@@ -132,6 +135,7 @@ export default function AdminDashboardPage() {
   }, [start, end, compare, isAdmin, profile?.id, rangeValid, reloadKey]);
 
   function reloadSnapshot() {
+    refreshDay();
     setReloadKey((key) => key + 1);
   }
   useEffect(() => {
@@ -197,7 +201,7 @@ export default function AdminDashboardPage() {
             " No comparison is available; changes are not estimated."}
         </p>
       )}
-      {reconciliation && (
+      {rangeValid && !loading && metrics && reconciliation && (
         <div
           className={`rounded-lg border p-3 text-xs leading-relaxed ${reconciliation.pending ? "border-amber-200 bg-amber-50 text-amber-900" : "bg-white text-slate-600"}`}
           role="status"
@@ -207,7 +211,7 @@ export default function AdminDashboardPage() {
           {reconciliation.published_at && (
             <>
               {" "}
-              Evidence publication:{" "}
+              Evidence status updated:{" "}
               {new Date(reconciliation.published_at).toLocaleString("en-GB", {
                 timeZone: "Asia/Dhaka",
               })}{" "}
@@ -250,6 +254,7 @@ export default function AdminDashboardPage() {
             agents={agentPerf?.agents ?? []}
             sources={sourcePerf?.sources ?? []}
             ads={adRows ?? []}
+            evidencePending={reconciliation?.pending !== false}
             onSelect={selectTab}
           />
         </>

@@ -42,7 +42,23 @@ const sample: ExecutiveMetrics = {
   ],
 };
 export const supabase = {
-  rpc: (_name: string, args: { p_compare?: boolean }) => ({
+  from: () => {
+    const query = { select: () => query, gte: () => query, lt: () => query, eq: () => query, then: (resolve: (value: {data: never[]; error: null}) => unknown) => Promise.resolve(resolve({data: [], error: null})) };
+    return query;
+  },
+  rpc: (_name: string, args: { p_compare?: boolean; p_start_date?: string; p_end_date?: string; p_patient_id?: number }) => {
+    if (_name === 'get_call_center_kpis_fast') {
+      const count = args.p_start_date === args.p_end_date ? 3 : 120;
+      return new Promise(resolve => setTimeout(() => resolve({error: null, data: {
+        incoming_total: count, outgoing_leads_total: 0, outbound_total: 0, confirmation_total: 0, outbound_pending: 0,
+        daily_trend: [{date: args.p_end_date, incoming: count, outgoing_leads: 0, outbound: 0, confirmation: 0}],
+        by_agent: [{agent: 'Synthetic Agent', incoming: count, incoming_booked: 0, outgoing_leads: 0, outbound: 0, confirmation: 0}],
+        by_incoming_outcome: [{outcome: 'General Inquiry', count}], by_outgoing_outcome: [], by_outbound_outcome: [], by_confirmation_outcome: [],
+        call_log: Array.from({length: count}, (_, i) => ({patient_id:i+1, patient_name:`Synthetic contact ${i+1}`, call_date:`${args.p_end_date}T09:00:00+06:00`, direction:'Incoming', agent:'Synthetic Agent', invoice_check_date:args.p_end_date, details:{}, outcome:'General Inquiry'})),
+      }}), count === 3 ? 100 : 900));
+    }
+    if (_name === 'get_call_kpi_invoice_match') return Promise.resolve({data:{status:'matched',method:'synthetic',invoice_no:`TEST-${args.p_patient_id}`,invoice_date:clinicDate()},error:null});
+    return {
     abortSignal: async (_signal: AbortSignal) => {
       const state = new URLSearchParams(window.location.search).get("state");
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -64,7 +80,7 @@ export const supabase = {
       return {
         data: {
           contract_version: 3,
-          insights: state === "empty" ? emptyInsights : fixtureInsights,
+          insights: state === "empty" ? emptyInsights : state === 'immature' ? {...fixtureInsights, daily:[{date:clinicDate(),verified:null,eligible:null,revenue:0,invoices:0}]} : fixtureInsights,
           metrics: {
             ...metrics,
             attendance: {
@@ -103,5 +119,6 @@ export const supabase = {
         error: null,
       };
     },
-  }),
+    };
+  },
 };

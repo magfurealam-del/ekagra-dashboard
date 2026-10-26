@@ -3,6 +3,7 @@ import '@fontsource-variable/geist'
 import '../app/globals.css'
 import AppShell from '../components/AppShell'
 import AdminDashboardPage from '../app/admin-dashboard/page'
+import CallKpisPage from '../app/call-kpis/page'
 import { TooltipProvider } from '../components/ui/tooltip'
 
 document.addEventListener('click', (event) => {
@@ -24,7 +25,7 @@ createRoot(document.getElementById('root')!).render(
       <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
         <strong>DESIGN PREVIEW · SYNTHETIC DATA · NOT PRODUCTION</strong>
         <div className="flex flex-wrap gap-3">
-          {['ready', 'empty', 'missing', 'error', 'no-comparison', 'stale'].map(
+          {['ready', 'empty', 'missing', 'error', 'no-comparison', 'stale', 'pending', 'immature'].map(
             (state) => (
               <a className="underline" href={`/?state=${state}`} key={state}>
                 {state}
@@ -33,7 +34,7 @@ createRoot(document.getElementById('root')!).render(
           )}
         </div>
       </div>
-      <AdminDashboardPage />
+      {new URLSearchParams(location.search).get('page') === 'calls' ? <CallKpisPage /> : <AdminDashboardPage />}
     </AppShell>
   </TooltipProvider>,
 )

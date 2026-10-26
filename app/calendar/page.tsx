@@ -33,6 +33,7 @@ export default function CalendarPage() {
   // actually updates the grid, instead of only ever affecting the day panel.
   const [monthRows, setMonthRows] = useState<any[]>([])
   const [loadingGrid, setLoadingGrid] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   // Doctor/patient filter
   const [doctorFilter, setDoctorFilter] = useState<string>('all')
@@ -44,25 +45,23 @@ export default function CalendarPage() {
   async function loadCalendarData(force = false) {
     const cacheKey = `${start}|${end}`
     if (!force && calendarCache.key === cacheKey && Date.now() - calendarCache.fetchedAt < CALENDAR_TTL_MS) {
-      setMonthRows(calendarCache.data)
       return calendarCache.data
     }
     try {
-      const { data } = await withRetry(() => supabase
+      const { data, error } = await withRetry(() => supabase
         .from('crm_appointments')
         .select('appointment_date, appointment_time, doctor_service, appointment_type, appointment_status, confirmation_status, no_show_risk')
         .gte('appointment_date', start)
         .lte('appointment_date', end)
         .neq('appointment_status', 'Cancelled'), 15000, 2)
+      if (error) throw error
       calendarCache.key = cacheKey
       calendarCache.data = data || []
       calendarCache.fetchedAt = Date.now()
-      setMonthRows(data || [])
-      return data
+      return data || []
     } catch (error) {
       console.error('[calendar] load failed', error)
-      setMonthRows([])
-      return []
+      return null
     }
   }
 
@@ -71,7 +70,13 @@ export default function CalendarPage() {
   useEffect(() => {
     let cancelled = false
     setLoadingGrid(true)
-    loadCalendarData().then(() => { if (!cancelled) setLoadingGrid(false) })
+    setLoadError('')
+    loadCalendarData().then(data => {
+      if (cancelled) return
+      setMonthRows(data || [])
+      setLoadError(data === null ? 'Appointment data could not be loaded. Reload the page to retry; empty days are not confirmed availability.' : '')
+      setLoadingGrid(false)
+    })
     return () => { cancelled = true }
   }, [start, end])
 
@@ -165,6 +170,7 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           {allDoctors.length > 0 && (
             <select
+              aria-label="Calendar doctor or service"
               value={doctorFilter}
               onChange={e => setDoctorFilter(e.target.value)}
               className="border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white"
@@ -176,9 +182,10 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {!loadingGrid && <SchedulingInsights rows={filteredRows} />}
+      {loadError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{loadError}</p>}
+      {!loadingGrid && !loadError && <SchedulingInsights rows={filteredRows} />}
       {/* Appointment-type dashboard — cards appear only for types with bookings this month */}
-      {!sheetOpen && <CalendarKPIs typeTotals={monthTypeTotals} />}
+      {!sheetOpen && !loadingGrid && !loadError && <CalendarKPIs typeTotals={monthTypeTotals} />}
 
       {/* Main content — calendar on top, appointment panel below when a date is selected */}
       <div className={sheetOpen ? 'flex flex-col gap-4' : ''}>

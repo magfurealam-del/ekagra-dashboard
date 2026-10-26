@@ -9,6 +9,10 @@ try {
  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT '00000000-0000-0000-0000-000000000001'::uuid$$;
  CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS $$SELECT current_setting('request.jwt.claim.role',true)$$;
  CREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql AS $$SELECT coalesce(current_setting('test.admin',true),'false')='true'$$;
+ CREATE FUNCTION public.is_active_staff() RETURNS boolean LANGUAGE sql AS $$SELECT coalesce(current_setting('test.staff',true),'true')='true'$$;
+ CREATE FUNCTION public.call_kpi_incoming_outcome_label(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$SELECT coalesce($1,'Unspecified')$$;
+ CREATE FUNCTION public.call_kpi_lead_source_label(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$SELECT coalesce($1,'Unknown')$$;
+ CREATE FUNCTION public.call_kpi_queue_category_label(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$SELECT coalesce($1,'Unknown')$$;
  CREATE FUNCTION public.call_kpi_patient_type_label(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$SELECT CASE lower($1) WHEN 'new' THEN 'New' WHEN 'old' THEN 'Old' ELSE 'Unknown' END$$;
  CREATE FUNCTION mis_internal.gateway_publication_blocked() RETURNS boolean LANGUAGE sql AS $$SELECT false$$;
  SET test.admin='true';SET request.jwt.claim.role='authenticated';`)
@@ -26,6 +30,7 @@ try {
  await db.exec(await readFile(new URL('supabase/migrations/20261026002802_executive_dashboard_materialized_read.sql',root),'utf8'))
  await db.exec(await readFile(new URL('supabase/migrations/20261026010725_decision_dashboard_insights.sql',root),'utf8'))
  await db.exec(await readFile(new URL('supabase/migrations/20261026010912_decision_cohort_single_pass.sql',root),'utf8'))
+ await db.exec(await readFile(new URL('supabase/migrations/20261026104511_dashboard_audit_call_consistency.sql',root),'utf8'))
  const decisions=async(start='2020-10-01',end='2020-10-25')=>(await value('SELECT public.get_decision_dashboard($1,$2,false) r',[start,end])).r
  let decision=await decisions();assert.equal(decision.contract_version,3);assert.equal(decision.insights.queue.total,0);assert.equal(decision.insights.daily.length,25);assert.equal(decision.insights.cohorts[0].contacts,0)
  const report=async(start='2020-10-01',end='2020-10-25',compare=true)=>(await value('SELECT public.get_executive_dashboard($1,$2,$3) r',[start,end,compare])).r
@@ -34,6 +39,7 @@ try {
  VALUES(1,1,'facebook','New','A','2020-09-30T18:00:00Z','appointment_done'),
  (2,2,'hotline','Old',null,'2020-10-25T18:00:00Z','appointment_booked'),
  (3,3,'hotline',null,'B','2020-11-01T10:00:00Z','callback_scheduled');
+ UPDATE public.crm_leads SET call_direction='Incoming' WHERE id IN (1,2,3);
  INSERT INTO public.call_center_logs(id,log_date) VALUES(100,'2020-10-01'); UPDATE public.crm_leads SET source_system='migrated_call_center_logs',external_lead_id='100' WHERE id=3;
  INSERT INTO public.patients(id,patient_type) VALUES(1,'New'),(2,'Old'),(3,'Unknown');
  INSERT INTO public.invoices(id,patient_id,invoice_date,net_bill,invoice_status,reconciliation_status,consultant_name_raw)
@@ -111,6 +117,37 @@ try {
  assert.equal(decision.insights.daily.at(-1).verified,null,'immature visit dates are not zeros')
  await assert.rejects(decisions('2020-10-02','2020-10-01'),/valid reporting period/)
  await assert.rejects(decisions('2020-01-01','2022-01-01'),/366 days/)
+ // Call reports share clinic date boundaries and original migrated contact dates.
+ // Unspecified direction is not an incoming call; unassigned real calls remain counted.
+ await db.exec(`INSERT INTO public.crm_leads(id,created_at,call_direction,agent_name,source_system,external_lead_id) VALUES
+ (1001,'2018-12-31T18:00:00Z','Incoming','Test Agent',null,null),
+ (1002,'2019-01-01T17:59:59Z','Outgoing',null,null,null),
+ (1003,'2019-01-01T18:00:00Z','Incoming','Test Agent',null,null),
+ (1004,'2019-01-01T05:00:00Z',null,null,'website',null),
+ (1005,'2019-01-05T12:00:00Z','Incoming','Test Agent','migrated_call_center_logs','999'),
+ (1006,'2019-01-01T05:00:00Z','  ',null,'website',null);
+ INSERT INTO public.call_center_logs VALUES(999,'2019-01-01');
+ INSERT INTO public.outgoing_call_queue(id) VALUES(1001);
+ INSERT INTO public.outgoing_call_attempts(id,queue_id,called_at,status,assigned_agent,outcome_code) VALUES(1001,1001,'2018-12-31T18:01:00Z','completed',null,'reached');
+ INSERT INTO public.appointment_confirmation_calls(id,called_at,agent_name,outcome) VALUES(1001,'2018-12-31T18:05:00Z',null,'confirmed'),(1002,'2019-01-01T18:00:00Z',null,'confirmed');`)
+ for (const timezone of ['UTC','America/New_York','Asia/Dhaka']) {
+  await db.exec(`SET timezone='${timezone}'`)
+  const calls=(await value("SELECT public.get_call_center_kpis_fast('2019-01-01','2019-01-01') r")).r
+  assert.equal(calls.incoming_total,2);assert.equal(calls.outgoing_leads_total,1);assert.equal(calls.outbound_total,1);assert.equal(calls.confirmation_total,1)
+  for (const key of ['incoming','outgoing_leads','outbound','confirmation']) {
+   assert.equal(calls.daily_trend.reduce((s,r)=>s+r[key],0),calls[`${key}_total`])
+   assert.equal(calls.by_agent.reduce((s,r)=>s+r[key],0),calls[`${key}_total`])
+  }
+  assert.equal(calls.call_log.length,5)
+  assert.equal(calls.call_log.filter(r=>r.details?.date_basis==='Original contact date; time unavailable').length,1)
+  assert.equal(calls.by_agent.find(a=>a.agent==='Unassigned').confirmation,1)
+  const executive=await report('2019-01-01','2019-01-01',false)
+  assert.equal(executive.agents.agents.reduce((s,a)=>s+a.incoming+a.outgoing_leads+a.outbound+a.confirmation,0),5)
+ }
+ await assert.rejects(value("SELECT public.get_call_center_kpis_fast('2019-01-02','2019-01-01')"),/valid reporting period/)
+ await db.exec("SET test.staff='false'")
+ await assert.rejects(value("SELECT public.get_call_center_kpis_fast('2019-01-01','2019-01-01')"),/Active staff access required/)
+ assert.equal((await value("SELECT has_function_privilege('anon','public.get_call_center_kpis_fast(date,date)','EXECUTE') allowed")).allowed,false)
  await db.exec("SET test.admin='false'")
  await assert.rejects(report(),/Admin access required/)
  await assert.rejects(decisions(),/Admin access required/)

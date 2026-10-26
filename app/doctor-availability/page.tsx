@@ -2,7 +2,7 @@
 import { AvailabilityTimeline } from '@/components/calendar/SchedulingInsights'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { parallelFetch } from '@/lib/withTimeout'
 import AvailabilityCalendar from '@/components/doctor-availability/AvailabilityCalendar'
@@ -54,14 +54,26 @@ export default function DoctorAvailabilityPage() {
   const [audit, setAudit] = useState<AuditRow[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const requestVersion = useRef(0)
+  const selectedDateRef = useRef(dateIso)
 
   async function load() {
+    if (selectedDateRef.current !== dateIso) return
+    const request = ++requestVersion.current
     setLoading(true)
+    setLoadError('')
     const [schedRes, ovRes, auditRes] = await parallelFetch([
       { work: () => supabase.from('doctor_schedules').select('doctor_name, start_time, end_time').eq('day_of_week', dow).eq('is_active', true).order('doctor_name'), timeoutMs: 15000, retries: 2 },
       { work: () => supabase.from('doctor_daily_availability').select('doctor_name, is_available, start_time, end_time, note, updated_by, updated_at').eq('avail_date', dateIso), timeoutMs: 15000, retries: 2 },
       { work: () => supabase.from('doctor_availability_audit').select('doctor_name, action, changed_by, changed_at, start_time, end_time, note').eq('avail_date', dateIso).order('changed_at', { ascending: false }).limit(100), timeoutMs: 10000, retries: 1 },
     ] as const)
+    if (request !== requestVersion.current) return
+    if (!schedRes || schedRes.error || !ovRes || ovRes.error || !auditRes || auditRes.error) {
+      setLoadError('Availability could not be loaded completely. Retry before making changes.')
+      setLoading(false)
+      return
+    }
     setSchedule(schedRes?.data || [])
     const map: Record<string, OverrideRow> = {}
     ;(ovRes?.data || []).forEach(r => { map[r.doctor_name] = r as OverrideRow })
@@ -72,8 +84,9 @@ export default function DoctorAvailabilityPage() {
 
 
   useEffect(() => {
+    selectedDateRef.current = dateIso
     load()
-    return undefined
+    return () => { requestVersion.current += 1 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateIso])
 
@@ -93,6 +106,7 @@ export default function DoctorAvailabilityPage() {
     })
     if (error) { showToast('Error: ' + error.message); return }
     showToast(nextAvailable ? 'Marked available.' : 'Marked unavailable.')
+    await load()
   }
 
   async function saveHours(doctorName: string, startTime: string, endTime: string) {
@@ -106,6 +120,7 @@ export default function DoctorAvailabilityPage() {
     })
     if (error) { showToast('Error: ' + error.message); return }
     showToast('Hours updated.')
+    await load()
   }
 
   async function saveNote(doctorName: string, note: string) {
@@ -119,6 +134,7 @@ export default function DoctorAvailabilityPage() {
       p_note: note || null,
     })
     if (error) { showToast('Error: ' + error.message); return }
+    await load()
   }
 
   async function resetToNormal(doctorName: string) {
@@ -128,6 +144,7 @@ export default function DoctorAvailabilityPage() {
     })
     if (error) { showToast('Error: ' + error.message); return }
     showToast('Reset to normal schedule.')
+    await load()
   }
 
   const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -156,8 +173,8 @@ export default function DoctorAvailabilityPage() {
         )}
       </div>
 
-      {!loading && schedule.length > 0 && <AvailabilityTimeline rows={schedule.map(s => ({ name: s.doctor_name, start: overrides[s.doctor_name]?.start_time || s.start_time, end: overrides[s.doctor_name]?.end_time || s.end_time, available: overrides[s.doctor_name]?.is_available ?? true }))} />}
-      {loading ? (
+      {!loading && !loadError && schedule.length > 0 && <AvailabilityTimeline rows={schedule.map(s => ({ name: s.doctor_name, start: overrides[s.doctor_name]?.start_time || s.start_time, end: overrides[s.doctor_name]?.end_time || s.end_time, available: overrides[s.doctor_name]?.is_available ?? true }))} />}
+      {loadError ? (<div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}<button className="ml-3 min-h-10 underline" onClick={load}>Retry availability</button></div>) : loading ? (
         <div className="space-y-2">
           {[0, 1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}
         </div>
@@ -181,7 +198,7 @@ export default function DoctorAvailabilityPage() {
         </div>
       )}
 
-      {audit.length > 0 && (
+      {!loading && !loadError && audit.length > 0 && (
         <section className="bg-white rounded-xl border border-slate-200 p-4">
           <h2 className="text-sm font-semibold text-slate-700">Change history for {formattedDate}</h2>
           <div className="mt-2 divide-y divide-slate-100">
@@ -190,7 +207,7 @@ export default function DoctorAvailabilityPage() {
                 <span className="font-medium text-slate-800">{entry.doctor_name}</span>
                 <span>{entry.action.replaceAll('_', ' ')}</span>
                 <span>by {entry.changed_by}</span>
-                <span className="text-slate-400">{new Date(entry.changed_at).toLocaleString('en-GB')}</span>
+                <span className="text-slate-400">{new Date(entry.changed_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })}</span>
               </div>
             ))}
           </div>
