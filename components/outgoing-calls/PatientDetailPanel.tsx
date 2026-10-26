@@ -46,8 +46,8 @@ function historyDate(attempt: Record<string, unknown>) {
 export default function PatientDetailPanel({ row }: { row: any | null }) {
   const [patient, setPatient] = useState<any | null>(null)
   const [visitSummary, setVisitSummary] = useState<any | null>(null)
-  const [leadResult, setLeadResult] = useState<{ sourceId: string; data: any; failed: boolean } | null>(null)
-  const leadLoaded = row?.source_table === 'crm_leads' && leadResult?.sourceId === String(row?.source_id)
+  const [leadResult, setLeadResult] = useState<{ queueId: string; data: any; failed: boolean } | null>(null)
+  const leadLoaded = !!row && leadResult?.queueId === String(row.queue_id)
   const lead = leadLoaded ? leadResult?.data : null
   const [appointments, setAppointments] = useState<any[]>([])
   const [originalAppt, setOriginalAppt] = useState<any | null>(null)
@@ -67,16 +67,27 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
     }
     let cancelled = false
     async function load() {
-      // Load the exact request first. Never display the previous selection's timestamp.
-      if (row.source_table === 'crm_leads' && row.source_id) {
+      // The sheet view omits source fields. Resolve the selected queue's exact origin.
+      let sourceTable = row.source_table
+      let sourceId = row.source_id
+      let sourceFailed = false
+      if ((!sourceTable || !sourceId) && row.queue_id) {
+        const { data: queue, error } = await supabase.from('outgoing_call_queue')
+          .select('source_table, source_id').eq('id', row.queue_id).maybeSingle()
+        sourceTable = queue?.source_table
+        sourceId = queue?.source_id
+        sourceFailed = !!error
+      }
+      // Never display the previous selection's timestamp or infer it from queue creation.
+      if (sourceTable === 'crm_leads' && sourceId) {
         const { data, error } = await supabase
           .from('crm_leads')
           .select('source, campaign_name, lead_status, main_problem, agent_name, lead_bucket, urgency, notes, referral_name, created_at, no_appointment_reasons, preferred_doctor, preferred_visit_date, lead_name, phone')
-          .eq('id', row.source_id)
+          .eq('id', sourceId)
           .maybeSingle()
-        if (!cancelled) setLeadResult({ sourceId: String(row.source_id), data, failed: !!error })
+        if (!cancelled) setLeadResult({ queueId: String(row.queue_id), data, failed: !!error })
       } else if (!cancelled) {
-        setLeadResult(null)
+        setLeadResult({ queueId: String(row.queue_id), data: null, failed: sourceFailed })
       }
       if (row.patient_id) {
         const { data: p } = await supabase.from('patients').select('*').eq('id', row.patient_id).single()
@@ -166,7 +177,7 @@ export default function PatientDetailPanel({ row }: { row: any | null }) {
               <div className="text-xs font-semibold text-green-800">Submitted on website</div>
               <div className="mt-1 text-base font-bold text-slate-900">
                 {submittedAt ? <time dateTime={lead.created_at}>{submittedAt}</time>
-                  : row.source_table === 'crm_leads' && row.source_id && !leadLoaded ? 'Loading submission time…'
+                  : !leadLoaded ? 'Loading submission time…'
                   : leadLoaded && leadResult?.failed ? 'Unable to load submission time'
                   : 'Submission time not recorded'}
               </div>
