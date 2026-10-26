@@ -184,7 +184,7 @@ export function ExecutiveOverview({
           label="MIS-verified visits"
           value={formatNumber(metrics.mis_verified_attended)}
           description="Eligible completed visits with strict evidence"
-          definition="Eligible completed appointments supported by patient, encounter date, physician and a unique paid MIS invoice. One full Bangladesh calendar day is allowed for evidence. No-charge care needs separate clinical evidence."
+          definition="Eligible completed appointments supported by patient, encounter date, physician and a unique non-void MIS invoice with positive billed value. This is billing evidence, not proof of payment collected. One full Bangladesh calendar day is allowed for evidence."
           delta={change(
             metrics.mis_verified_attended,
             previous?.mis_verified_attended,
