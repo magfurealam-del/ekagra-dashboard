@@ -45,6 +45,10 @@ try {
  await db.exec(await read('supabase/migrations/'+detailsMigration))
  const pooledMigration = (await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_admin_review_pooled_identity_guard.sql'))
  await db.exec(await read('supabase/migrations/'+pooledMigration))
+ const snapshotFix = (await readdir(new URL('supabase/migrations/',root))).find(f=>f.endsWith('_repair_review_snapshot_publication.sql'))
+ await db.exec(await read('supabase/migrations/'+snapshotFix))
+ const snapshotDefinition = (await scalar("SELECT pg_get_functiondef('mis_internal.refresh_marketing_review_snapshot()'::regprocedure) definition")).definition
+ check(snapshotDefinition.includes('DELETE FROM mis_internal.marketing_review_revenue_snapshot WHERE true;'),'review cache replacement has the explicit predicate required by hosted safeupdate')
  const readCase = async (kind,id,who=actor,page=0,filter='',search='') => (await scalar('SELECT public.marketing_review_read($1,$2,$3,$4,$5,$6) r',[who,kind,id,page,filter,search])).r
  const version = async (kind,id) => (await readCase(kind,id)).version
  const resolve = async (kind,id,payload,opts={}) => (await scalar('SELECT public.marketing_review_resolve($1,$2,$3,$4,$5,$6) r',[opts.actor||actor,opts.requestId||randomUUID(),kind,id,opts.version||await version(kind,id),JSON.stringify(payload)])).r
