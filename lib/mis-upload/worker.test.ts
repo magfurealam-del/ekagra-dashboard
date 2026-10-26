@@ -1,6 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { drainMisQueue } from './worker.ts'
+import { drainMisQueue, isOvernightInDhaka } from './worker.ts'
+
+test('daytime recovery does not sync spend outside the clinic overnight window', () => {
+ for (const [utc, expected] of [['2026-10-25T18:14:00Z',false],['2026-10-25T18:15:00Z',true],['2026-10-26T01:44:00Z',true],['2026-10-26T01:45:00Z',false],['2026-10-26T11:00:00Z',false]] as const)
+  assert.equal(isOvernightInDhaka(new Date(utc)), expected)
+})
 
 test('drains separate transactions until idle', async () => {
  const statuses = ['completed','superseded','advanced','idle']

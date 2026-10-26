@@ -7,7 +7,7 @@
   "crons": [
     {
       "path": "/api/cron/mis-ingestion",
-      "schedule": "*/5 0-1,18-23 * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/populate-outgoing-calls",

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { timingSafeEqual } from 'node:crypto'
 import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker'
+import { isOvernightInDhaka } from '@/lib/mis-upload/worker'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -13,7 +14,8 @@ export async function GET(request: Request) {
   }
   if (!ingestionEnabled()) return NextResponse.json({ status: 'disabled' })
   try {
-    return NextResponse.json(await runMisGateway(), { headers: { 'Cache-Control': 'no-store' } })
+    const result = await runMisGateway({ syncMarketingSpend: isOvernightInDhaka() })
+    return NextResponse.json(result, { status: result.last.code ? 503 : 200, headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ error: 'MIS worker unavailable; queued jobs are retained.' }, { status: 503 })
   }
