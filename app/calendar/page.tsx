@@ -9,6 +9,7 @@ import CalendarKPIs, { TypeTotal } from '@/components/calendar/CalendarKPIs'
 import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
 import AppointmentStatusChanges from '@/components/calendar/AppointmentStatusChanges'
 import { SchedulingInsights } from '@/components/calendar/SchedulingInsights'
+import { clinicDate } from '@/lib/dashboard-presentation'
 
 const calendarCache: { key: string; data: any[]; fetchedAt: number } = { key: '', data: [], fetchedAt: 0 }
 const CALENDAR_TTL_MS = 30 * 60 * 1000
@@ -21,12 +22,11 @@ function localDateString(date: Date) {
 }
 
 export default function CalendarPage() {
-  const today = new Date()
-  const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth())
-  const [selectedDate, setSelectedDate] = useState<string | null>(
-    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  )
+  // The server and remote users must select the same clinic calendar day.
+  const today = clinicDate()
+  const [year, setYear] = useState(Number(today.slice(0, 4)))
+  const [month, setMonth] = useState(Number(today.slice(5, 7)) - 1)
+  const [selectedDate, setSelectedDate] = useState<string | null>(today)
 
   // Raw appointment rows for the visible month — filtering by doctor happens
   // entirely client-side (useMemo below) so switching doctors is instant and

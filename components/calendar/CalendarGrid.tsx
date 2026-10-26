@@ -1,6 +1,7 @@
 'use client'
 
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
+import { clinicDate } from '@/lib/dashboard-presentation'
 
 export type DayPill = { key: string; label: string; className: string; count?: number }
 export type TypeCount = { type: string; count: number }
@@ -17,8 +18,7 @@ function monthMatrix(year: number, month: number) {
 }
 
 function isToday(year: number, month: number, d: number) {
-  const t = new Date()
-  return t.getFullYear() === year && t.getMonth() === month && t.getDate() === d
+  return clinicDate() === `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
 export default function CalendarGrid({
