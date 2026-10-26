@@ -191,13 +191,19 @@ export const BRANCHES = ['Ekagra Health, Dhanmondi']
 export function formatQueueDate(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-GB', { timeZone: 'Asia/Dhaka', day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function daysAgoLabel(iso: string | null): string {
+export function daysAgoLabel(iso: string | null, now = Date.now()): string {
   if (!iso) return ''
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  const clinicDay = (value: Date) => Date.parse(`${value.toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' })}T00:00:00Z`)
+  const days = Math.round((clinicDay(new Date(now)) - clinicDay(date)) / 86400000)
   if (days === 0) return 'today'
   if (days === 1) return '1 day ago'
+  if (days === -1) return 'tomorrow'
+  if (days < 0) return `in ${-days} days`
   return `${days} days ago`
 }
