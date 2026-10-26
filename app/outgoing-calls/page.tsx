@@ -228,7 +228,7 @@ export default function OutgoingCallsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-110px)] min-h-[970px]">
+    <div className="flex min-w-0 w-full flex-col gap-4 h-[calc(100vh-110px)] min-h-[970px]">
       <div className="flex-shrink-0 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -287,8 +287,9 @@ export default function OutgoingCallsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.3fr_1fr] gap-4 flex-1 min-h-[730px]">
-        <div className="min-h-0">
+      {/* Zero-minimum tracks keep long queue text from pushing the other panels off-screen. */}
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)] gap-4 flex-1 min-h-[730px] [overflow-wrap:anywhere]">
+        <div className="min-h-0 min-w-0">
           <QueueList
             rows={filteredRows}
             loading={loading}
@@ -300,10 +301,10 @@ export default function OutgoingCallsPage() {
             onSelect={setSelected}
           />
         </div>
-        <div className="min-h-0">
+        <div className="min-h-0 min-w-0">
           <PatientDetailPanel row={selected} />
         </div>
-        <div className="min-h-0">
+        <div className="min-h-0 min-w-0">
           <OutcomePanel row={selected} agentName={agent || 'Unknown agent'} onSaved={handleSaved} />
         </div>
       </div>
