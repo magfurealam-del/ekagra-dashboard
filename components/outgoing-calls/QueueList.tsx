@@ -62,8 +62,8 @@ export default function QueueList({
             // "Added to queue" = when the entry was created in the sheet
             const addedLabel = formatQueueDate(r.queue_created_at)
             const addedAgo   = daysAgoLabel(r.queue_created_at)
-            // "First called" = relevant_date (no-show date, or lead creation date)
-            const firstCalledLabel = formatQueueDate(r.relevant_date)
+            // This may be a no-show date or lead date, not evidence that a call occurred.
+            const referenceDateLabel = formatQueueDate(r.relevant_date)
 
             return (
               <button
@@ -106,8 +106,8 @@ export default function QueueList({
                 {/* Dates section */}
                 <div className="mt-1.5 grid grid-cols-2 gap-x-2 text-[11px]">
                   <div className="text-slate-400">
-                    <span className="text-slate-500 font-medium">First called:</span>{' '}
-                    {firstCalledLabel}
+                    <span className="text-slate-500 font-medium">Reference date:</span>{' '}
+                    {referenceDateLabel}
                   </div>
                   <div className="text-slate-400">
                     <span className="text-slate-500 font-medium">Added to sheet:</span>{' '}
@@ -119,7 +119,7 @@ export default function QueueList({
                 {/* Last contact + agent */}
                 <div className="text-[11px] text-slate-400 mt-0.5">
                   Last contact:{' '}
-                  {r.called_at ? new Date(r.called_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'none'}
+                  {r.called_at ? `${new Date(r.called_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} BDT` : 'none'}
                   {' · '}{r.assigned_agent === 'Shared' ? 'Shared queue' : r.assigned_agent}
                 </div>
               </button>
