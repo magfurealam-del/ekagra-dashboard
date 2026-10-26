@@ -20,7 +20,8 @@
     "preview:ui": "vite --config preview/vite.config.mts",
     "test:dashboard": "node --experimental-strip-types --test lib/dashboard-presentation.test.ts",
     "test:dashboard:sql": "node scripts/test-dashboard-reporting.mjs",
-    "test:publication-recovery": "node scripts/mis-upload/test-publication-recovery.mjs"
+    "test:publication-recovery": "node scripts/mis-upload/test-publication-recovery.mjs",
+    "test:public-intake-security": "node scripts/mis-upload/test-public-intake-security.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
