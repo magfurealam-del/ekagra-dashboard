@@ -173,7 +173,7 @@ export function ExecutiveHeader({
         <span className="flex flex-wrap items-center gap-2">
           <Clock3 className="size-3.5" />
           <span>
-            {refreshedAt
+            {refreshedAt && validRange(start, end)
               ? `Report read ${new Date(refreshedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} BDT`
               : 'Report time unavailable'}
           </span>
@@ -185,7 +185,7 @@ export function ExecutiveHeader({
                 : 'text-slate-600'
             }
           >
-            {age === 'stale' ? 'Over 26 hours old' : 'Consistent read'}
+            {loading ? 'Loading report' : !refreshedAt || !validRange(start, end) ? 'No report loaded' : age === 'stale' ? 'Over 26 hours old' : 'Consistent read'}
           </Badge>
         </span>
       </div>

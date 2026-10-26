@@ -291,6 +291,7 @@ export function TrendChart({
   currency?: boolean;
 }) {
   if (!data.length) return <Empty />;
+  const hasValues = data.some((r) => series.some((s) => typeof r[s.key] === 'number'));
   return (
     <>
       <div className="mb-3 flex flex-wrap gap-4 text-xs text-slate-600">
@@ -301,7 +302,7 @@ export function TrendChart({
           </span>
         ))}
       </div>
-      <ChartContainer
+      {!hasValues ? <Empty text="No eligible observations in this period yet. Recent appointment dates remain unavailable until the evidence grace period has passed." /> : <ChartContainer
         className="aspect-auto h-[240px] w-full"
         config={Object.fromEntries(
           series.map((s) => [s.key, { label: s.label, color: s.color }]),
@@ -353,7 +354,7 @@ export function TrendChart({
             />
           ))}
         </LineChart>
-      </ChartContainer>
+      </ChartContainer>}
       <details className="mt-3">
         <summary className="min-h-8 cursor-pointer text-xs font-medium text-teal-800">
           View chart data

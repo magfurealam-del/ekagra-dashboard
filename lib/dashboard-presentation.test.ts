@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { invoiceLookupKey } from './call-report.ts'
 import {
   clinicDate,
   rangeFor,
@@ -21,6 +22,15 @@ test('Bangladesh presets roll over independently of the viewer timezone', () => 
     start: '2026-10-26',
     end: '2026-11-01',
   })
+})
+test('invoice evidence stays with its patient and visit date after sorting', () => {
+  const rows = [{patient_id: 10, invoice_check_date: '2026-10-01'}, {patient_id: 20, invoice_check_date: '2026-10-01'}]
+  const cache = new Map([[invoiceLookupKey(rows[0]), 'invoice-for-10']])
+  rows.reverse()
+  assert.equal(cache.get(invoiceLookupKey(rows[0])), undefined)
+  assert.equal(cache.get(invoiceLookupKey(rows[1])), 'invoice-for-10')
+  assert.notEqual(invoiceLookupKey(rows[1]), invoiceLookupKey({...rows[1], invoice_check_date:'2026-10-02'}))
+  assert.equal(invoiceLookupKey({patient_id:null, invoice_check_date:'2026-10-01'}), null)
 })
 test('comparison windows preserve inclusive duration across leap days and DST', () => {
   assert.deepEqual(previousRangeFor('2024-03-01', '2024-03-07'), {

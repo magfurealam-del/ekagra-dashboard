@@ -45,6 +45,7 @@ type Props = {
   agents: AgentRow[];
   sources: SourceRow[];
   ads: AdRow[];
+  evidencePending?: boolean;
   onSelect: (tab: DashboardTab) => void;
 };
 const grid = "grid gap-5 lg:grid-cols-2";
@@ -133,6 +134,7 @@ export function DecisionPanels({
   agents,
   sources,
   ads,
+  evidencePending = false,
   onSelect,
 }: Props) {
   const [horizon, setHorizon] = useState(14);
@@ -142,6 +144,7 @@ export function DecisionPanels({
     insights.cohorts.find((c) => c.horizon === horizon) ?? insights.cohorts[0];
   const people = agents.filter(isHumanAgent);
   const other = agents.filter((a) => !isHumanAgent(a));
+  const otherCalls = other.reduce((n, a) => n + a.incoming + a.outgoing_leads + a.outbound + a.confirmation, 0);
   const active = people.find((a) => a.agent === agent) ?? people[0];
   const attendance = metrics.attendance;
   const sourceCounts = sources
@@ -211,7 +214,7 @@ export function DecisionPanels({
                 0,
               ),
             )}
-            sub="Incoming, outgoing, outbound and confirmation"
+            sub="All recorded call purposes; contacts without a call direction excluded"
           />
           <Stat
             label="Outbound bookings"
@@ -243,6 +246,9 @@ export function DecisionPanels({
               }))}
               series={CALL_SERIES}
             />
+            <Note>
+              Human agents shown above. {formatNumber(otherCalls)} calls assigned to system or unassigned identities are included in the headline and listed in the detail below.
+            </Note>
           </ChartPanel>
           <ChartPanel
             title={purpose}
@@ -412,7 +418,7 @@ export function DecisionPanels({
           <DelayPlot rows={insights.delays} />
           <details className="mt-5">
             <summary className="cursor-pointer text-xs font-medium text-teal-800">
-              All delay values and unbooked contacts
+              All delay values and contacts without a scheduled visit
             </summary>
             <DataTable
               headers={[
@@ -585,7 +591,9 @@ export function DecisionPanels({
           title="Coverage of the separate acquisition ledger"
           subtitle="Patients with and without CRM contacts · invoice value, not marketing ROI"
         >
-          {metrics.revenue_scope ? (
+          {evidencePending ? (
+            <Empty text="Acquisition-ledger coverage is temporarily unavailable while reconciliation is pending. An empty rebuild is not zero revenue. Refresh after publication completes." />
+          ) : metrics.revenue_scope ? (
             <>
               <StackedBars
                 percent
@@ -885,7 +893,7 @@ export function DecisionPanels({
                 ? `${a.completed} / ${e.eligible} (${rateText(a.completed, e.eligible)})`
                 : "—",
               e?.unresolved ?? "—",
-              formatMoney(a.revenue),
+              evidencePending ? "Pending reconciliation" : formatMoney(a.revenue),
             ];
           })}
         />
