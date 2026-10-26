@@ -5,11 +5,12 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withTimeout'
 import { useVisibilityReload } from '@/hooks/useVisibilityReload'
-import { KPICard, BarList, Panel } from '@/components/admin/DashboardCharts'
+import { KPICard, Panel } from '@/components/admin/DashboardCharts'
+import { CallOutcomeBreakdown } from '@/components/callkpis/CallOutcomeBreakdown'
 import CallTrendChart from '@/components/callkpis/CallTrendChart'
 import { OUTCOMES } from '@/components/outgoing-calls/types'
 
-type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
+import { clinicDate, rangeFor, type RangeKey } from '@/lib/dashboard-presentation'
 
 // Module-level cache so switching tabs doesn't re-fetch if data is fresh
 const kpiCache: { key: string; data: any; fetchedAt: number } = { key: '', data: null, fetchedAt: 0 }
@@ -17,15 +18,6 @@ const CACHE_TTL_MS = 30 * 60 * 1000 // 30 minutes
 
 function toISO(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function normalizePhone(value: string | null | undefined) { return (value || '').replace(/\D/g, '').replace(/^880/, '0') }
-
-function rangeFor(key: RangeKey, customStart: string, customEnd: string) {
-  const today = new Date()
-  if (key === 'today') return { start: toISO(today), end: toISO(today) }
-  if (key === '7d') { const s = new Date(today); s.setDate(s.getDate() - 6); return { start: toISO(s), end: toISO(today) } }
-  if (key === '30d') { const s = new Date(today); s.setDate(s.getDate() - 29); return { start: toISO(s), end: toISO(today) } }
-  if (key === 'month') { const s = new Date(today.getFullYear(), today.getMonth(), 1); return { start: toISO(s), end: toISO(today) } }
-  return { start: customStart, end: customEnd }
-}
 
 const OUTGOING_OUTCOME_LABEL: Record<string, string> = {
   reached: 'Reached',
@@ -174,7 +166,7 @@ function MiniCallCalendar({
           const date = dateForDay(day)
           const count = trendByDate.get(date) || 0
           const isSelected = selectedDate === date
-          const isToday = date === toISO(new Date())
+          const isToday = date === clinicDate()
           return (
             <button key={date} onClick={() => onSelect(date)} className={`min-h-[38px] rounded-md border text-xs transition-colors ${isSelected ? 'bg-teal-600 text-white border-teal-600' : isToday ? 'border-teal-400 bg-teal-50' : 'border-slate-100 hover:bg-slate-50'}`}>
               <div>{day}</div>
@@ -239,8 +231,8 @@ type SortKey = 'call_date' | 'patient_name' | 'direction' | 'source' | 'agent' |
 
 export default function CallKpisPage() {
   const [rangeKey, setRangeKey] = useState<RangeKey>('today')
-  const [customStart, setCustomStart] = useState(toISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))
-  const [customEnd, setCustomEnd] = useState(toISO(new Date()))
+  const [customStart, setCustomStart] = useState(clinicDate().slice(0,7)+'-01')
+  const [customEnd, setCustomEnd] = useState(clinicDate())
   const { start, end } = useMemo(() => rangeFor(rangeKey, customStart, customEnd), [rangeKey, customStart, customEnd])
 
   const [metrics, setMetrics] = useState<any | null>(null)
@@ -408,17 +400,6 @@ export default function CallKpisPage() {
     count: s.count,
   }))
 
-  // Per-agent tally with a blended conversion rate across every call type
-  // that can lead to a booking (incoming intake + outgoing follow-up).
-  const agentTally = (metrics?.by_agent || []).map((a: any) => {
-    const totalCalls = a.incoming + (a.outgoing_leads || 0) + a.outbound + a.confirmation
-    const bookableCalls = a.incoming + (a.outgoing_leads || 0) + a.outbound
-    const bookings = (a.incoming_booked || 0) + (a.outgoing_leads_booked || 0) + (a.outbound_booked || 0)
-    const conversionRate = bookableCalls > 0 ? Math.round((bookings / bookableCalls) * 100) : null
-    const confirmationRate = a.confirmation > 0 ? Math.round((a.confirmation_confirmed / a.confirmation) * 100) : null
-    return { ...a, totalCalls, bookings, conversionRate, confirmationRate }
-  }).sort((x: any, y: any) => y.totalCalls - x.totalCalls)
-
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -468,11 +449,13 @@ export default function CallKpisPage() {
 
   return (
     <div className="space-y-4 pb-20">
+      <details className="rounded-xl border bg-white p-3"><summary className="cursor-pointer text-sm font-medium text-teal-800">Select a day from the call calendar</summary>
       <MiniCallCalendar
         trend={metrics?.daily_trend || []}
         selectedDate={selectedDate}
         onSelect={(date) => { setCustomStart(date); setCustomEnd(date); setRangeKey('custom') }}
       />
+      </details>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Call Center KPIs</h1>
@@ -536,81 +519,16 @@ export default function CallKpisPage() {
               tooltip="Snapshot right now (not date-range filtered): open items still waiting in the outbound call queue." />
           </div>
 
-          <Panel title="Daily Call Volume" subtitle="Incoming, outgoing (lead tab), outbound (queue), per day">
+          <Panel title="Daily Call Volume" subtitle="Incoming, outgoing, outbound and confirmation · Bangladesh dates">
             <CallTrendChart data={metrics.daily_trend || []} />
           </Panel>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            <Panel title="Incoming Call Outcomes" subtitle="Intake calls where patient called in">
-              <BarList
-                items={(metrics.by_incoming_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
-                colorFor={(label) => INCOMING_OUTCOME_COLORS[label] || 'bg-slate-400'}
-              />
-            </Panel>
-            <Panel title="Outgoing Call Outcomes" subtitle="Intake calls where agent called out">
-              <BarList
-                items={(metrics.by_outgoing_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
-                colorFor={(label) => INCOMING_OUTCOME_COLORS[label] || 'bg-slate-400'}
-              />
-            </Panel>
-            <Panel title="Outbound Call Outcomes" subtitle="Result of each queue-based outbound call">
-              <BarList
-                items={outboundOutcomeItems}
-                colorFor={(label) => OUTGOING_OUTCOME_COLORS[label] || 'bg-slate-400'}
-              />
-            </Panel>
-            <Panel title="Confirmation Call Outcomes" subtitle="Night-before / morning-of calls from the Calendar">
-              <BarList
-                items={(metrics.by_confirmation_outcome || []).map((s: any) => ({ label: s.outcome, count: s.count }))}
-                colorFor={(label) => CONFIRMATION_OUTCOME_COLORS[label] || 'bg-slate-400'}
-              />
-            </Panel>
-          </div>
-
-          <Panel title="Agent Tally" subtitle="Total calls handled and blended conversion rate, per agent, for the selected period">
-            {agentTally.length === 0 ? (
-              <p className="text-sm text-slate-400">No agent-attributed calls this period.</p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {agentTally.map((a: any) => (
-                  <div key={a.agent} className="border border-slate-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-slate-800 text-sm">{a.agent}</span>
-                      <span className="text-xs text-slate-400">{a.totalCalls} call{a.totalCalls === 1 ? '' : 's'}</span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-2 text-center mb-2">
-                      <div>
-                        <div className="text-base font-bold text-teal-600">{a.incoming}</div>
-                        <div className="text-[10px] text-slate-400">Incoming</div>
-                      </div>
-                      <div>
-                        <div className="text-base font-bold text-indigo-600">{a.outgoing_leads || 0}</div>
-                        <div className="text-[10px] text-slate-400">Outgoing</div>
-                      </div>
-                      <div>
-                        <div className="text-base font-bold text-orange-500">{a.outbound}</div>
-                        <div className="text-[10px] text-slate-400">Outbound</div>
-                      </div>
-                      <div>
-                        <div className="text-base font-bold text-purple-600">{a.confirmation}</div>
-                        <div className="text-[10px] text-slate-400">Confirm</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-2">
-                      <span className="text-slate-500" title="Bookings (incoming + outgoing + outbound) ÷ bookable calls">
-                        Conversion: <strong className="text-emerald-600">{a.conversionRate != null ? `${a.conversionRate}%` : '—'}</strong>
-                      </span>
-                      {a.confirmation > 0 && (
-                        <span className="text-slate-500" title="Confirmed ÷ confirmation calls attempted">
-                          Confirmed: <strong className="text-emerald-600">{a.confirmationRate != null ? `${a.confirmationRate}%` : '—'}</strong>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
+          <CallOutcomeBreakdown
+            incoming={(metrics.by_incoming_outcome || []).map((s: { outcome: string; count: number }) => ({ label: s.outcome, count: s.count }))}
+            outgoing={(metrics.by_outgoing_outcome || []).map((s: { outcome: string; count: number }) => ({ label: s.outcome, count: s.count }))}
+            outbound={outboundOutcomeItems}
+            confirmation={(metrics.by_confirmation_outcome || []).map((s: { outcome: string; count: number }) => ({ label: s.outcome, count: s.count }))}
+          />
 
           <Panel title="Agent Performance" subtitle="Incoming, outgoing, outbound, and confirmation call volume, per agent">
             {(metrics.by_agent || []).length === 0 ? (

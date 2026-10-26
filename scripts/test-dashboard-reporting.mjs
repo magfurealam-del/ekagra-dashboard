@@ -24,6 +24,10 @@ try {
  await db.exec('CREATE TABLE public.call_center_logs(id bigint,log_date date)')
  await db.exec(await readFile(new URL('supabase/migrations/20261026002547_executive_dashboard_reporting_performance.sql',root),'utf8'))
  await db.exec(await readFile(new URL('supabase/migrations/20261026002802_executive_dashboard_materialized_read.sql',root),'utf8'))
+ await db.exec(await readFile(new URL('supabase/migrations/20261026010725_decision_dashboard_insights.sql',root),'utf8'))
+ await db.exec(await readFile(new URL('supabase/migrations/20261026010912_decision_cohort_single_pass.sql',root),'utf8'))
+ const decisions=async(start='2020-10-01',end='2020-10-25')=>(await value('SELECT public.get_decision_dashboard($1,$2,false) r',[start,end])).r
+ let decision=await decisions();assert.equal(decision.contract_version,3);assert.equal(decision.insights.queue.total,0);assert.equal(decision.insights.daily.length,25);assert.equal(decision.insights.cohorts[0].contacts,0)
  const report=async(start='2020-10-01',end='2020-10-25',compare=true)=>(await value('SELECT public.get_executive_dashboard($1,$2,$3) r',[start,end,compare])).r
  let r=await report();assert.equal(r.metrics.total_leads,0);assert.equal(r.metrics.show_rate,null);assert.deepEqual(r.sources.sources,[])
  await db.exec(`INSERT INTO public.crm_leads(id,patient_id,source,patient_type,agent_name,created_at,lead_status)
@@ -60,6 +64,15 @@ try {
  assert.equal(r.metrics.attendance.eligible,r.metrics.attendance.verified+r.metrics.attendance.explicit_no_show+r.metrics.attendance.unresolved)
  assert.equal(r.metrics.total_appointments,r.metrics.attendance.eligible+r.metrics.attendance.excluded+r.metrics.attendance.awaiting_maturity)
  assert.equal(r.metrics.lead_cohort.with_verified_visit,1)
+ decision=await decisions()
+ assert.equal(decision.insights.daily.reduce((s,d)=>s+d.revenue,0),r.metrics.total_revenue)
+ assert.equal(decision.insights.daily.reduce((s,d)=>s+(d.verified??0),0),r.metrics.mis_verified_attended)
+ assert.equal(decision.insights.quality.reasons.reduce((s,d)=>s+d.count,0),r.metrics.attendance.unresolved)
+ assert.equal(decision.insights.quality.age.reduce((s,d)=>s+d.count,0),r.metrics.attendance.unresolved)
+ assert.equal(decision.insights.cohorts[1].contacts,2)
+ assert.equal(decision.insights.cohorts[1].scheduled,2)
+ assert.equal(decision.insights.cohorts[1].verified,1)
+ assert.equal(decision.insights.cohorts[1].sources.reduce((s,d)=>s+d.contacts,0),2)
  assert.equal(r.previous.period_end,'2020-09-30')
  assert.equal((await report('2020-10-01','2020-10-25',false)).previous,null)
  // Reusing a verified invoice creates unresolved duplicates, not double attendance.
@@ -75,10 +88,35 @@ try {
  r=await report(start,end);assert.equal(r.metrics.attendance.awaiting_maturity,3);assert.equal(r.metrics.attendance.eligible,0);assert.equal(r.metrics.show_rate,null)
  await assert.rejects(report('2020-10-02','2020-10-01'),/valid reporting period/)
  await assert.rejects(report('2020-01-01','2022-01-01'),/366 days/)
+ // Fixed observation horizons include the boundary, exclude immature contacts,
+ // and ignore scheduled visits before contact or after the chosen horizon.
+ await db.exec(`INSERT INTO public.crm_leads(id,source,created_at) VALUES
+ (101,'Boundary',(now() AT TIME ZONE 'Asia/Dhaka')::date-16),
+ (102,'Immature',(now() AT TIME ZONE 'Asia/Dhaka')::date-15),
+ (103,'Late',(now() AT TIME ZONE 'Asia/Dhaka')::date-40);
+ INSERT INTO public.crm_appointments(id,lead_id,appointment_date,appointment_status) VALUES
+ (101,101,(now() AT TIME ZONE 'Asia/Dhaka')::date-2,'Booked'),
+ (103,103,(now() AT TIME ZONE 'Asia/Dhaka')::date-25,'Booked');
+ INSERT INTO public.outgoing_call_queue(id,status,category,created_at) VALUES
+ (1,'open','test',now()-interval '3 days'),(2,'open','test',now()-interval '20 days'),
+ (3,'closed','test',now()),(4,'open','test',null);`)
+ const recentStart=(await value("SELECT ((now() AT TIME ZONE 'Asia/Dhaka')::date-40)::text d")).d
+ decision=await decisions(recentStart,today)
+ const c14=decision.insights.cohorts.find(c=>c.horizon===14)
+ assert.equal(c14.contacts,2);assert.equal(c14.immature,1);assert.equal(c14.scheduled,1)
+ assert.equal(decision.insights.cohorts.find(c=>c.horizon===30).scheduled,1)
+ assert.equal(decision.insights.queue.total,3)
+ assert.equal(decision.insights.queue.age.reduce((s,d)=>s+d.count,0),3)
+ assert.equal(decision.insights.queue.age.find(d=>d.label==='Unknown date').count,1)
+ assert.equal(decision.insights.daily.at(-1).verified,null,'immature visit dates are not zeros')
+ await assert.rejects(decisions('2020-10-02','2020-10-01'),/valid reporting period/)
+ await assert.rejects(decisions('2020-01-01','2022-01-01'),/366 days/)
  await db.exec("SET test.admin='false'")
  await assert.rejects(report(),/Admin access required/)
+ await assert.rejects(decisions(),/Admin access required/)
+ assert.equal((await value("SELECT has_function_privilege('anon','public.get_decision_dashboard(date,date,boolean)','EXECUTE') allowed")).allowed,false)
+ assert.equal((await value("SELECT has_function_privilege('authenticated','mis_internal.decision_insights(date,date)','EXECUTE') allowed")).allowed,false)
  assert.equal((await value("SELECT has_function_privilege('anon','public.get_executive_dashboard(date,date,boolean)','EXECUTE') allowed")).allowed,false)
  assert.equal((await value("SELECT has_table_privilege('authenticated','mis_internal.executive_leads','SELECT') allowed")).allowed,false)
  console.log('Dashboard SQL contract passed: dates, cross-section totals, rate denominator, evidence, duplicates, empty/zero, comparison, range bounds, and access controls.')
-} finally {await db.close()}
-
+} catch(error) { console.error(error.message, error.detail ?? '', error.position ?? '', error.stack?.split('\n').slice(1,3).join('\n')); process.exitCode=1 } finally {await db.close()}

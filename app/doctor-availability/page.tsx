@@ -1,4 +1,5 @@
 'use client'
+import { AvailabilityTimeline } from '@/components/calendar/SchedulingInsights'
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
@@ -155,6 +156,7 @@ export default function DoctorAvailabilityPage() {
         )}
       </div>
 
+      {!loading && schedule.length > 0 && <AvailabilityTimeline rows={schedule.map(s => ({ name: s.doctor_name, start: overrides[s.doctor_name]?.start_time || s.start_time, end: overrides[s.doctor_name]?.end_time || s.end_time, available: overrides[s.doctor_name]?.is_available ?? true }))} />}
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}

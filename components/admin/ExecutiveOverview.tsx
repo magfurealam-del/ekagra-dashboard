@@ -1,25 +1,25 @@
-'use client'
+"use client";
 import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
   Info,
   ShieldCheck,
-} from 'lucide-react'
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+} from "lucide-react";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from '@/components/ui/chart'
+} from "@/components/ui/chart";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
+} from "@/components/ui/tooltip";
 import {
   change,
   formatMoney,
@@ -27,7 +27,7 @@ import {
   percentage,
   type DashboardTab,
   type ExecutiveMetrics,
-} from '@/lib/dashboard-presentation'
+} from "@/lib/dashboard-presentation";
 
 function Metric({
   label,
@@ -35,18 +35,18 @@ function Metric({
   description,
   definition,
   delta,
-  unit = '%',
+  unit = "%",
   comparing,
   onClick,
 }: {
-  label: string
-  value: string
-  description: string
-  definition: string
-  delta: number | null
-  unit?: string
-  comparing: boolean
-  onClick: () => void
+  label: string;
+  value: string;
+  description: string;
+  definition: string;
+  delta: number | null;
+  unit?: string;
+  comparing: boolean;
+  onClick: () => void;
 }) {
   return (
     <Card className="gap-0 py-0 shadow-none">
@@ -80,7 +80,7 @@ function Metric({
         <div className="mt-4 min-h-5 text-xs text-slate-600">
           {comparing ? (
             delta == null ? (
-              'Comparison unavailable'
+              "Comparison unavailable"
             ) : (
               <span className="flex items-center gap-1">
                 {delta > 0 ? (
@@ -89,10 +89,10 @@ function Metric({
                   <ArrowDownRight className="size-3.5" />
                 ) : null}
                 <strong>
-                  {delta > 0 ? '+' : ''}
+                  {delta > 0 ? "+" : ""}
                   {delta}
                   {unit}
-                </strong>{' '}
+                </strong>{" "}
                 vs previous period
               </span>
             )
@@ -108,16 +108,16 @@ function Metric({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 function SectionTitle({
   title,
   subtitle,
   action,
 }: {
-  title: string
-  subtitle: string
-  action?: React.ReactNode
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -131,40 +131,45 @@ function SectionTitle({
       </div>
       {action}
     </div>
-  )
+  );
 }
 export function ExecutiveOverview({
   metrics,
   previous,
   compare,
   onSelect,
+  outcomeTrend,
 }: {
-  metrics: ExecutiveMetrics
-  previous: ExecutiveMetrics | null
-  compare: boolean
-  onSelect: (tab: DashboardTab) => void
+  outcomeTrend?: React.ReactNode;
+  metrics: ExecutiveMetrics;
+  previous: ExecutiveMetrics | null;
+  compare: boolean;
+  onSelect: (tab: DashboardTab) => void;
 }) {
-  const bookingRate = percentage(metrics.booked_leads, metrics.total_leads)
-  const previousRate = percentage(previous?.booked_leads, previous?.total_leads)
-  const trend = metrics.daily_trend ?? []
+  const bookingRate = percentage(metrics.booked_leads, metrics.total_leads);
+  const previousRate = percentage(
+    previous?.booked_leads,
+    previous?.total_leads,
+  );
+  const trend = metrics.daily_trend ?? [];
   const sources = [...(metrics.revenue_by_source ?? [])].sort(
     (a, b) => b.revenue - a.revenue,
-  )
+  );
   const totalSourceRevenue = sources.reduce(
     (sum, item) => sum + item.revenue,
     0,
-  )
+  );
   const otherSources = sources
     .slice(5)
-    .reduce((sum, item) => sum + item.revenue, 0)
+    .reduce((sum, item) => sum + item.revenue, 0);
   const visibleSources = sources
     .slice(0, 5)
     .concat(
       sources.length > 5
-        ? [{ source: 'Other sources', revenue: otherSources }]
+        ? [{ source: "Other sources", revenue: otherSources }]
         : [],
-    )
-  const proofGap = metrics.completed_appointments_without_mis_visit_proof
+    );
+  const proofGap = metrics.completed_appointments_without_mis_visit_proof;
   return (
     <div className="space-y-6">
       <section
@@ -178,7 +183,7 @@ export function ExecutiveOverview({
           definition="Revenue attributed to CRM leads from validated billing links, dated in the selected period. This is not total hospital revenue or a return-on-ad-spend metric."
           delta={change(metrics.total_revenue, previous?.total_revenue)}
           comparing={compare}
-          onClick={() => onSelect('revenue')}
+          onClick={() => onSelect("revenue")}
         />
         <Metric
           label="MIS-verified visits"
@@ -190,11 +195,11 @@ export function ExecutiveOverview({
             previous?.mis_verified_attended,
           )}
           comparing={compare}
-          onClick={() => onSelect('quality')}
+          onClick={() => onSelect("quality")}
         />
         <Metric
           label="Lead booking rate"
-          value={bookingRate == null ? '—' : `${bookingRate}%`}
+          value={bookingRate == null ? "—" : `${bookingRate}%`}
           description={`${formatNumber(metrics.booked_leads)} booked / ${formatNumber(metrics.total_leads)} leads`}
           definition="Booked intake leads divided by all leads dated in the reporting period. This is lead conversion, not the attendance rate of appointments scheduled for that period."
           delta={
@@ -204,16 +209,16 @@ export function ExecutiveOverview({
           }
           unit=" pp"
           comparing={compare}
-          onClick={() => onSelect('agents')}
+          onClick={() => onSelect("agents")}
         />
         <Metric
           label="Total leads"
           value={formatNumber(metrics.total_leads)}
           description="Contacts logged during the period"
-          definition="Logged lead records by contact date. These are contacts, not necessarily distinct patients. Date presets use Bangladesh time; underlying legacy date boundaries still require alignment."
+          definition="Logged lead records by contact date. These are contacts, not necessarily distinct patients. Contact dates and reporting presets use Bangladesh time."
           delta={change(metrics.total_leads, previous?.total_leads)}
           comparing={compare}
-          onClick={() => onSelect('channels')}
+          onClick={() => onSelect("channels")}
         />
       </section>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)]">
@@ -241,10 +246,10 @@ export function ExecutiveOverview({
             <ChartContainer
               className="h-[240px] w-full aspect-auto"
               config={{
-                leads: { label: 'Leads received', color: '#0f766e' },
+                leads: { label: "Leads received", color: "#0f766e" },
                 appointments: {
-                  label: 'Appointments scheduled',
-                  color: '#64748b',
+                  label: "Appointments scheduled",
+                  color: "#64748b",
                 },
               }}
             >
@@ -261,10 +266,10 @@ export function ExecutiveOverview({
                   minTickGap={35}
                   tickMargin={12}
                   tickFormatter={(value) =>
-                    new Date(`${value}T12:00:00Z`).toLocaleDateString('en-GB', {
-                      day: 'numeric',
-                      month: 'short',
-                      timeZone: 'UTC',
+                    new Date(`${value}T12:00:00Z`).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                      timeZone: "UTC",
                     })
                   }
                 />
@@ -366,7 +371,7 @@ export function ExecutiveOverview({
                   Completed, awaiting MIS evidence
                 </h3>
                 <span
-                  className={`text-2xl font-semibold tabular-nums ${proofGap != null && proofGap > 0 ? 'text-amber-800' : ''}`}
+                  className={`text-2xl font-semibold tabular-nums ${proofGap != null && proofGap > 0 ? "text-amber-800" : ""}`}
                 >
                   {formatNumber(proofGap)}
                 </span>
@@ -377,7 +382,7 @@ export function ExecutiveOverview({
               <Button
                 variant="link"
                 className="mt-2 h-8 px-0"
-                onClick={() => onSelect('quality')}
+                onClick={() => onSelect("quality")}
               >
                 Review data quality
                 <ArrowRight />
@@ -391,8 +396,8 @@ export function ExecutiveOverview({
                 </span>
               </div>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                Explicit CRM status among eligible appointments. Missing invoices alone are
-                not proof of a no-show.
+                Explicit CRM status among eligible appointments. Missing
+                invoices alone are not proof of a no-show.
               </p>
               <Button asChild variant="link" className="mt-2 h-8 px-0">
                 <a href="/calendar">
@@ -407,13 +412,13 @@ export function ExecutiveOverview({
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-xl border bg-white p-5 sm:p-6">
           <SectionTitle
-            title="What drives attributed revenue"
+            title="CRM-attributed revenue by source"
             subtitle="Source mix within CRM-attributed revenue · BDT"
             action={
               <Button
                 variant="ghost"
                 className="text-teal-800"
-                onClick={() => onSelect('channels')}
+                onClick={() => onSelect("channels")}
               >
                 Acquisition
                 <ArrowRight />
@@ -429,7 +434,7 @@ export function ExecutiveOverview({
                       {row.source}
                     </span>
                     <span className="whitespace-nowrap font-medium tabular-nums">
-                      {formatMoney(row.revenue)}{' '}
+                      {formatMoney(row.revenue)}{" "}
                       <span className="ml-2 text-xs font-normal text-slate-500">
                         {percentage(row.revenue, totalSourceRevenue) ?? 0}%
                       </span>
@@ -456,6 +461,12 @@ export function ExecutiveOverview({
             coverage must be reconciled first.
           </p>
         </section>
+        {outcomeTrend}
+      </div>
+      <details className="rounded-xl border bg-white p-4">
+        <summary className="cursor-pointer text-sm font-medium text-slate-700">
+          Intake outcome detail
+        </summary>{" "}
         <section className="rounded-xl border bg-white p-5 sm:p-6">
           <SectionTitle
             title="Intake outcomes"
@@ -464,7 +475,7 @@ export function ExecutiveOverview({
               <Button
                 variant="ghost"
                 className="text-teal-800"
-                onClick={() => onSelect('funnel')}
+                onClick={() => onSelect("funnel")}
               >
                 Follow-ups
                 <ArrowRight />
@@ -502,7 +513,7 @@ export function ExecutiveOverview({
                   </td>
                   <td className="text-right text-slate-600 tabular-nums">
                     {percentage(row.count, metrics.total_leads) == null
-                      ? '—'
+                      ? "—"
                       : `${percentage(row.count, metrics.total_leads)}%`}
                   </td>
                 </tr>
@@ -515,17 +526,18 @@ export function ExecutiveOverview({
             </p>
           )}
         </section>
-      </div>
+      </details>
       <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-100/60 p-4 text-xs leading-relaxed text-slate-600">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-800" />
         <p>
-          <strong className="text-slate-800">A clear evidence boundary.</strong>{' '}
+          <strong className="text-slate-800">A clear evidence boundary.</strong>{" "}
           Contacts, scheduled appointments, and invoices use their own dates.
           Follow-ups shows linked contact-cohort conversion. Data quality shows
-          verified attendance coverage and unresolved evidence within one eligible
-          appointment population. Missing invoices do not prove nonattendance.
+          verified attendance coverage and unresolved evidence within one
+          eligible appointment population. Missing invoices do not prove
+          nonattendance.
         </p>
       </div>
     </div>
-  )
+  );
 }
