@@ -365,7 +365,7 @@ export default function AdminDashboardPage() {
               <div className="space-y-4">
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500 space-y-1.5">
                   <p>
-                    Lead source reflects the recorded contact channel. Revenue uses eligible acquisition evidence at or before the first clinical visit; missing or late evidence remains unattributed. Verified attendance uses the same eligible cohort and strict patient, date, physician, paid-invoice evidence as the overview. Missing billing alone does not prove a no-show.
+                    Lead source reflects the recorded contact channel. Revenue uses eligible acquisition evidence at or before the first clinical visit; missing or late evidence remains unattributed. Verified attendance uses the same eligible cohort and strict patient, date, physician and qualifying invoice evidence as the overview. Missing billing alone does not prove a no-show.
                   </p>
                   <p>
                     Leads, appointments and invoices use their own dates within the selected period. Revenue may appear for a source with no new lead in this period. Outbound follow-up and historical appointments are shown separately from new intake leads.
@@ -612,7 +612,7 @@ export default function AdminDashboardPage() {
             <div className="space-y-4">
               <Panel title="Attendance evidence" subtitle="Strict MIS evidence and explicit clinic statuses; unavailable fields are not treated as zero">
                 <div className="grid gap-3 sm:grid-cols-3"><KPICard label="MIS-verified completed visits" value={metrics.mis_verified_attended ?? '—'} /><KPICard label="Completed, awaiting MIS evidence" value={metrics.completed_appointments_without_mis_visit_proof ?? '—'} /><KPICard label="Recorded CRM no-shows" value={metrics.explicit_crm_no_shows ?? '—'} /></div>
-                <p className="text-sm text-slate-600">MIS evidence requires patient, encounter date, physician, and a paid invoice. No-charge care requires separate clinical evidence. Missing billing evidence does not establish nonattendance.</p>
+                <p className="text-sm text-slate-600">MIS evidence requires patient, encounter date, physician, and a non-void invoice with positive billed value. This does not establish that payment was collected. No-charge care requires separate clinical evidence. Missing billing does not establish nonattendance.</p>
               </Panel>
               <Panel title="Attendance evidence coverage" subtitle="One eligible appointment population, after one complete Bangladesh calendar day for evidence to arrive.">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
