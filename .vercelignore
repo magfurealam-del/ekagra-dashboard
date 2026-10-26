@@ -7,3 +7,6 @@ docs
 supabase
 scripts
 *.tsbuildinfo
+
+.local-reporting-baseline
+preview

@@ -21,6 +21,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run test:dashboard
+      - run: npm run test:dashboard:sql
       - run: npm run test:mis-parser
       - run: npm run test:mis-marketing
       - run: npm run test:marketing-review

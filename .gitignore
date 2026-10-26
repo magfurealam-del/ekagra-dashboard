@@ -7,3 +7,4 @@ tsconfig.tsbuildinfo
 
 /docs/database-baseline/private/
 /supabase/migration-scope.local.json
+/.local-reporting-baseline/

@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-function iso(d: Date) { return d.toISOString().slice(0, 10) }
-function range(days: number) {
-  const end = new Date()
-  const start = new Date(end)
-  start.setDate(start.getDate() - days + 1)
-  return { start: iso(start), end: iso(end) }
-}
+import { rangeFor } from '@/lib/dashboard-presentation'
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
@@ -21,11 +15,7 @@ export async function GET(req: NextRequest) {
   }
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const ranges = [
-    { start: iso(now), end: iso(now) },
-    range(7), range(30), { start: iso(monthStart), end: iso(now) },
-  ]
+  const ranges = (['today', '7d', '30d', 'month'] as const).map(key => rangeFor(key, '', '', now))
   const results = []
   for (const r of ranges) {
     const { data, error } = await admin.rpc('refresh_dashboard_metric_snapshot_cron', {
