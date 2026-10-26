@@ -32,6 +32,7 @@ try {
   ['POST',`/api/admin/mis-uploads/${id}/finalize`],
   ['GET',`/api/admin/mis-uploads/${id}/pipeline`],['POST',`/api/admin/mis-uploads/${id}/pipeline`],
   ['GET','/api/cron/mis-ingestion'],['GET','/api/cron/sync-invoice-corrections'],
+  ['GET','/api/cron/populate-outgoing-calls'],
  ]
  for(const [method,path] of checks) {
   const response=await fetch(url+path,{method})
