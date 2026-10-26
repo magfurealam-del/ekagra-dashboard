@@ -35,8 +35,8 @@ export function SchedulingInsights({
       </summary>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <ChartPanel
-          title="Scheduled demand by service"
-          subtitle="Cancelled and rescheduled records excluded"
+          title="Recorded appointment type mix"
+          subtitle="Scheduling categories as entered · cancelled and rescheduled records excluded"
         >
           <RankedBars
             rows={Object.entries(services)
@@ -45,8 +45,8 @@ export function SchedulingInsights({
           />
         </ChartPanel>
         <ChartPanel
-          title="Appointment mix by doctor"
-          subtitle="Scheduled appointment counts, not utilization or physician performance"
+          title="Recorded doctor / service mix"
+          subtitle="Scheduling labels as entered · counts are not utilization or physician performance"
         >
           <RankedBars
             rows={Object.entries(doctors)
@@ -56,7 +56,9 @@ export function SchedulingInsights({
         </ChartPanel>
       </div>
       <Note>
-        The calendar shows demand by day. Offered slots and appointment
+        Some scheduling labels combine a doctor, service or location. They are
+        shown as recorded, without assuming equivalent labels identify the same
+        doctor. The calendar shows demand by day. Offered slots and appointment
         durations are required before calculating capacity utilization.
       </Note>
     </details>
