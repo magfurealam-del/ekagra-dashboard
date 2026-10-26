@@ -238,7 +238,9 @@ export function HBarList({
     <div className="space-y-2">
       {visible.map((item, i) => {
         const pct = total > 0 ? Math.round((item.count / total) * 100) : 0
-        const display = unit ? `${unit}${item.count.toLocaleString()}` : item.count.toLocaleString()
+        const display = unit === '%' ? `${item.count.toLocaleString()}%`
+          : unit === ' days' ? `${item.count.toLocaleString()} days`
+          : unit ? `${unit}${item.count.toLocaleString()}` : item.count.toLocaleString()
         // colorFor may return a Tailwind class (bg-*) or a hex string
         const colorRaw = colorFor ? colorFor(item.label, i) : BAR_HEX[i % BAR_HEX.length]
         const isHex = colorRaw.startsWith('#')
@@ -247,7 +249,7 @@ export function HBarList({
             <div className="flex items-center justify-between text-xs mb-1">
               <span className="text-slate-700 truncate pr-3">{item.label}</span>
               <span className="text-slate-500 whitespace-nowrap tabular-nums">
-                {display} <span className="text-slate-300">({pct}%)</span>
+                {display} {unit !== '%' && unit !== ' days' && <span className="text-slate-500">({pct}%)</span>}
               </span>
             </div>
             <div className="h-5 bg-slate-100 rounded-md overflow-hidden">

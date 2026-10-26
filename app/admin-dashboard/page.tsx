@@ -391,7 +391,7 @@ export default function AdminDashboardPage() {
                   const oldFunnel = ptFunnel.find(p => p.type === 'Old')
                   if (!newFunnel && !oldFunnel) return null
                   return (
-                    <Panel title="Period Activity by Patient Type" subtitle="Lead dates and appointment dates are separate period counts, rather than cohort conversion rates.">
+                    <Panel title="Period Activity by Patient Type" subtitle="New and Old recorded types only; unknown types are excluded here. Contact and appointment dates are independent period counts.">
                       <DualBarChart rows={[
                         { name: 'Leads', primary: newFunnel?.leads ?? 0, secondary: oldFunnel?.leads ?? 0 },
                         { name: 'Appointments Dated', primary: newFunnel?.appointments_set ?? 0, secondary: oldFunnel?.appointments_set ?? 0 },
@@ -405,10 +405,10 @@ export default function AdminDashboardPage() {
                   <Panel title="Lead Source Distribution" subtitle="Share of leads by source this period">
                     <DonutChart items={sourceRows.map(s => ({ label: s.source, count: s.leads }))} />
                   </Panel>
-                  <Panel title="New vs Old Leads by Source" subtitle="New-patient leads (the acquisition signal) vs returning/Old, per source">
+                  <Panel title="New vs Other Leads by Source" subtitle="All contacts: new patient type versus returning or unknown type.">
                     <DualBarChart
-                      rows={sourceRows.map(s => ({ name: s.source, primary: s.new_leads, secondary: s.old_leads }))}
-                      primaryLabel="New patient" secondaryLabel="Old / returning"
+                      rows={sourceRows.map(s => ({ name: s.source, primary: s.new_leads, secondary: s.leads - s.new_leads }))}
+                      primaryLabel="New patient" secondaryLabel="Other / unknown"
                     />
                   </Panel>
                 </div>
@@ -431,7 +431,7 @@ export default function AdminDashboardPage() {
                   const tta = (sourcePerf?.time_to_appointment || []) as { source: string; median_days: number; avg_days: number; n: number }[]
                   if (tta.length === 0) return null
                   return (
-                    <Panel title="Time to First Appointment by Source" subtitle="Median days from lead created to first appointment set — fastest to slowest">
+                    <Panel title="Time to First Appointment by Source" subtitle="Median days from contact date to first scheduled visit — fastest to slowest">
                       <BarList items={tta.map(t => ({ label: t.source, count: t.median_days }))} unit=" days" />
                     </Panel>
                   )
@@ -803,8 +803,7 @@ function ChannelMeter({ label, value, color, sub }: { label: string; value: numb
 }
 
 function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number | undefined; money: (n: number) => string }) {
-  const noShowRate = a.no_show_rate ?? 0
-  const noShowTone = noShowRate >= 40 ? 'bg-rose-50 text-rose-700' : noShowRate >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+  const noShowTone = 'bg-slate-50 text-slate-700'
   const incomingRate = a.incoming > 0 ? Math.round((a.incoming_booked / a.incoming) * 100) : null
   const outgoingRate = a.outgoing_leads > 0 ? Math.round((a.outgoing_leads_booked / a.outgoing_leads) * 100) : null
   const outboundRate = a.outbound > 0 ? Math.round((a.outbound_booked / a.outbound) * 100) : null
@@ -821,11 +820,11 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
 
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="bg-emerald-50 rounded-lg py-2 px-1">
-          <div className="text-[10px] text-emerald-700 font-medium">New Revenue</div>
+          <div className="text-[10px] text-emerald-700 font-medium">CRM revenue · New type</div>
           <div className="text-sm font-bold text-emerald-700 tabular-nums">{money(a.revenue_new)}</div>
         </div>
         <div className="bg-slate-50 rounded-lg py-2 px-1">
-          <div className="text-[10px] text-slate-500 font-medium">Follow-up Rev.</div>
+          <div className="text-[10px] text-slate-500 font-medium">CRM revenue · Other types</div>
           <div className="text-sm font-bold text-slate-600 tabular-nums">{money(a.revenue_followup)}</div>
         </div>
         <div className={`rounded-lg py-2 px-1 ${noShowTone}`}>
@@ -879,7 +878,7 @@ function AgentDetailCard({ a, rank, money }: { a: AgentDetailRow; rank: number |
 // -> attended), New/Old composition, and revenue split. ──
 function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number | undefined; money: (n: number) => string }) {
   const noShowRate = s.appointments_eligible > 0 ? Math.round((s.no_shows / s.appointments_eligible) * 1000) / 10 : null
-  const noShowTone = (noShowRate ?? 0) >= 40 ? 'bg-rose-50 text-rose-700' : (noShowRate ?? 0) >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+  const noShowTone = 'bg-slate-50 text-slate-700'
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
@@ -893,15 +892,16 @@ function SourceDetailCard({ s, rank, money }: { s: SourcePerfRow; rank: number |
 
       <DualBarChart
         rows={[
-          { name: 'Leads', primary: s.new_leads, secondary: s.old_leads },
+          { name: 'Leads', primary: s.new_leads, secondary: s.leads - s.new_leads },
           { name: 'Appointments Set', primary: s.new_appointments_set, secondary: s.old_appointments_set },
           { name: 'Attended', primary: s.new_attended, secondary: s.old_attended },
         ]}
-        primaryLabel="New patient" secondaryLabel="Old / returning"
+        primaryLabel="New patient" secondaryLabel="Other / unknown"
         primaryColor="bg-indigo-500" primaryText="text-indigo-700"
         sortDesc={false}
       />
 
+      <p className="text-xs text-slate-600">{s.leads} total contacts · {s.leads - s.new_leads - s.old_leads} unknown patient type</p>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="bg-indigo-50 rounded-lg py-2 px-1">
           <div className="text-[10px] text-indigo-700 font-medium">New Leads</div>
