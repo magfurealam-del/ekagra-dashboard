@@ -1,8 +1,7 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { doctorNameVariants } from '@/lib/doctor-schedule'
-import { withRetry } from '@/lib/withTimeout'
+import { useMemo, useState } from 'react'
+import { useDoctorBooking } from '@/hooks/useDoctorBooking'
+import { clinicDate } from '@/lib/dashboard-presentation'
 
 const MONTH_LABEL = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -24,51 +23,13 @@ export default function DoctorDatePicker({
 }) {
   const [open, setOpen] = useState(false)
   const [viewMonth, setViewMonth] = useState(() => {
-    const base = value ? new Date(value + 'T00:00:00') : new Date()
+    const base = new Date((value || clinicDate()) + 'T00:00:00')
     return new Date(base.getFullYear(), base.getMonth(), 1)
   })
 
-  const [activeDays, setActiveDays] = useState<Set<number>>(new Set())
-  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map())
-
-  useEffect(() => {
-    let cancelled = false
-    setActiveDays(new Set())
-    if (!doctorName) { setActiveDays(new Set()); return }
-    withRetry(
-      () => supabase.from('doctor_schedules').select('day_of_week').in('doctor_name', doctorNameVariants(doctorName)).eq('is_active', true),
-      12000, 2,
-    ).then(({ data }) => {
-      if (cancelled) return
-      setActiveDays(new Set((data || []).map((d: any) => d.day_of_week)))
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [doctorName])
-
-  useEffect(() => {
-    let cancelled = false
-    setOverrides(new Map())
-    if (!doctorName) { setOverrides(new Map()); return }
-    const start = toIso(viewMonth)
-    const end = toIso(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0))
-    withRetry(
-      () => supabase.from('doctor_daily_availability').select('avail_date, is_available')
-        .in('doctor_name', doctorNameVariants(doctorName)).gte('avail_date', start).lte('avail_date', end),
-      12000, 2,
-    ).then(({ data }) => {
-      if (cancelled) return
-      const dates = new Map<string, boolean>()
-      for (const d of data || []) dates.set(d.avail_date, dates.get(d.avail_date) !== false && d.is_available)
-      setOverrides(dates)
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [doctorName, viewMonth])
-
-  function isDisabled(d: Date) {
-    const iso = toIso(d)
-    if (overrides.get(iso) === false) return true
-    return !activeDays.has(d.getDay())
-  }
+  const monthStart=toIso(viewMonth), monthEnd=toIso(new Date(viewMonth.getFullYear(),viewMonth.getMonth()+1,0))
+  const availability=useDoctorBooking(doctorName,monthStart,monthEnd)
+  function isDisabled(d: Date) { return !availability.data?.days.find(day=>day.date===toIso(d))?.slots.length }
 
   const weeks = useMemo(() => {
     const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1)
@@ -93,7 +54,7 @@ export default function DoctorDatePicker({
         className="input cursor-pointer"
         placeholder="Select..."
         value={displayLabel}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {if(!open)availability.refresh();setOpen((o) => !o)}}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
       {open && (
@@ -149,6 +110,9 @@ export default function DoctorDatePicker({
               })}
             </div>
           ))}
+          {availability.loading && <p className="text-xs p-1">Loading available dates…</p>}
+          {availability.error && <button type="button" className="text-xs text-rose-700 underline" onMouseDown={e=>{e.preventDefault();availability.refresh()}}>Retry available dates</button>}
+          {availability.data?.status !== 'ready' && doctorName && <p className="text-xs p-1 text-amber-700">{availability.note}</p>}
           {!doctorName && <p className="text-xs text-slate-400 px-1 pt-1">Pick a doctor first to see available dates.</p>}
         </div>
       )}

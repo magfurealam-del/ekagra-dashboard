@@ -7,6 +7,8 @@ import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { appointmentTypeColor } from '@/lib/appointmentTypeColors'
 import { useAuth } from '@/lib/AuthContext'
 import { withRetry } from '@/lib/withTimeout'
+import {useBookingDoctors} from '@/hooks/useDoctorBooking'
+import {canonicalBookingName} from '@/lib/doctor-schedule'
 
 const TABS = ['All Patients','Night-Before Calls','Morning-Of Calls','Pending Calls','No-Show Risk','Confirmed'] as const
 type Tab = typeof TABS[number]
@@ -54,6 +56,7 @@ export default function ConfirmationCallSheet({
   date, doctorFilter, onClose,
 }: { date: string; doctorFilter?: string; onClose: () => void }) {
   const [allRows, setAllRows] = useState<any[]>([])
+  const {doctors:directory}=useBookingDoctors(true)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('All Patients')
   const { profile } = useAuth()
@@ -91,8 +94,8 @@ export default function ConfirmationCallSheet({
   // Applied on top of the loaded day so the header dashboard, tabs, and
   // table all reflect the same doctor-filtered set as the calendar grid above.
   const rows = useMemo(
-    () => (!doctorFilter || doctorFilter === 'all' ? allRows : allRows.filter(r => r.doctor_service === doctorFilter)),
-    [allRows, doctorFilter]
+    () => (!doctorFilter || doctorFilter === 'all' ? allRows : allRows.filter(r => canonicalBookingName(r.doctor_service||'',directory) === doctorFilter)),
+    [allRows, doctorFilter,directory]
   )
 
   useEffect(() => { load() }, [load])
