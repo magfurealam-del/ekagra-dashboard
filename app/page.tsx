@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { doctorSlots, doctorNameVariants, uniqueDoctorNames } from '@/lib/doctor-schedule'
 import { withRetry } from '@/lib/withTimeout'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
@@ -125,7 +126,7 @@ export default function LeadIntakePage() {
   async function refreshReferenceData() {
     setRefreshingReferenceData(true)
     try {
-      localStorage.removeItem('lead-intake:doctors:v1')
+      localStorage.removeItem('lead-intake:doctors:v2')
       Object.keys(localStorage).filter((key) => key.startsWith('dropdown-options:')).forEach((key) => localStorage.removeItem(key))
       localStorage.removeItem(`meta-active-ads:v3:${new Date().toISOString().slice(0, 10)}`)
       window.dispatchEvent(new Event('ekagra:refresh-reference-data'))
@@ -261,6 +262,7 @@ export default function LeadIntakePage() {
       if (!form.doctor || !form.service_type || !form.branch || !form.appointment_date || !form.appointment_time) {
         return 'Doctor, service type, branch, date, and time are required to book an appointment.'
       }
+      if (!timeSlots.some(slot => slot.value === form.appointment_time)) return 'Choose a time within an available doctor session.'
     }
     return null
   }
@@ -713,57 +715,27 @@ function WhatsAppPanel({
 }
 
 function useDoctorSlots(doctorName: string, dateStr: string): { label: string; value: string }[] {
-  const [schedule, setSchedule] = useState<any[]>([])
-  const [override, setOverride] = useState<any | null>(null)
-
+  const key = doctorName + ':' + dateStr
+  const [result, setResult] = useState<{key: string; slots: string[]}>({key: '', slots: []})
   useEffect(() => {
-    if (!doctorName) { setSchedule([]); return }
-    supabase.from('doctor_schedules').select('*').eq('doctor_name', doctorName).eq('is_active', true).then(({ data }) => {
-      setSchedule(data || [])
+    if (!doctorName || !dateStr) return
+    let cancelled = false
+    const names = doctorNameVariants(doctorName)
+    Promise.all([
+      supabase.from('doctor_schedules').select('*').in('doctor_name', names).eq('is_active', true),
+      supabase.from('doctor_daily_availability').select('*').in('doctor_name', names).eq('avail_date', dateStr),
+    ]).then(([schedule, overrides]) => {
+      if (cancelled) return
+      if (schedule.error || overrides.error) { setResult({key, slots: []}); return }
+      const override = overrides.data?.find(o => !o.is_available) || overrides.data?.find(o => o.doctor_name === doctorName) || overrides.data?.[0]
+      setResult({key, slots: doctorSlots(schedule.data || [], dateStr, override)})
     })
-  }, [doctorName])
-
-  // Front-desk daily override (doctor called in sick, reduced hours, etc.)
-  // — always re-checked live, so a change made minutes ago is reflected
-  // immediately without a page reload.
-  useEffect(() => {
-    if (!doctorName || !dateStr) { setOverride(null); return }
-    supabase.from('doctor_daily_availability').select('*').eq('doctor_name', doctorName).eq('avail_date', dateStr).maybeSingle().then(({ data }) => {
-      setOverride(data || null)
-    })
-  }, [doctorName, dateStr])
-
-  return useMemo(() => {
-    if (!dateStr || schedule.length === 0) return []
-    if (override && !override.is_available) return []
-
-    const dow = new Date(dateStr + 'T00:00:00').getDay()
-    const day = schedule.find((s) => s.day_of_week === dow)
-    if (!day) return []
-
-    let [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
-    let [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
-    if (override?.is_available && override.start_time && override.end_time) {
-      ;[sh, sm] = override.start_time.slice(0, 5).split(':').map(Number)
-      ;[eh, em] = override.end_time.slice(0, 5).split(':').map(Number)
-    }
-
-    const step = day.slot_minutes || 15
-    const slots: { label: string; value: string }[] = []
-    let mins = sh * 60 + sm
-    const endMins = eh * 60 + em
-    while (mins < endMins) {
-      const h24 = Math.floor(mins / 60)
-      const m = mins % 60
-      const value = `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-      const ampm = h24 >= 12 ? 'pm' : 'am'
-      let h12 = h24 % 12
-      if (h12 === 0) h12 = 12
-      slots.push({ label: `${h12}:${String(m).padStart(2, '0')} ${ampm}`, value })
-      mins += step
-    }
-    return slots
-  }, [dateStr, schedule, override])
+    return () => { cancelled = true }
+  }, [doctorName, dateStr, key])
+  return result.key === key ? result.slots.map(value => {
+    const [h, m] = value.split(':').map(Number)
+    return {value, label: String(h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h >= 12 ? ' pm' : ' am')}
+  }) : []
 }
 
 // Lets agents see how loaded a doctor's day already is before adding another
@@ -805,13 +777,13 @@ function useDoctorAvailabilityNote(doctorName: string, dateStr: string): string 
 function useDoctors() {
   const [options, setOptions] = useState<{ label: string; value: string }[]>([])
   useEffect(() => {
-    const key = 'lead-intake:doctors:v1'
+    const key = 'lead-intake:doctors:v2'
     const load = () => withRetry(
       () => supabase.from('doctors').select('name').eq('is_active', true).order('name'),
       12000, 2,
     ).then(({ data }) => {
       if (!data || data.length === 0) return
-      const next = data.map((d: any) => ({ label: d.name, value: d.name }))
+      const next = uniqueDoctorNames(data.map((d: any) => d.name)).map(name => ({ label: name, value: name }))
       setOptions(next)
       localStorage.setItem(key, JSON.stringify({ options: next, cachedAt: Date.now() }))
     }).catch(() => {
@@ -819,9 +791,9 @@ function useDoctors() {
     })
     try {
       const cached = JSON.parse(localStorage.getItem(key) || 'null')
-      if (Array.isArray(cached?.options) && cached.options.length > 0) setOptions(cached.options)
-      else load()
-    } catch { localStorage.removeItem(key); load() }
+      if (Array.isArray(cached?.options) && cached.options.length > 0) setOptions(uniqueDoctorNames(cached.options.map((o: {value: string})=>o.value)).map(name=>({label:name,value:name})))
+    } catch { localStorage.removeItem(key) }
+    load()
     const now = new Date()
     const nextSix = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
     nextSix.setHours(6, 0, 0, 0)

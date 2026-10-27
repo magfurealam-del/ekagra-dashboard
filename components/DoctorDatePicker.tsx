@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { doctorNameVariants } from '@/lib/doctor-schedule'
 import { withRetry } from '@/lib/withTimeout'
 
 const MONTH_LABEL = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
@@ -31,31 +32,41 @@ export default function DoctorDatePicker({
   const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map())
 
   useEffect(() => {
+    let cancelled = false
+    setActiveDays(new Set())
     if (!doctorName) { setActiveDays(new Set()); return }
     withRetry(
-      () => supabase.from('doctor_schedules').select('day_of_week').eq('doctor_name', doctorName).eq('is_active', true),
+      () => supabase.from('doctor_schedules').select('day_of_week').in('doctor_name', doctorNameVariants(doctorName)).eq('is_active', true),
       12000, 2,
     ).then(({ data }) => {
+      if (cancelled) return
       setActiveDays(new Set((data || []).map((d: any) => d.day_of_week)))
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [doctorName])
 
   useEffect(() => {
+    let cancelled = false
+    setOverrides(new Map())
     if (!doctorName) { setOverrides(new Map()); return }
     const start = toIso(viewMonth)
     const end = toIso(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0))
     withRetry(
       () => supabase.from('doctor_daily_availability').select('avail_date, is_available')
-        .eq('doctor_name', doctorName).gte('avail_date', start).lte('avail_date', end),
+        .in('doctor_name', doctorNameVariants(doctorName)).gte('avail_date', start).lte('avail_date', end),
       12000, 2,
     ).then(({ data }) => {
-      setOverrides(new Map((data || []).map((d: any) => [d.avail_date, d.is_available])))
+      if (cancelled) return
+      const dates = new Map<string, boolean>()
+      for (const d of data || []) dates.set(d.avail_date, dates.get(d.avail_date) !== false && d.is_available)
+      setOverrides(dates)
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [doctorName, viewMonth])
 
   function isDisabled(d: Date) {
     const iso = toIso(d)
-    if (overrides.has(iso)) return !overrides.get(iso)
+    if (overrides.get(iso) === false) return true
     return !activeDays.has(d.getDay())
   }
 
