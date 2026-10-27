@@ -10,6 +10,8 @@ import ConfirmationCallSheet from '@/components/calendar/ConfirmationCallSheet'
 import AppointmentStatusChanges from '@/components/calendar/AppointmentStatusChanges'
 import { SchedulingInsights } from '@/components/calendar/SchedulingInsights'
 import { clinicDate } from '@/lib/dashboard-presentation'
+import {useBookingDoctors} from '@/hooks/useDoctorBooking'
+import {canonicalBookingName} from '@/lib/doctor-schedule'
 
 const calendarCache: { key: string; data: any[]; fetchedAt: number } = { key: '', data: [], fetchedAt: 0 }
 const CALENDAR_TTL_MS = 30 * 60 * 1000
@@ -32,6 +34,8 @@ export default function CalendarPage() {
   // entirely client-side (useMemo below) so switching doctors is instant and
   // actually updates the grid, instead of only ever affecting the day panel.
   const [monthRows, setMonthRows] = useState<any[]>([])
+  const {doctors:directory}=useBookingDoctors(true)
+  const canonicalRows=useMemo(()=>monthRows.map(r=>({...r,doctor_service:canonicalBookingName(r.doctor_service||'',directory)})),[monthRows,directory])
   const [loadingGrid, setLoadingGrid] = useState(true)
   const [loadError, setLoadError] = useState('')
 
@@ -84,14 +88,14 @@ export default function CalendarPage() {
   // the dropdown doesn't shrink to just the currently-selected doctor.
   const allDoctors = useMemo(() => {
     const docs = new Set<string>()
-    monthRows.forEach((r: any) => { if (r.doctor_service) docs.add(r.doctor_service) })
+    canonicalRows.forEach((r: any) => { if (r.doctor_service) docs.add(r.doctor_service) })
     return Array.from(docs).sort()
-  }, [monthRows])
+  }, [canonicalRows])
 
   // The set the grid/dashboard actually render from — reacts to doctorFilter
   const filteredRows = useMemo(
-    () => (doctorFilter === 'all' ? monthRows : monthRows.filter((r: any) => r.doctor_service === doctorFilter)),
-    [monthRows, doctorFilter]
+    () => (doctorFilter === 'all' ? canonicalRows : canonicalRows.filter((r: any) => r.doctor_service === doctorFilter)),
+    [canonicalRows, doctorFilter]
   )
 
   function changeMonth(delta: number) {

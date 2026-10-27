@@ -1,6 +1,11 @@
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export type DoctorSession = { day_of_week: number; start_time: string; end_time: string; slot_minutes?: number; is_active?: boolean; doctor_name?: string }
 export type DailyOverride = { is_available: boolean; start_time?: string | null; end_time?: string | null }
+export const bookingDoctorKey = (name: string) => name.replaceAll('–','—').split('—')[0].toLowerCase().replace(/[^a-z0-9]/g,'')
+export function canonicalBookingName(name: string, directory: {name:string;aliases:string[]}[]): string {
+  const key=bookingDoctorKey(name)
+  return directory.find(d=>bookingDoctorKey(d.name)===key||d.aliases.some(a=>bookingDoctorKey(a)===key))?.name || name.trim()
+}
 const minutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m }
 const clock = (value: number) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
 
@@ -45,6 +50,7 @@ export function sessionValidation(sessions: DoctorSession[]): string | null {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(s.start_time) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.end_time)) return 'Enter valid start and end times.'
     if (s.start_time >= s.end_time) return 'Each session must end after it starts.'
     if (!Number.isInteger(s.slot_minutes ?? 15) || (s.slot_minutes ?? 15) < 5 || (s.slot_minutes ?? 15) > 120) return 'Slot length must be 5–120 minutes.'
+    if (minutes(s.end_time)-minutes(s.start_time)<(s.slot_minutes ?? 15)) return 'Each session must contain at least one complete appointment slot.'
   }
   for (let dow = 0; dow < 7; dow++) {
     const day = sessions.filter(s => s.day_of_week === dow && s.is_active !== false).sort((a, b) => a.start_time.localeCompare(b.start_time))

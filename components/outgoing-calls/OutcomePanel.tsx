@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import SearchableSelect from '@/components/SearchableSelect'
+import DoctorDatePicker from '@/components/DoctorDatePicker'
+import { useBookingDoctors, useDoctorBooking, slotLabel } from '@/hooks/useDoctorBooking'
 import { useDropdownOptions } from '@/hooks/useDropdownOptions'
 import { BRANCHES, OUTCOMES, OutcomeCode } from './types'
 
@@ -45,7 +47,8 @@ export default function OutcomePanel({
   const [serviceType, setServiceType] = useState('')
   const [branch, setBranch] = useState(BRANCHES[0])
   const [doctor, setDoctor] = useState('')
-  const [doctors, setDoctors] = useState<{ label: string; value: string }[]>([])
+  const {options:doctors,error:doctorListError}=useBookingDoctors()
+  const booking=useDoctorBooking(doctor,apptDate)
   const [reasonValues, setReasonValues] = useState<string[]>([])
   const [waitDays, setWaitDays] = useState(14)
   const reasonOptions = useDropdownOptions('intake_no_appointment_reason')
@@ -66,12 +69,6 @@ export default function OutcomePanel({
     setReasonValues([])
     setWaitDays(14)
   }, [row?.attempt_id])
-
-  useEffect(() => {
-    supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({ data }) => {
-      setDoctors((data || []).map((d) => ({ label: d.name, value: d.name })))
-    })
-  }, [])
 
   if (!row) {
     return (
@@ -103,6 +100,7 @@ export default function OutcomePanel({
       setErrorMsg('Doctor, date, time, service type, and branch are all required to book an appointment.')
       return
     }
+    if(def.code==='booked_appointment'&&!booking.slots.includes(apptTime)){setErrorMsg('Choose a time within an available doctor session.');return}
     const reasonNote = selected === 'reached' && reasonValues.length > 0
       ? `No appointment reasons: ${reasonValues.join(', ')}`
       : ''
@@ -180,27 +178,19 @@ export default function OutcomePanel({
       {selected === 'booked_appointment' && (
         <div className="space-y-2 border-t border-slate-100 pt-3">
           <div className="text-xs font-medium text-slate-600">Booked Appointment Details</div>
-          <label className="text-xs text-slate-500 block">Doctor *<SearchableSelect options={doctors} value={doctor} onChange={setDoctor} /></label>
+          <label className="text-xs text-slate-500 block">Doctor *<SearchableSelect options={doctors} value={doctor} onChange={value=>{setDoctor(value);setApptDate('');setApptTime('')}} /></label>
           <div className="grid grid-cols-2 gap-2">
             <label className="text-xs text-slate-500">
               Appointment date *
-              <input
-                type="date"
-                className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                value={apptDate}
-                onChange={(e) => setApptDate(e.target.value)}
-              />
+              <DoctorDatePicker doctorName={doctor} value={apptDate} onChange={value=>{setApptDate(value);setApptTime('')}} />
             </label>
             <label className="text-xs text-slate-500">
               Time *
-              <input
-                type="time"
-                className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                value={apptTime}
-                onChange={(e) => setApptTime(e.target.value)}
-              />
+              <select className="input" value={apptTime} onChange={e=>setApptTime(e.target.value)} disabled={booking.loading||!booking.slots.length}><option value="">Select…</option>{booking.slots.map(time=><option key={time} value={time}>{slotLabel(time)}</option>)}</select>
             </label>
           </div>
+          {(doctorListError||booking.note) && <p role="status" className="text-xs text-amber-700">{doctorListError||booking.note}</p>}
+          {booking.error && <button type="button" className="text-xs underline" onClick={booking.refresh}>Retry availability</button>}
           <label className="text-xs text-slate-500 block">Service type *<SearchableSelect options={serviceOptions.options} value={serviceType} onChange={setServiceType} /></label>
           <label className="text-xs text-slate-500 block">
             Branch *

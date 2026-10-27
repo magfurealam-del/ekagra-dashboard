@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { doctorSlots, doctorNameVariants } from '@/lib/doctor-schedule'
+import { useDoctorBooking } from '@/hooks/useDoctorBooking'
 import DoctorDatePicker from '@/components/DoctorDatePicker'
 
 export default function RescheduleModal({
@@ -15,29 +15,11 @@ export default function RescheduleModal({
   const [newDate, setNewDate] = useState(appointment.appointment_date || '')
   const [patientName, setPatientName] = useState(appointment.patient_name || '')
   const [phone, setPhone] = useState(appointment.phone || '')
-  const [slots, setSlots] = useState<string[]>([])
   const [newTime, setNewTime] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [availabilityNote, setAvailabilityNote] = useState<string | null>(null)
-
-  useEffect(() => {
-    setSlots([]); setAvailabilityNote(null)
-    if (!newDate || !appointment.doctor_service) return
-    let cancelled = false
-    const doctorName = appointment.doctor_service, names = doctorNameVariants(doctorName)
-    Promise.all([
-      supabase.from('doctor_schedules').select('*').in('doctor_name', names).eq('is_active', true),
-      supabase.from('doctor_daily_availability').select('*').in('doctor_name', names).eq('avail_date', newDate),
-    ]).then(([schedule, overrides]) => {
-      if (cancelled) return
-      if (schedule.error || overrides.error) { setAvailabilityNote('Could not load availability. Re-select the date to retry.'); return }
-      const override = overrides.data?.find(o => !o.is_available) || overrides.data?.find(o => o.doctor_name === doctorName) || overrides.data?.[0]
-      setSlots(doctorSlots(schedule.data || [], newDate, override))
-      setAvailabilityNote(override?.is_available === false ? 'Doctor unavailable on this date.' : override?.start_time ? 'Reduced hours apply. Breaks between sessions remain unavailable.' : null)
-    })
-    return () => { cancelled = true }
-  }, [newDate, appointment.doctor_service])
+  const booking=useDoctorBooking(appointment.doctor_service || '',newDate)
+  const slots=booking.slots, availabilityNote=booking.note
 
   function formatSlot(t: string) {
     const [h, m] = t.split(':').map(Number)
@@ -121,11 +103,12 @@ export default function RescheduleModal({
           )}
         </label>
 
+        {booking.error && <button type="button" className="text-xs underline" onClick={booking.refresh}>Retry availability</button>}
         {error && <p className="text-xs text-rose-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-3 py-1.5 border border-slate-300 rounded-md text-sm text-slate-600">Cancel</button>
-          <button onClick={submit} disabled={saving} className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-sm font-medium disabled:opacity-50">
+          <button onClick={submit} disabled={saving||booking.loading||!slots.includes(newTime)} className="px-3 py-1.5 bg-teal-600 text-white rounded-md text-sm font-medium disabled:opacity-50">
             {saving ? 'Saving…' : 'Reschedule'}
           </button>
         </div>

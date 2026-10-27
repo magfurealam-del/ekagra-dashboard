@@ -6,7 +6,7 @@
     "postcss": "8.5.31"
   },
   "scripts": {
-    "test:doctor-schedules": "node --experimental-strip-types --test lib/doctor-schedule.test.ts && node scripts/test-doctor-schedules.mjs",
+    "test:doctor-schedules": "node --experimental-strip-types --test lib/doctor-schedule.test.ts && node scripts/test-doctor-schedules.mjs && node scripts/test-doctor-booking.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

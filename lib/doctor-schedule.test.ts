@@ -1,8 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { doctorSlots, parseScheduleCell, parseScheduleCsv, scheduleCell, sessionValidation, uniqueDoctorNames, doctorNameVariants } from './doctor-schedule.ts'
+import { doctorSlots, parseScheduleCell, parseScheduleCsv, scheduleCell, sessionValidation, uniqueDoctorNames, doctorNameVariants, canonicalBookingName } from './doctor-schedule.ts'
 
 const sunday = parseScheduleCell('14:00-16:00;18:00-20:00', 0)
+test('calendar filters resolve confirmed aliases and legacy service suffixes without fuzzy merging',()=>{
+ const directory=[{name:'Dr. Example',aliases:['DR Example,','Dr. Example Longer']},{name:'Dr. Different',aliases:[]}]
+ assert.equal(canonicalBookingName('dr example, — Consultation',directory),'Dr. Example')
+ assert.equal(canonicalBookingName('Dr. Example Longer – Dressing',directory),'Dr. Example')
+ assert.equal(canonicalBookingName('Dr. Different',directory),'Dr. Different')
+ assert.equal(canonicalBookingName('Dr. Similar',directory),'Dr. Similar')
+})
 test('split sessions expose both sessions, never the break or closing time', () => {
   const slots = doctorSlots(sunday, '2026-11-01')
   assert.equal(slots.length, 16)

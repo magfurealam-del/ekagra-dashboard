@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { doctorSlots, doctorNameVariants, uniqueDoctorNames } from '@/lib/doctor-schedule'
+import { useBookingDoctors, useDoctorBooking, slotLabel } from '@/hooks/useDoctorBooking'
 import { withRetry } from '@/lib/withTimeout'
 import { normalizeBdPhone } from '@/lib/phone'
 import SearchableSelect from '@/components/SearchableSelect'
@@ -90,7 +90,7 @@ export default function LeadIntakePage() {
   const [copyLabel, setCopyLabel] = useState('Copy Message')
   const [form, setForm] = useState<any>(blankForm)
 
-  const doctorOpts = useDoctors()
+  const {options:doctorOpts,error:doctorListError} = useBookingDoctors()
   const serviceTypeOpts = useDropdownOptions('service_type')
   const branchOpts = useDropdownOptions('branch')
   const screeningPackagePriceOpts = useDropdownOptions('screening_package_price')
@@ -105,9 +105,10 @@ export default function LeadIntakePage() {
   const intakeOutcomeOpts = useDropdownOptions('intake_outcome')
   const noAppointmentReasonOpts = useDropdownOptions('intake_no_appointment_reason')
   const metaAdOptions = useMetaAdOptions()
-  const timeSlots = useDoctorSlots(form.doctor, form.appointment_date)
-  const doctorAvailabilityNote = useDoctorAvailabilityNote(form.doctor, form.appointment_date)
-  const doctorApptCount = useDoctorApptCount(form.doctor, form.appointment_date)
+  const booking = useDoctorBooking(form.doctor, form.appointment_date)
+  const timeSlots = booking.slots.map(value=>({value,label:slotLabel(value)}))
+  const doctorAvailabilityNote = booking.note
+  const doctorApptCount = booking.count
   const { profile } = useAuth()
   const [refreshingReferenceData, setRefreshingReferenceData] = useState(false)
 
@@ -555,8 +556,9 @@ export default function LeadIntakePage() {
             <div className="border-t border-slate-100 pt-3 space-y-3">
               <p className="text-xs font-medium text-slate-500 uppercase">Appointment details</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {doctorListError && <p role="alert" className="text-sm text-rose-700">{doctorListError}</p>}
                 <Field label="Doctor *">
-                  <SearchableSelect options={doctorOpts} value={form.doctor} onChange={(v) => set('doctor', v)} />
+                  <SearchableSelect options={doctorOpts} value={form.doctor} onChange={(v) => setForm((f:any)=>({...f,doctor:v,appointment_date:'',appointment_time:''}))} />
                 </Field>
                 <Field label="Service type *">
                   <SearchableSelect options={serviceTypeOpts.options} value={form.service_type} onChange={(v) => set('service_type', v)} />
@@ -575,13 +577,14 @@ export default function LeadIntakePage() {
                   <SearchableSelect options={branchOpts.options} value={form.branch} onChange={(v) => set('branch', v)} />
                 </Field>
                 <Field label="Appointment date *">
-                  <DoctorDatePicker doctorName={form.doctor} value={form.appointment_date} onChange={(v) => set('appointment_date', v)} />
+                  <DoctorDatePicker doctorName={form.doctor} value={form.appointment_date} onChange={(v) => setForm((f:any)=>({...f,appointment_date:v,appointment_time:''}))} />
                   {form.doctor && form.appointment_date && doctorApptCount !== null && (
                     <span className="text-xs text-slate-500">
                       {doctorApptCount} appointment{doctorApptCount === 1 ? '' : 's'} already booked that day
                     </span>
                   )}
                 </Field>
+                {booking.error && <button type="button" className="text-xs underline" onClick={booking.refresh}>Retry availability</button>}
                 <Field label="Appointment time *">
                   <SearchableSelect
                     options={timeSlots}
@@ -590,7 +593,7 @@ export default function LeadIntakePage() {
                   />
                   {form.doctor && form.appointment_date && timeSlots.length === 0 && (
                     <span className="text-xs text-rose-600">
-                      {doctorAvailabilityNote || 'No slots configured for this doctor on this day — check Settings.'}
+                      {doctorAvailabilityNote || 'No appointment slots on this day.'}
                     </span>
                   )}
                   {form.doctor && form.appointment_date && timeSlots.length > 0 && doctorAvailabilityNote && (
@@ -712,96 +715,6 @@ function WhatsAppPanel({
       <p className="text-xs text-slate-400">Updates live as you fill in the form. Tap Copy, then paste into WhatsApp.</p>
     </section>
   )
-}
-
-function useDoctorSlots(doctorName: string, dateStr: string): { label: string; value: string }[] {
-  const key = doctorName + ':' + dateStr
-  const [result, setResult] = useState<{key: string; slots: string[]}>({key: '', slots: []})
-  useEffect(() => {
-    if (!doctorName || !dateStr) return
-    let cancelled = false
-    const names = doctorNameVariants(doctorName)
-    Promise.all([
-      supabase.from('doctor_schedules').select('*').in('doctor_name', names).eq('is_active', true),
-      supabase.from('doctor_daily_availability').select('*').in('doctor_name', names).eq('avail_date', dateStr),
-    ]).then(([schedule, overrides]) => {
-      if (cancelled) return
-      if (schedule.error || overrides.error) { setResult({key, slots: []}); return }
-      const override = overrides.data?.find(o => !o.is_available) || overrides.data?.find(o => o.doctor_name === doctorName) || overrides.data?.[0]
-      setResult({key, slots: doctorSlots(schedule.data || [], dateStr, override)})
-    })
-    return () => { cancelled = true }
-  }, [doctorName, dateStr, key])
-  return result.key === key ? result.slots.map(value => {
-    const [h, m] = value.split(':').map(Number)
-    return {value, label: String(h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h >= 12 ? ' pm' : ' am')}
-  }) : []
-}
-
-// Lets agents see how loaded a doctor's day already is before adding another
-// booking — a plain count, not filtered by service type or branch.
-function useDoctorApptCount(doctorName: string, dateStr: string): number | null {
-  const [count, setCount] = useState<number | null>(null)
-  useEffect(() => {
-    if (!doctorName || !dateStr) { setCount(null); return }
-    withRetry(
-      () => supabase.from('crm_appointments').select('id', { count: 'exact', head: true })
-        .eq('doctor_service', doctorName).eq('appointment_date', dateStr).neq('appointment_status', 'Cancelled'),
-      12000, 2,
-    ).then(({ count: c }) => setCount(c ?? 0)).catch(() => setCount(null))
-  }, [doctorName, dateStr])
-  return count
-}
-
-// Companion to useDoctorSlots — surfaces *why* slots are empty when it's a
-// front-desk availability override, rather than the generic "no schedule
-// configured" message.
-function useDoctorAvailabilityNote(doctorName: string, dateStr: string): string | null {
-  const [note, setNote] = useState<string | null>(null)
-  useEffect(() => {
-    if (!doctorName || !dateStr) { setNote(null); return }
-    supabase.from('doctor_daily_availability').select('*').eq('doctor_name', doctorName).eq('avail_date', dateStr).maybeSingle().then(({ data }) => {
-      if (!data) { setNote(null); return }
-      if (!data.is_available) { setNote(`${doctorName} is unavailable on this date${data.note ? ` — ${data.note}` : ''}.`); return }
-      if (data.start_time && data.end_time) {
-        const fmt = (t: string) => { const [h, m] = t.slice(0, 5).split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; const h12 = h % 12 === 0 ? 12 : h % 12; return `${h12}:${String(m).padStart(2, '0')} ${ap}` }
-        setNote(`${doctorName} has reduced hours on this date: ${fmt(data.start_time)} – ${fmt(data.end_time)} only.`)
-      } else {
-        setNote(null)
-      }
-    })
-  }, [doctorName, dateStr])
-  return note
-}
-
-function useDoctors() {
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([])
-  useEffect(() => {
-    const key = 'lead-intake:doctors:v2'
-    const load = () => withRetry(
-      () => supabase.from('doctors').select('name').eq('is_active', true).order('name'),
-      12000, 2,
-    ).then(({ data }) => {
-      if (!data || data.length === 0) return
-      const next = uniqueDoctorNames(data.map((d: any) => d.name)).map(name => ({ label: name, value: name }))
-      setOptions(next)
-      localStorage.setItem(key, JSON.stringify({ options: next, cachedAt: Date.now() }))
-    }).catch(() => {
-      // Leave any existing cached/state options in place; a later refresh will retry.
-    })
-    try {
-      const cached = JSON.parse(localStorage.getItem(key) || 'null')
-      if (Array.isArray(cached?.options) && cached.options.length > 0) setOptions(uniqueDoctorNames(cached.options.map((o: {value: string})=>o.value)).map(name=>({label:name,value:name})))
-    } catch { localStorage.removeItem(key) }
-    load()
-    const now = new Date()
-    const nextSix = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
-    nextSix.setHours(6, 0, 0, 0)
-    if (nextSix <= now) nextSix.setDate(nextSix.getDate() + 1)
-    const timer = window.setTimeout(load, nextSix.getTime() - now.getTime())
-    return () => window.clearTimeout(timer)
-  }, [])
-  return options
 }
 
 function SectionTitle({ n, title }: { n: number; title: string }) {

@@ -1,10 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { WEEKDAYS, type DoctorSession, uniqueDoctorNames, doctorNameVariants, sessionValidation, parseScheduleCsv, scheduleCell } from '@/lib/doctor-schedule'
+import {useBookingDoctors} from '@/hooks/useDoctorBooking'
+import { WEEKDAYS, type DoctorSession, doctorNameVariants, sessionValidation, parseScheduleCsv, scheduleCell } from '@/lib/doctor-schedule'
 
 export default function DoctorSchedulesEditor() {
-  const [doctors, setDoctors] = useState<string[]>([])
+  const {doctors:directory,error:directoryError}=useBookingDoctors(true)
+  const doctors=directory.map(d=>d.name)
   const [doctor, setDoctor] = useState('')
   const [draft, setDraft] = useState<DoctorSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -14,17 +16,7 @@ export default function DoctorSchedulesEditor() {
   const [message, setMessage] = useState('')
   const [reload, setReload] = useState(0)
 
-  useEffect(() => {
-    let cancelled = false
-    supabase.from('doctors').select('name').eq('is_active', true).order('name').then(({data,error}) => {
-      if (cancelled) return
-      if (error) { setError('Could not load doctors. Reload this page to retry.'); setLoading(false); return }
-      const names = uniqueDoctorNames((data || []).map(d => d.name))
-      setDoctors(names); setDoctor(names[0] || '')
-      if (!names.length) setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [])
+  useEffect(()=>{if(!doctor&&directory.length)setDoctor(directory[0].name)},[directory,doctor])
 
   useEffect(() => {
     if (!doctor) return
@@ -64,6 +56,7 @@ export default function DoctorSchedulesEditor() {
     setSaving(false)
     if (error) { setError(error.message); return }
     setDirty(false); setMessage('Schedule saved. Booking times now follow these sessions.')
+    window.dispatchEvent(new Event('ekagra:refresh-reference-data'))
   }
   async function download() {
     const {data,error} = await supabase.from('doctor_schedules').select('*').order('start_time')
@@ -79,18 +72,21 @@ export default function DoctorSchedulesEditor() {
       const {error} = await supabase.rpc('bulk_upsert_doctor_schedules',{p_rows:rows})
       if (error) throw error
       setReload(n=>n+1)
+      window.dispatchEvent(new Event('ekagra:refresh-reference-data'))
     } catch (e) { setError(e instanceof Error ? e.message : String((e as {message?:string}).message || e)) }
     finally { setSaving(false) }
   }
 
   return <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 space-y-5">
     <div><h2 className="font-semibold text-slate-800">Doctor Schedules</h2><p className="mt-1 text-sm text-slate-500">Add separate sessions for each day. Breaks between sessions stay unavailable. All times are Bangladesh time.</p></div>
+    <details className="rounded-lg border border-amber-200 bg-amber-50 p-3"><summary className="cursor-pointer text-sm font-medium">Unavailable for booking ({directory.filter(d=>!d.has_schedule).length})</summary><p className="mt-2 text-xs text-amber-900">Approved weekly hours are required before these entries can be booked.</p><ul className="mt-2 space-y-1 text-xs">{directory.filter(d=>!d.has_schedule).map(d=><li key={d.name}>{d.name} — {d.has_configured_schedule?'All sessions off':'Schedule missing'}</li>)}</ul></details>
     <label className="block text-sm font-medium text-slate-700">Doctor
       <select className="input mt-1" aria-label="Schedule doctor" value={doctor} disabled={saving} onChange={e=>{
         if (dirty && !window.confirm('Discard the unsaved schedule changes?')) return
         setDoctor(e.target.value)
-      }}>{doctors.map(name=><option key={name}>{name}</option>)}</select>
+      }}>{doctors.map(name=><option key={name} value={name}>{name}{directory.find(d=>d.name===name)?.has_schedule?'':' — Unavailable'}</option>)}</select>
     </label>
+    {directoryError && <p role="alert" className="text-sm text-rose-700">{directoryError}</p>}
     {error && <p role="alert" className="rounded-md bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {message && <p role="status" className="rounded-md bg-teal-50 p-3 text-sm text-teal-800">{message}</p>}
     {loading ? <p className="text-sm text-slate-500">Loading schedule…</p> : <fieldset disabled={saving || !doctor || !!error && !dirty} className="min-w-0 divide-y divide-slate-100">
