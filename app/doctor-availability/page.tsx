@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { effectiveSessions } from '@/lib/doctor-schedule'
 import { parallelFetch } from '@/lib/withTimeout'
 import AvailabilityCalendar from '@/components/doctor-availability/AvailabilityCalendar'
 
@@ -147,6 +148,11 @@ export default function DoctorAvailabilityPage() {
     await load()
   }
 
+  const grouped = [...new Set(schedule.map(s => s.doctor_name))].map(name => ({name, sessions: schedule.filter(s => s.doctor_name === name).sort((a,b)=>a.start_time.localeCompare(b.start_time))}))
+  const timeline = grouped.flatMap(g => {
+    const rows = effectiveSessions(g.sessions.map(s=>({...s,day_of_week:dow})),overrides[g.name])
+    return rows.length ? rows.map((s,i)=>({name:g.name + (rows.length>1 ? ' · Session '+(i+1) : ''),start:s.start_time,end:s.end_time,available:true})) : [{name:g.name,start:g.sessions[0].start_time,end:g.sessions[0].end_time,available:false}]
+  })
   const formattedDate = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 
   return (
@@ -173,7 +179,7 @@ export default function DoctorAvailabilityPage() {
         )}
       </div>
 
-      {!loading && !loadError && schedule.length > 0 && <AvailabilityTimeline rows={schedule.map(s => ({ name: s.doctor_name, start: overrides[s.doctor_name]?.start_time || s.start_time, end: overrides[s.doctor_name]?.end_time || s.end_time, available: overrides[s.doctor_name]?.is_available ?? true }))} />}
+      {!loading && !loadError && schedule.length > 0 && <AvailabilityTimeline rows={timeline} />}
       {loadError ? (<div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}<button className="ml-3 min-h-10 underline" onClick={load}>Retry availability</button></div>) : loading ? (
         <div className="space-y-2">
           {[0, 1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}
@@ -182,18 +188,12 @@ export default function DoctorAvailabilityPage() {
         <p className="text-sm text-slate-400">No doctors have {DAY_NAMES[dow]} hours in their normal schedule.</p>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
-          {schedule.map(s => (
-            <DoctorRow
-              key={s.doctor_name}
-              doctorName={s.doctor_name}
-              normalStart={s.start_time}
-              normalEnd={s.end_time}
-              override={overrides[s.doctor_name] || null}
-              onToggle={(next) => toggleAvailable(s.doctor_name, next)}
-              onSaveHours={(start, end) => saveHours(s.doctor_name, start, end)}
-              onSaveNote={(note) => saveNote(s.doctor_name, note)}
-              onReset={() => resetToNormal(s.doctor_name)}
-            />
+          {grouped.map(g => (
+            <DoctorRow key={g.name + dateIso + (overrides[g.name]?.updated_at || '')}
+              doctorName={g.name} normalStart={g.sessions[0].start_time} normalEnd={g.sessions[g.sessions.length-1].end_time}
+              normalSessions={g.sessions} override={overrides[g.name] || null}
+              onToggle={next=>toggleAvailable(g.name,next)} onSaveHours={(start,end)=>saveHours(g.name,start,end)}
+              onSaveNote={note=>saveNote(g.name,note)} onReset={()=>resetToNormal(g.name)} />
           ))}
         </div>
       )}
@@ -224,11 +224,12 @@ export default function DoctorAvailabilityPage() {
 }
 
 function DoctorRow({
-  doctorName, normalStart, normalEnd, override, onToggle, onSaveHours, onSaveNote, onReset,
+  doctorName, normalStart, normalEnd, normalSessions, override, onToggle, onSaveHours, onSaveNote, onReset,
 }: {
   doctorName: string
   normalStart: string
   normalEnd: string
+  normalSessions: {start_time: string; end_time: string}[]
   override: OverrideRow | null
   onToggle: (next: boolean) => void
   onSaveHours: (start: string, end: string) => void
@@ -247,7 +248,7 @@ function DoctorRow({
       <div className="min-w-[220px] flex-1">
         <div className="font-medium text-sm text-slate-800">{doctorName}</div>
         <div className="text-xs text-slate-400">
-          Normal hours: {fmtTime(normalStart)} – {fmtTime(normalEnd)}
+          Normal hours: {normalSessions.map(s=>fmtTime(s.start_time)+' – '+fmtTime(s.end_time)).join(' and ')}
         </div>
         {!isOverridden && (
           <div className="text-[11px] text-emerald-600 mt-0.5">Confirmed normal hours — no change recorded</div>
@@ -255,8 +256,8 @@ function DoctorRow({
         {isOverridden && (
           <div className="text-[11px] text-sky-600 mt-0.5">
             {isAvailable
-              ? hasCustomHours ? `Custom hours tomorrow: ${fmtTime(override!.start_time)} – ${fmtTime(override!.end_time)}` : 'Confirmed — normal hours'
-              : 'Marked unavailable tomorrow'}
+              ? hasCustomHours ? `Reduced hours: ${fmtTime(override!.start_time)} – ${fmtTime(override!.end_time)}` : 'Confirmed — normal hours'
+              : 'Marked unavailable on this date'}
             {override?.updated_by ? ` · changed by ${override.updated_by}${override.updated_at ? ` on ${new Date(override.updated_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}` : ''}
           </div>
         )}
@@ -285,7 +286,7 @@ function DoctorRow({
           <button
             onClick={() => onSaveHours(start, end)}
             className="text-xs px-2 py-1 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50"
-            title="Save custom hours for tomorrow only"
+            title="Restrict sessions to these hours on the selected date; breaks stay closed"
           >
             Save hours
           </button>

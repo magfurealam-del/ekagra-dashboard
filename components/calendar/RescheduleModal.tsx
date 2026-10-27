@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { doctorSlots, doctorNameVariants } from '@/lib/doctor-schedule'
 import DoctorDatePicker from '@/components/DoctorDatePicker'
 
 export default function RescheduleModal({
@@ -21,46 +22,21 @@ export default function RescheduleModal({
   const [availabilityNote, setAvailabilityNote] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!newDate || !appointment.doctor_service) { setSlots([]); setAvailabilityNote(null); return }
-    const doctorName = appointment.doctor_service
+    setSlots([]); setAvailabilityNote(null)
+    if (!newDate || !appointment.doctor_service) return
+    let cancelled = false
+    const doctorName = appointment.doctor_service, names = doctorNameVariants(doctorName)
     Promise.all([
-      supabase.from('doctor_schedules').select('*').eq('doctor_name', doctorName).eq('is_active', true),
-      // Front-desk daily override, checked live so rescheduling always
-      // reflects the current on-duty state, not a stale cached schedule.
-      supabase.from('doctor_daily_availability').select('*').eq('doctor_name', doctorName).eq('avail_date', newDate).maybeSingle(),
-    ]).then(([{ data }, { data: override }]) => {
-      if (override && !override.is_available) {
-        setSlots([])
-        setAvailabilityNote(`${doctorName} is unavailable on this date${override.note ? ` — ${override.note}` : ''}.`)
-        return
-      }
-
-      const dow = new Date(newDate + 'T00:00:00').getDay()
-      const day = (data || []).find((s: any) => s.day_of_week === dow)
-      if (!day) { setSlots([]); setAvailabilityNote(null); return }
-
-      let [sh, sm] = day.start_time.slice(0, 5).split(':').map(Number)
-      let [eh, em] = day.end_time.slice(0, 5).split(':').map(Number)
-      if (override?.is_available && override.start_time && override.end_time) {
-        ;[sh, sm] = override.start_time.slice(0, 5).split(':').map(Number)
-        ;[eh, em] = override.end_time.slice(0, 5).split(':').map(Number)
-        setAvailabilityNote(`${doctorName} has reduced hours on this date: ${formatSlot(override.start_time)} – ${formatSlot(override.end_time)} only.`)
-      } else {
-        setAvailabilityNote(null)
-      }
-
-      const step = day.slot_minutes || 15
-      const list: string[] = []
-      let mins = sh * 60 + sm
-      const endMins = eh * 60 + em
-      while (mins < endMins) {
-        const h = Math.floor(mins / 60)
-        const m = mins % 60
-        list.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-        mins += step
-      }
-      setSlots(list)
+      supabase.from('doctor_schedules').select('*').in('doctor_name', names).eq('is_active', true),
+      supabase.from('doctor_daily_availability').select('*').in('doctor_name', names).eq('avail_date', newDate),
+    ]).then(([schedule, overrides]) => {
+      if (cancelled) return
+      if (schedule.error || overrides.error) { setAvailabilityNote('Could not load availability. Re-select the date to retry.'); return }
+      const override = overrides.data?.find(o => !o.is_available) || overrides.data?.find(o => o.doctor_name === doctorName) || overrides.data?.[0]
+      setSlots(doctorSlots(schedule.data || [], newDate, override))
+      setAvailabilityNote(override?.is_available === false ? 'Doctor unavailable on this date.' : override?.start_time ? 'Reduced hours apply. Breaks between sessions remain unavailable.' : null)
     })
+    return () => { cancelled = true }
   }, [newDate, appointment.doctor_service])
 
   function formatSlot(t: string) {
@@ -72,7 +48,7 @@ export default function RescheduleModal({
   }
 
   async function submit() {
-    if (!newDate || !newTime) { setError('Pick a new date and time.'); return }
+    if (!newDate || !newTime || !slots.includes(newTime)) { setError('Pick a time within an available session.'); return }
     setSaving(true)
     setError('')
     const { error: patientError } = await supabase.rpc('link_or_update_appointment_patient', {
