@@ -55,6 +55,18 @@ try{
  await assert.rejects(()=>db.query("SELECT reschedule_appointment($1,'2026-11-01','18:15')",[appt]),/already/)
  assert.equal((await context('Dr. Example')).days[0].appointment_count,1,'rescheduled originals excluded')
  await book('Unmapped imported doctor','17:00','legacy_import')
+ // The calendar view must warn about aliases and weekly closures without flagging historical visits.
+ await db.exec(`CREATE TABLE patients(id integer PRIMARY KEY,full_name text,phone_e164 text,area text,hn text,hospital_patient_id text,patient_type text,updated_by text,updated_at timestamptz);
+ CREATE TABLE crm_leads(id bigint PRIMARY KEY,lead_name text,phone text,phone_normalized text);
+ CREATE TABLE appointment_confirmation_calls(appointment_id bigint,call_type text,outcome text,agent_name text,called_at timestamptz);
+ ALTER TABLE crm_appointments ADD COLUMN night_before_status text,ADD COLUMN morning_of_status text,ADD COLUMN updated_by text;`)
+ await db.exec(await readFile(new URL('../supabase/migrations/20261027164331_doctor_availability_conflict_consistency.sql',import.meta.url),'utf8'))
+ const futureSunday=await value("SELECT (current_date+7+(7-extract(dow FROM current_date)::int)%7)::text value")
+ await db.query("INSERT INTO crm_appointments(doctor_service,appointment_date,appointment_time,source_system) VALUES('Dr Example — Consultation',$1,'14:00','legacy_import'),('Dr Example — Consultation',$1,'17:00','legacy_import'),('Dr Example — Consultation','2000-01-01','17:00','legacy_import')",[futureSunday])
+ assert.equal(await value('SELECT count(*)::int value FROM calendar_appointment_detail WHERE appointment_date=$1 AND doctor_availability_conflict IS NOT NULL',[futureSunday]),1)
+ await db.query("SELECT set_doctor_daily_availability('Dr. Example',$1,false,NULL,NULL)",[futureSunday])
+ assert.equal(await value('SELECT count(*)::int value FROM calendar_appointment_detail WHERE appointment_date=$1 AND doctor_availability_conflict IS NOT NULL',[futureSunday]),2)
+ assert.equal(await value("SELECT count(*)::int value FROM calendar_appointment_detail WHERE appointment_date='2000-01-01' AND doctor_availability_conflict IS NOT NULL"),0)
  await db.exec("SET test.auth='false'")
  await assert.rejects(()=>context('Dr. Example'),/staff/)
  await assert.rejects(()=>value('SELECT get_doctor_booking_directory() value'),/staff/)
