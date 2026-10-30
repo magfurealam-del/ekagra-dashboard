@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useClinicDay } from "@/hooks/useClinicDay";
 import { ExecutiveHeader } from "@/components/admin/ExecutiveHeader";
 import { DecisionPanels } from "@/components/admin/DecisionPanels";
+import { DoctorPatients } from "@/components/admin/DoctorPatients";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   clinicDate,
@@ -33,6 +34,7 @@ export default function AdminDashboardPage() {
   }, [authLoading, profile, isAdmin, router]);
 
   const [tab, setTab] = useState<Tab>("overview");
+  const isDoctorReport = tab === "doctor_patients";
   const [rangeKey, setRangeKey] = useState<RangeKey>("month");
   const [customStart, setCustomStart] = useState(
     () => `${clinicDate().slice(0, 7)}-01`,
@@ -41,8 +43,15 @@ export default function AdminDashboardPage() {
   const [compare, setCompare] = useState(true);
   const { day, refreshDay } = useClinicDay();
   const { start, end } = useMemo(
-    () => rangeFor(rangeKey, customStart, customEnd, new Date(`${day}T12:00:00+06:00`)),
-    [rangeKey, customStart, customEnd, day],
+    () => {
+      const range = rangeFor(rangeKey, customStart, customEnd, new Date(`${day}T12:00:00+06:00`));
+      if (isDoctorReport && rangeKey === "month") {
+        const [year, month] = day.split("-").map(Number);
+        range.end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+      }
+      return range;
+    },
+    [rangeKey, customStart, customEnd, day, isDoctorReport],
   );
   const rangeValid = validRange(start, end);
   const prevRange = useMemo(
@@ -75,7 +84,7 @@ export default function AdminDashboardPage() {
     null,
   );
   useEffect(() => {
-    if (!isAdmin || !rangeValid) return;
+    if (!isAdmin || !rangeValid || isDoctorReport) return;
     let cancelled = false;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 20000);
@@ -132,7 +141,7 @@ export default function AdminDashboardPage() {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [start, end, compare, isAdmin, profile?.id, rangeValid, reloadKey]);
+  }, [start, end, compare, isAdmin, profile?.id, rangeValid, reloadKey, isDoctorReport]);
 
   function reloadSnapshot() {
     refreshDay();
@@ -176,12 +185,13 @@ export default function AdminDashboardPage() {
         compare={compare}
         setCompare={setCompare}
         refreshedAt={refreshedAt}
-        loading={loading}
+        loading={isDoctorReport ? false : loading}
         reload={reloadSnapshot}
         tab={tab}
         setTab={selectTab}
       />
-      {compare && rangeValid && (
+      {isDoctorReport && rangeValid && <DoctorPatients key={`${start}:${end}:${profile?.id}`} start={start} end={end} reloadKey={reloadKey} />}
+      {!isDoctorReport && compare && rangeValid && (
         <p className="text-xs text-slate-600">
           Comparing with {prevRange.start} – {prevRange.end} (equal-length prior
           period).
@@ -201,7 +211,7 @@ export default function AdminDashboardPage() {
             " No comparison is available; changes are not estimated."}
         </p>
       )}
-      {rangeValid && !loading && metrics && reconciliation && (
+      {!isDoctorReport && rangeValid && !loading && metrics && reconciliation && (
         <div
           className={`rounded-lg border p-3 text-xs leading-relaxed ${reconciliation.pending ? "border-amber-200 bg-amber-50 text-amber-900" : "bg-white text-slate-600"}`}
           role="status"
@@ -226,7 +236,7 @@ export default function AdminDashboardPage() {
           )}
         </div>
       )}
-      {error && (
+      {!isDoctorReport && error && (
         <div
           role="alert"
           className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"
@@ -234,7 +244,7 @@ export default function AdminDashboardPage() {
           {error}
         </div>
       )}
-      {!rangeValid || error ? null : loading ? (
+      {isDoctorReport || !rangeValid || error ? null : loading ? (
         <div role="status" aria-label="Loading dashboard" className="space-y-5">
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
