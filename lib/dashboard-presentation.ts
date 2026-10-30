@@ -2,6 +2,7 @@ export type RangeKey = 'today' | '7d' | '30d' | 'month' | 'custom'
 export type DashboardTab =
   | 'overview'
   | 'agents'
+  | 'doctor_patients'
   | 'channels'
   | 'funnel'
   | 'revenue'
@@ -11,6 +12,7 @@ export type DashboardTab =
 export const DASHBOARD_TABS: { key: DashboardTab; label: string }[] = [
   { key: 'overview', label: 'Executive overview' },
   { key: 'agents', label: 'Team performance' },
+  { key: 'doctor_patients', label: 'Doctor patients' },
   { key: 'channels', label: 'Acquisition' },
   { key: 'funnel', label: 'Follow-ups' },
   { key: 'revenue', label: 'Revenue' },

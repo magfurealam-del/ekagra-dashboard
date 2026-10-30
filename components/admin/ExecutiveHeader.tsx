@@ -112,7 +112,7 @@ export function ExecutiveHeader({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="flex min-h-10 cursor-pointer items-center gap-2 text-slate-600">
+          {tab !== 'doctor_patients' && <label className="flex min-h-10 cursor-pointer items-center gap-2 text-slate-600">
             <input
               type="checkbox"
               className="size-4 accent-teal-700"
@@ -120,7 +120,7 @@ export function ExecutiveHeader({
               onChange={(event) => setCompare(event.target.checked)}
             />
             Compare periods
-          </label>
+          </label>}
           <Button
             variant="ghost"
             className="h-10"
@@ -170,7 +170,7 @@ export function ExecutiveHeader({
             : 'Select a reporting period'}{' '}
           <span className="text-slate-400">·</span> Bangladesh date presets
         </span>
-        <span className="flex flex-wrap items-center gap-2">
+        {tab !== 'doctor_patients' && <span className="flex flex-wrap items-center gap-2">
           <Clock3 className="size-3.5" />
           <span>
             {refreshedAt && validRange(start, end)
@@ -187,7 +187,7 @@ export function ExecutiveHeader({
           >
             {loading ? 'Loading report' : !refreshedAt || !validRange(start, end) ? 'No report loaded' : age === 'stale' ? 'Over 26 hours old' : 'Consistent read'}
           </Badge>
-        </span>
+        </span>}
       </div>
       <label className="block text-xs font-medium text-slate-600 sm:hidden">
         Dashboard section

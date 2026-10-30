@@ -22,6 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:doctor-schedules
+      - run: npm run test:doctor-patients
       - run: npm run test:dashboard
       - run: npm run test:dashboard:sql
       - run: npm run test:publication-recovery
