@@ -114,5 +114,29 @@ try {
   await assert.rejects(()=>read(),/administrator/)
   const security=(await db.query("SELECT prosecdef,has_function_privilege('anon','get_doctor_patient_report_v2(date,date)','execute') anon FROM pg_proc WHERE proname='get_doctor_patient_report_v2'")).rows[0]
   assert.equal(security.prosecdef,false);assert.equal(security.anon,false)
+  await db.exec(`CREATE FUNCTION public.is_active_staff() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path=public SET row_security=off AS $$SELECT EXISTS(SELECT 1 FROM user_profiles WHERE id=auth.uid() AND is_active)$$;
+    ALTER TABLE invoices ENABLE ROW LEVEL SECURITY; ALTER TABLE invoice_line_items ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY active_staff_read_invoices ON invoices FOR SELECT TO authenticated USING(is_active_staff());
+    CREATE POLICY active_staff_read_invoice_line_items ON invoice_line_items FOR SELECT TO authenticated USING(is_active_staff());
+    GRANT SELECT ON invoices,invoice_line_items TO authenticated,anon; GRANT USAGE ON SCHEMA auth TO authenticated,anon;`)
+  const policyVisibility=async()=>{
+    const counts=[]
+    for(const [role,uid,active] of [
+      ['authenticated','00000000-0000-0000-0000-000000000001',true],
+      ['authenticated','00000000-0000-0000-0000-000000000001',false],
+      ['authenticated','00000000-0000-0000-0000-000000000099',true],
+      ['anon','',true],
+    ]) {
+      await db.exec(`RESET ROLE; UPDATE user_profiles SET is_active=${active}; SET test.uid='${uid}'; SET ROLE ${role};`)
+      counts.push((await db.query('SELECT (SELECT count(*)::int FROM invoices) invoices,(SELECT count(*)::int FROM invoice_line_items) lines')).rows[0])
+    }
+    await db.exec('RESET ROLE')
+    return counts
+  }
+  const beforePolicy=await policyVisibility()
+  await db.exec(await readFile(new URL('../supabase/migrations/20261030142040_invoice_read_policy_initplan.sql',import.meta.url),'utf8'))
+  assert.deepEqual(await policyVisibility(),beforePolicy,'policy optimization preserves active/inactive/unknown/anonymous visibility')
+  assert.deepEqual(beforePolicy,[{invoices:1,lines:1},{invoices:0,lines:0},{invoices:0,lines:0},{invoices:0,lines:0}])
   console.log('Doctor patient SQL tests passed: statuses, confirmations, reschedule chains, canonical names, date boundaries, decline deduplication, legacy evidence, empty periods and administrator authorization.')
 } finally {await db.close()}
