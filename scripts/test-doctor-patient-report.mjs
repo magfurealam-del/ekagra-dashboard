@@ -38,6 +38,8 @@ try {
   const original=await read()
   await db.exec(await readFile(new URL('../supabase/migrations/20261030134641_doctor_patient_report_performance.sql',import.meta.url),'utf8'))
   assert.deepEqual((await read()).records,original.records,'performance changes preserve every report record')
+  await db.exec(await readFile(new URL('../supabase/migrations/20261030134936_doctor_patient_report_source_reads.sql',import.meta.url),'utf8'))
+  assert.deepEqual((await read()).records,original.records,'source materialization preserves every report record')
   let r=await read()
   assert.equal(r.records.filter(x=>x.kind==='appointment').length,7)
   assert.equal(r.records.find(x=>x.appointment_id===1).status,'Confirmed')
