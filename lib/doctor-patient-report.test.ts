@@ -10,6 +10,7 @@ test('repeat appointments and declines do not inflate distinct identity totals',
   assert.equal(filterDoctorPatients(rows,'Dr. Example','Not interested','h001').length,1)
   assert.equal(filterDoctorPatients(rows,'Dr. Other','','').length,0)
   assert.equal(filterDoctorPatients(rows,'','Completed','synthetic').length,1)
+  assert.equal(filterDoctorPatients(rows,'','Not interested','call:1').length,1)
   assert.equal(filterDoctorPatients(rows,'','','').length,2)
 })
 test('CSV includes complete evidence and neutralizes spreadsheet formulas',()=>{

@@ -23,7 +23,7 @@ export function filterDoctorPatients(records: DoctorPatientRecord[], doctor: str
   const term = search.trim().toLocaleLowerCase()
   return records.filter(r => (!doctor || r.doctor === doctor)
     && (status === 'Not interested' ? r.kind === 'not_interested' : r.kind === 'appointment' && (!status || r.status === status))
-    && (!term || [r.patient_name,r.phone,r.hospital_patient_id,r.hn,r.appointment_id,r.lead_id].some(v => String(v ?? '').toLocaleLowerCase().includes(term))))
+    && (!term || [r.patient_name,r.phone,r.hospital_patient_id,r.hn,r.record_id,r.appointment_id,r.lead_id].some(v => String(v ?? '').toLocaleLowerCase().includes(term))))
 }
 export function doctorReportCsv(records: DoctorPatientRecord[]) {
   const cell = (v: unknown) => {
