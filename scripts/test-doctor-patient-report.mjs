@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import {PGlite} from '@electric-sql/pglite'
 const db=new PGlite()
 const migration=await readFile(new URL('../supabase/migrations/20261030133624_doctor_patient_report.sql',import.meta.url),'utf8')
-const read=async(start='2026-10-01',end='2026-10-31')=>(await db.query('SELECT get_doctor_patient_report($1,$2) r',[start,end])).rows[0].r
+let reportFunction='get_doctor_patient_report'
+const read=async(start='2026-10-01',end='2026-10-31')=>(await db.query(`SELECT ${reportFunction}($1,$2) r`,[start,end])).rows[0].r
 try {
   await db.exec(`CREATE SCHEMA auth;CREATE SCHEMA mis_internal;CREATE ROLE anon;CREATE ROLE authenticated;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;
@@ -55,13 +56,63 @@ try {
   assert.equal((await read('2000-01-01','2000-01-31')).records.length,0)
   await assert.rejects(()=>read('2026-10-31','2026-10-01'),/valid period/)
   await assert.rejects(()=>read('2020-01-01','2026-10-31'),/366/)
+  await db.exec(`CREATE TABLE invoice_line_items(invoice_id bigint,category_name text,item_type text,particulars text,needs_review boolean);
+    INSERT INTO invoices(id,invoice_no,patient_id,invoice_date,consultant_name_raw,source_system,invoice_status,reconciliation_status,needs_review,net_bill,total_refund,invoice_type)
+    VALUES(100,'TEST-MIS-100',1,'2026-10-02','Dr Example','mis_report','final','matched',false,500,0,'opd');
+    INSERT INTO invoice_line_items VALUES(100,'OPD SERVICES','service','Consultation',false);
+    UPDATE crm_appointments SET visit_verified=true,matched_invoice_id=999 WHERE id=3;`)
+  await db.exec(await readFile(new URL('../supabase/migrations/20261030140111_doctor_patient_mis_visit_evidence.sql',import.meta.url),'utf8'))
+  reportFunction='get_doctor_patient_report_v2'
+  const originalMis=(await read()).records
+  await db.exec(await readFile(new URL('../supabase/migrations/20261030140855_doctor_patient_mis_evidence_reads.sql',import.meta.url),'utf8'))
+  assert.deepEqual((await read()).records,originalMis,'MIS source optimization preserves all evidence')
+  const appointment=async id=>(await read()).records.find(r=>r.appointment_id===id)
+  r=await read()
+  assert.equal(r.version,2)
+  assert.equal(r.mis_coverage.latest_invoice_date,'2026-10-02')
+  assert.equal((await appointment(1)).status,'Booked','a phone response never confirms a completed visit')
+  assert.equal((await appointment(2)).status,'Confirmed visit')
+  assert.equal((await appointment(2)).mis_invoices[0].number,'TEST-MIS-100')
+  assert.equal((await appointment(3)).mis_visit_confirmed,false,'legacy flags alone are not evidence')
+  assert.equal((await appointment(5)).status,'Booked')
+  assert.equal((await appointment(2)).pre_visit_response,'Response recorded')
+  for(const [column,bad,good] of [
+    ['patient_id',2,1],['invoice_date','2026-10-01','2026-10-02'],
+    ['consultant_name_raw','Unrelated doctor','Dr Example'],['source_system','manual','mis_report'],
+    ['invoice_status','void','final'],['reconciliation_status','unmatched','matched'],
+    ['needs_review',true,false],['net_bill',0,500],['total_refund',500,0],
+    ['invoice_type','pharmacy','opd'],['invoice_type','pathology','opd'],['invoice_type','refund','opd'],
+  ]) {
+    await db.query(`UPDATE invoices SET ${column}=$1 WHERE id=100`,[bad])
+    const row=await appointment(2)
+    assert.equal(row.mis_visit_confirmed,false,column)
+    assert.equal(row.status,'Completion reported',column)
+    assert.deepEqual(row.mis_invoices,[],column)
+    await db.query(`UPDATE invoices SET ${column}=$1 WHERE id=100`,[good])
+  }
+  await db.exec("UPDATE invoice_line_items SET category_name='PHARMACY',item_type='medicine',particulars='Medicine'")
+  assert.equal((await appointment(2)).mis_visit_confirmed,false,'pharmacy-only invoice lines do not prove a doctor visit')
+  await db.exec("UPDATE invoice_line_items SET category_name='OPD SERVICES',item_type='service',particulars='Consultation',needs_review=true")
+  assert.equal((await appointment(2)).mis_visit_confirmed,false,'unreviewed clinical evidence is rejected')
+  await db.exec("UPDATE invoice_line_items SET needs_review=false")
+  for(const status of ['Booked','No-show','Cancelled','Rescheduled']) {
+    await db.query('UPDATE crm_appointments SET appointment_status=$1 WHERE id=2',[status])
+    assert.equal((await appointment(2)).status,'Review required','invoice versus CRM outcome conflict')
+  }
+  await db.exec("UPDATE crm_appointments SET appointment_status='Completed' WHERE id=2; INSERT INTO crm_appointments(id,patient_id,doctor_service,appointment_date,appointment_status) VALUES(99,1,'Dr. Example','2026-10-02','Completed')")
+  assert.equal((await appointment(2)).status,'Review required','one encounter cannot prove multiple appointment records')
+  assert.equal((await appointment(99)).mis_visit_confirmed,false)
+  await db.exec("DELETE FROM crm_appointments WHERE id=99; UPDATE crm_leads SET patient_id=2 WHERE id=1")
+  assert.equal((await appointment(2)).status,'Review required','conflicting linked identities are rejected')
+  await db.exec("UPDATE crm_leads SET patient_id=1 WHERE id=1")
+  assert.equal((await appointment(2)).status,'Confirmed visit')
   await db.exec("UPDATE user_profiles SET role='call_center_agent'")
   await assert.rejects(()=>read(),/administrator/)
   await db.exec("UPDATE user_profiles SET role='admin',is_active=false")
   await assert.rejects(()=>read(),/administrator/)
   await db.exec("UPDATE user_profiles SET is_active=true;SET test.uid=''")
   await assert.rejects(()=>read(),/administrator/)
-  const security=(await db.query("SELECT prosecdef,has_function_privilege('anon','get_doctor_patient_report(date,date)','execute') anon FROM pg_proc WHERE proname='get_doctor_patient_report'")).rows[0]
+  const security=(await db.query("SELECT prosecdef,has_function_privilege('anon','get_doctor_patient_report_v2(date,date)','execute') anon FROM pg_proc WHERE proname='get_doctor_patient_report_v2'")).rows[0]
   assert.equal(security.prosecdef,false);assert.equal(security.anon,false)
   console.log('Doctor patient SQL tests passed: statuses, confirmations, reschedule chains, canonical names, date boundaries, decline deduplication, legacy evidence, empty periods and administrator authorization.')
 } finally {await db.close()}
