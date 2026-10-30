@@ -35,6 +35,9 @@ try {
     INSERT INTO outgoing_call_attempts(id,queue_id,outcome_code,called_at) VALUES(1,1,'not_interested','2026-10-04');
     INSERT INTO crm_leads(id,lead_name,lead_status,created_at) VALUES(3,'Legacy','Not Interested','2026-10-06');`)
   await db.exec(migration)
+  const original=await read()
+  await db.exec(await readFile(new URL('../supabase/migrations/20261030134641_doctor_patient_report_performance.sql',import.meta.url),'utf8'))
+  assert.deepEqual((await read()).records,original.records,'performance changes preserve every report record')
   let r=await read()
   assert.equal(r.records.filter(x=>x.kind==='appointment').length,7)
   assert.equal(r.records.find(x=>x.appointment_id===1).status,'Confirmed')
