@@ -230,7 +230,8 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       const result = await finalizeResponse.json()
       if (!finalizeResponse.ok) throw new Error(result.error ?? 'CSV could not be staged.')
 
-      setStatus(`${result.duplicate ? 'Existing source receipt resumed. ' : ''}Upload ${result.state}: ${result.sourceRowCount ?? 0} source rows staged to MIS source${result.rejectedRowCount ? `, ${result.rejectedRowCount} rows need review` : ''}.${result.validationSummary?.length ? ` Validation issues: ${result.validationSummary.map((item: { issue: string; count: number }) => `${item.issue} (${item.count})`).join(', ')}.` : ''} Reconciliation must be queued separately.`)
+      const hasIssues = result.rejectedRowCount > 0
+      setStatus(`${result.duplicate ? 'Existing source receipt resumed. ' : ''}Upload ${result.state}: ${result.sourceRowCount ?? 0} source rows staged.${result.rejectedRowCount ? ` ${result.rejectedRowCount} rows need review — reconciliation not queued (fix validation issues first).` : ' Reconciliation queued; MIS tables will update in chunks.'}${result.validationSummary?.length ? ` Validation issues: ${result.validationSummary.map((item: { issue: string; count: number }) => `${item.issue} (${item.count})`).join(', ')}.` : ''}`)
       setFile(null)
       const input = document.getElementById('mis-upload-file') as HTMLInputElement | null
       if (input) input.value = ''
@@ -264,7 +265,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Upload source file</h2>
-        <p className="mt-1 text-sm text-slate-600">CSV only · UTF-8 · up to 20 MiB · approved 32-column MIS export. Upload stages rows into the MIS source only — reconciliation runs separately.</p>
+        <p className="mt-1 text-sm text-slate-600">CSV only · UTF-8 · up to 20 MiB · approved 32-column MIS export. A clean upload automatically queues reconciliation and begins updating MIS tables in chunks.</p>
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end">
           <label className="flex-1 text-sm font-medium text-slate-700" htmlFor="mis-upload-file">
             MIS CSV file

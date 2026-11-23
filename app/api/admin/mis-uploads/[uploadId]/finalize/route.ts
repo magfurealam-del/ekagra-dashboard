@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import {
   MIS_CSV_NORMALIZATION_VERSION,
   MIS_CSV_PARSER_VERSION,
@@ -7,6 +7,7 @@ import {
   MisCsvParseError,
 } from '@/lib/mis-upload/parser'
 import { BUCKET, jsonError, requireActiveAdmin, uploadsEnabled } from '@/lib/server/mis-upload-admin'
+import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -116,13 +117,18 @@ export async function POST(request: Request, context: RouteContext) {
     if (error) return jsonError('Some source rows could not be staged. The upload is retained and can be retried.', 503)
   }
 
+  const enqueue = ingestionEnabled() && parsed.issues.length === 0
   const { data: sealed, error: sealError } = await access.admin.rpc('complete_mis_upload', {
     p_actor_id: access.actorId,
     p_attempt_id: attemptId,
     p_parse_id: ingest.parseId,
-    p_enqueue: false,
+    p_enqueue: enqueue,
   })
   if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
+
+  if (enqueue && sealed.pipeline) {
+    after(async () => { try { await runMisGateway() } catch { console.error('MIS worker deferred; durable queue retained') } })
+  }
 
   const issueCounts = parsed.issues.reduce<Record<string, number>>((counts, issue) => {
     const key = `${issue.field}:${issue.code}`
