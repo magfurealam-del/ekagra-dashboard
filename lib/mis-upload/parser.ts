@@ -177,12 +177,11 @@ export function parseMisCsv(
   input: Uint8Array,
   options: { referenceYear?: number } = {},
 ): ParsedMisCsv {
-  const candidateReferenceYear = options.referenceYear
+  const candidateReferenceYear = options.referenceYear ?? new Date().getFullYear()
   if (input.byteLength > MAX_MIS_CSV_BYTES) {
     throw new MisCsvParseError('CSV exceeds the 20 MiB intake limit.', 'file_too_large')
   }
-  if (typeof candidateReferenceYear !== 'number' ||
-    !Number.isInteger(candidateReferenceYear) ||
+  if (!Number.isInteger(candidateReferenceYear) ||
     candidateReferenceYear < 1890 ||
     candidateReferenceYear > 2200) {
     throw new MisCsvParseError('Reference year is outside the supported range.', 'invalid_reference_year')
@@ -228,7 +227,7 @@ export function parseMisCsv(
     throw new MisCsvParseError('CSV exceeds the 50,000 record intake limit.', 'too_many_rows')
   }
 
-  const referenceYear = candidateReferenceYear ?? new Date().getFullYear()
+  const referenceYear = candidateReferenceYear
   const headerSha256 = sha256(JSON.stringify(canonicalHeaders))
   const rowset = createHash('sha256')
   const rows: ParsedMisRow[] = []

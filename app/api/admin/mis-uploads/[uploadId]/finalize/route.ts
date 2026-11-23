@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { after, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import {
   MIS_CSV_NORMALIZATION_VERSION,
   MIS_CSV_PARSER_VERSION,
@@ -7,7 +7,6 @@ import {
   MisCsvParseError,
 } from '@/lib/mis-upload/parser'
 import { BUCKET, jsonError, requireActiveAdmin, uploadsEnabled } from '@/lib/server/mis-upload-admin'
-import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -121,16 +120,9 @@ export async function POST(request: Request, context: RouteContext) {
     p_actor_id: access.actorId,
     p_attempt_id: attemptId,
     p_parse_id: ingest.parseId,
-    p_enqueue: ingestionEnabled() && parsed.issues.length === 0,
+    p_enqueue: false,
   })
   if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
-
-  if (sealed.pipeline) {
-    after(async () => {
-      try { await runMisGateway() }
-      catch { console.error('MIS worker kickoff deferred; durable queue retained') }
-    })
-  }
 
   const issueCounts = parsed.issues.reduce<Record<string, number>>((counts, issue) => {
     const key = `${issue.field}:${issue.code}`
