@@ -264,7 +264,6 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       const result = await finalizeResponse.json()
       if (!finalizeResponse.ok) throw new Error(result.error ?? 'CSV could not be staged.')
 
-      const hasIssues = result.rejectedRowCount > 0
       setStatus(`${result.duplicate ? 'Existing source receipt resumed. ' : ''}Upload ${result.state}: ${result.sourceRowCount ?? 0} source rows staged.${result.rejectedRowCount ? ` ${result.rejectedRowCount} rows need review — reconciliation not queued (fix validation issues first).` : ' Reconciliation queued; MIS tables will update in chunks.'}${result.validationSummary?.length ? ` Validation issues: ${result.validationSummary.map((item: { issue: string; count: number }) => `${item.issue} (${item.count})`).join(', ')}.` : ''}`)
       setFile(null)
       const input = document.getElementById('mis-upload-file') as HTMLInputElement | null

@@ -18,7 +18,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'skip' })
   }
 
-  const result = await runMisGateway()
+  // Self-chain continuations set x-mis-drain-chain so we skip the 85 s
+  // marketing-spend sync and use the full budget for invoice processing.
+  const isChain = request.headers.get('x-mis-drain-chain') === '1'
+  const result = await runMisGateway({ syncMarketingSpend: !isChain })
 
   // If budget ran out with work remaining, chain the next invocation.
   // waitUntil keeps the runtime alive until the fetch resolves so the
@@ -27,7 +30,10 @@ export async function POST(request: Request) {
     waitUntil(
       fetch(`${deploymentBase()}/api/internal/mis-drain`, {
         method: 'POST',
-        headers: { 'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '' },
+        headers: {
+          'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '',
+          'x-mis-drain-chain': '1',
+        },
       }).catch(() => {})
     )
   }
