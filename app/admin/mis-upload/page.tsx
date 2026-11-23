@@ -72,6 +72,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState('')
   const [pipelines, setPipelines] = useState<Record<string, Pipeline | null>>({})
   const [ingestionEnabled, setIngestionEnabled] = useState(false)
+  const [summaryStatuses, setSummaryStatuses] = useState<Record<string, { published: boolean; completed: number; pending: number; invoices: number } | null>>({})
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const { data: { session: current } } = await supabase.auth.getSession()
@@ -90,8 +91,22 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       }
       if (!response.ok) throw new Error('Upload history could not be loaded.')
       const body = await response.json()
-      setUploads(body.uploads as UploadItem[])
+      const uploadList = body.uploads as UploadItem[]
+      setUploads(uploadList)
       setEnabled(true)
+      // Fetch pipeline summary for each upload in parallel (fire-and-forget; failures just leave column blank)
+      const headers2 = await authHeaders()
+      void Promise.all(
+        uploadList.map(async (u) => {
+          try {
+            const r = await fetch(`/api/admin/mis-uploads/${u.uploadId}/pipeline`, { headers: headers2, cache: 'no-store' })
+            if (!r.ok) return
+            const { pipeline } = await r.json()
+            if (!pipeline) return
+            setSummaryStatuses(prev => ({ ...prev, [u.uploadId]: { published: pipeline.published, completed: pipeline.completed, pending: pipeline.pending, invoices: pipeline.invoices } }))
+          } catch { /* leave blank */ }
+        })
+      )
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Upload history could not be loaded.')
     }
@@ -308,7 +323,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr><th className="px-6 py-3">File</th><th className="px-6 py-3">Received</th><th className="px-6 py-3">Rows</th><th className="px-6 py-3">Review items</th><th className="px-6 py-3">State</th><th className="px-6 py-3">Details</th></tr>
+                <tr><th className="px-6 py-3">File</th><th className="px-6 py-3">Received</th><th className="px-6 py-3">Rows</th><th className="px-6 py-3">Review items</th><th className="px-6 py-3">State</th><th className="px-6 py-3">MIS tables</th><th className="px-6 py-3">Details</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {uploads.map((upload) => (
@@ -320,6 +335,17 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                     <td className="px-6 py-4 text-slate-600">{upload.validationCount}</td>
                     <td className="px-6 py-4"><span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold capitalize text-teal-800">{upload.state}</span></td>
                     <td className="px-6 py-4">
+                      {(() => {
+                        const s = summaryStatuses[upload.uploadId]
+                        if (s === undefined) return <span className="text-xs text-slate-400">Loading…</span>
+                        if (s === null) return <span className="text-xs text-slate-400">—</span>
+                        if (s.published) return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Updated</span>
+                        if (s.invoices === 0) return <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Not queued</span>
+                        if (s.pending > 0) return <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{s.completed}/{s.invoices} done</span>
+                        return <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Reconciled</span>
+                      })()}
+                    </td>
+                    <td className="px-6 py-4">
                       <button type="button" onClick={() => void toggleReview(upload.uploadId)} className="font-semibold text-teal-800 underline">
                         {reviewing === upload.uploadId ? 'Loading…' : expandedReview === upload.uploadId ? 'Hide' : 'Review'}
                       </button>
@@ -327,7 +353,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                   </tr>
                   {expandedReview === upload.uploadId && (
                     <tr>
-                      <td colSpan={6} className="bg-slate-50 px-6 py-5">
+                      <td colSpan={7} className="bg-slate-50 px-6 py-5">
                         {reviewError && <p role="alert" className="text-sm text-rose-700">{reviewError}</p>}
                         {!reviewError && !reviewDetails[upload.uploadId] && <p className="text-sm text-slate-600">Loading protected review details…</p>}
                         {reviewDetails[upload.uploadId] && (() => {
