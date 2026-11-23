@@ -26,16 +26,6 @@ export async function POST(request: Request, context: RouteContext) {
     return jsonError('Upload attempt was not found.', 404)
   }
 
-  let referenceYear: unknown
-  try {
-    ({ referenceYear } = await request.json())
-  } catch {
-    return jsonError('A reference year is required to derive age fields.')
-  }
-  if (!Number.isInteger(referenceYear) || Number(referenceYear) < 1890 || Number(referenceYear) > 2200) {
-    return jsonError('Reference year must be an integer from 1890 through 2200.')
-  }
-
   const { data: reserved, error: attemptError } = await access.admin.rpc('get_mis_upload_attempt', {
     p_actor_id: access.actorId,
     p_attempt_id: attemptId,
@@ -64,7 +54,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   let parsed
   try {
-    parsed = parseMisCsv(bytes, { referenceYear: Number(referenceYear) })
+    parsed = parseMisCsv(bytes)
   } catch (error) {
     const parseCode = error instanceof MisCsvParseError ? error.code : 'invalid_csv'
     const { data: receipt, error: receiptError } = await access.admin.rpc('ingest_mis_upload', {

@@ -228,7 +228,7 @@ export function parseMisCsv(
     throw new MisCsvParseError('CSV exceeds the 50,000 record intake limit.', 'too_many_rows')
   }
 
-  const referenceYear = candidateReferenceYear
+  const referenceYear = candidateReferenceYear ?? new Date().getFullYear()
   const headerSha256 = sha256(JSON.stringify(canonicalHeaders))
   const rowset = createHash('sha256')
   const rows: ParsedMisRow[] = []
