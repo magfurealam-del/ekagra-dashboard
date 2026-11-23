@@ -4,6 +4,7 @@ import { ChangeEvent, Fragment, ReactNode, useCallback, useEffect, useState } fr
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { Upload as TusUpload } from 'tus-js-client'
 
 type UploadItem = {
   uploadId: string
@@ -54,6 +55,70 @@ type CandidatePreview = {
 
 function readableBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`
+}
+
+const MIS_UPLOAD_BUCKET = 'mis-upload-source'
+const MIS_UPLOAD_CHUNK_SIZE = 6 * 1024 * 1024
+
+function safeUploadErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return 'CSV upload failed. Check your connection and retry.'
+
+  const detail = error as Error & {
+    originalResponse?: { getStatus?: () => number; getBody?: () => string }
+  }
+  const statusCode = detail.originalResponse?.getStatus?.()
+  const responseBody = detail.originalResponse?.getBody?.()?.trim()
+  const message = (responseBody || detail.message || 'Storage returned an unknown error.')
+    .replace(/https?:\/\/\S+/gi, '[storage endpoint]')
+    .replace(/([?&]token=)[^&\s]+/gi, '$1[redacted]')
+    .slice(0, 400)
+
+  return `CSV upload failed${statusCode ? ` (Storage HTTP ${statusCode})` : ''}: ${message}`
+}
+
+function uploadCsvResumably(
+  file: File,
+  reservation: Reservation,
+  onProgress: (bytesUploaded: number, bytesTotal: number) => void,
+): Promise<void> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!supabaseUrl) return Promise.reject(new Error('Supabase Storage is not configured in this environment.'))
+
+  let endpoint: string
+  try {
+    const storageUrl = new URL(supabaseUrl)
+    if (storageUrl.hostname.endsWith('.supabase.co') && !storageUrl.hostname.endsWith('.storage.supabase.co')) {
+      storageUrl.hostname = storageUrl.hostname.replace(/\.supabase\.co$/, '.storage.supabase.co')
+    }
+    storageUrl.pathname = '/storage/v1/upload/resumable'
+    storageUrl.search = ''
+    endpoint = storageUrl.toString()
+  } catch {
+    return Promise.reject(new Error('Supabase Storage URL is invalid. Contact an administrator.'))
+  }
+
+  return new Promise((resolve, reject) => {
+    const upload = new TusUpload(file, {
+      endpoint,
+      headers: { 'x-signature': reservation.token },
+      metadata: {
+        bucketName: MIS_UPLOAD_BUCKET,
+        objectName: reservation.objectKey,
+        contentType: file.type || 'text/csv',
+        cacheControl: '3600',
+      },
+      chunkSize: MIS_UPLOAD_CHUNK_SIZE,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      uploadDataDuringCreation: true,
+      storeFingerprintForResuming: false,
+      removeFingerprintOnSuccess: true,
+      onProgress,
+      onError: reject,
+      onSuccess: () => resolve(),
+    })
+
+    upload.start()
+  })
 }
 
 export default function MisUploadAdminPage() {
@@ -246,14 +311,13 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       if (!reservationResponse.ok) throw new Error(reservationBody.error ?? 'Upload could not be reserved.')
       const reservation = reservationBody as Reservation
 
-      setStatus('Uploading original CSV to private storage…')
-      const { error: storageError } = await supabase.storage
-        .from('mis-upload-source')
-        .uploadToSignedUrl(reservation.objectKey, reservation.token, file, {
-          contentType: file.type || 'application/octet-stream',
-          upsert: false,
-        })
-      if (storageError) throw new Error('The source file could not be uploaded. Retry with a new attempt.')
+      setStatus('Uploading original CSV to private storage… 0%')
+      await uploadCsvResumably(file, reservation, (bytesUploaded, bytesTotal) => {
+        const percentage = Math.floor((bytesUploaded / bytesTotal) * 100)
+        setStatus(`Uploading original CSV in resumable ${readableBytes(MIS_UPLOAD_CHUNK_SIZE)} chunks… ${percentage}% (${readableBytes(bytesUploaded)} / ${readableBytes(bytesTotal)})`)
+      }).catch((error: unknown) => {
+        throw new Error(safeUploadErrorMessage(error))
+      })
 
       setStatus('Verifying and staging rows. Large files may take a few minutes…')
       const finalizeResponse = await fetch(`/api/admin/mis-uploads/${reservation.attemptId}/finalize`, {
