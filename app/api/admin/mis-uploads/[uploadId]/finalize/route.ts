@@ -7,7 +7,7 @@ import {
   MisCsvParseError,
 } from '@/lib/mis-upload/parser'
 import { BUCKET, jsonError, requireActiveAdmin, uploadsEnabled } from '@/lib/server/mis-upload-admin'
-import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker'
+import { ingestionEnabled, kickDrain } from '@/lib/server/mis-gateway-worker'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -127,7 +127,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
 
   if (enqueue && sealed.pipeline) {
-    after(async () => { try { await runMisGateway() } catch { console.error('MIS worker deferred; durable queue retained') } })
+    after(() => { kickDrain() })
   }
 
   const issueCounts = parsed.issues.reduce<Record<string, number>>((counts, issue) => {
