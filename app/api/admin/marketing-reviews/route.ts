@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     return fail('The correction could not be saved. Retry with the same request; no partial correction is committed.', 503)
   }
   after(async () => {
-    try { await runMisGateway({ syncMarketingSpend: false }) } catch { console.error('Review correction saved; scheduled reconciliation will retry the durable source revision.') }
+    try { await runMisGateway() } catch { console.error('Review correction saved; scheduled reconciliation will retry the durable source revision.') }
   })
   return NextResponse.json(data, { status: 202, headers })
 }
