@@ -34,6 +34,6 @@ export async function POST(request: Request, context: Context) {
     p_actor_id: access.actorId, p_upload_id: access.uploadId,
   })
   if (error) return jsonError(error.code === '22023' ? 'Invoice validation failed. Check that each invoice has consistent header fields and at most 1,000 lines.' : 'The pipeline action could not be recorded.', error.code === '22023' ? 422 : 503)
-  after(() => { kickDrain() })
+  after(async () => { await kickDrain() })
   return NextResponse.json(data, { status: 202 })
 }

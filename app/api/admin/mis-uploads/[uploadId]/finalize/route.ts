@@ -127,7 +127,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
 
   if (enqueue && sealed.pipeline) {
-    after(() => { kickDrain() })
+    after(async () => { await kickDrain() })
   }
 
   const issueCounts = parsed.issues.reduce<Record<string, number>>((counts, issue) => {

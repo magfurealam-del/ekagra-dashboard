@@ -6,11 +6,12 @@ export function ingestionEnabled() {
   return process.env.MIS_INGESTION_ENABLED === 'true'
 }
 
-// Fire-and-forget: starts the self-chaining drain endpoint which keeps
-// processing gateway jobs in successive serverless invocations until done.
-export function kickDrain() {
+// Calls the drain endpoint and awaits its response so the caller's runtime
+// (typically an after() callback) stays alive until the first batch completes.
+// The drain endpoint self-chains for any remaining batches independently.
+export async function kickDrain() {
   const base = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
-  fetch(`${base}/api/internal/mis-drain`, {
+  await fetch(`${base}/api/internal/mis-drain`, {
     method: 'POST',
     headers: { 'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '' },
   }).catch(() => {})
