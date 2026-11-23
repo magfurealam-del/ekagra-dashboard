@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, Fragment, useCallback, useEffect, useState } from 'react'
+import { ChangeEvent, Fragment, ReactNode, useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
@@ -72,7 +72,8 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState('')
   const [pipelines, setPipelines] = useState<Record<string, Pipeline | null>>({})
   const [ingestionEnabled, setIngestionEnabled] = useState(false)
-  const [summaryStatuses, setSummaryStatuses] = useState<Record<string, { published: boolean; completed: number; pending: number; invoices: number; publicationStage: string } | null>>({})
+  const [summaryStatuses, setSummaryStatuses] = useState<Record<string, { published: boolean; completed: number; pending: number; invoices: number; publicationStage: string; fetchedAt: number } | null>>({})
+  const [resuming, setResuming] = useState<string | null>(null)
 
   const authHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const { data: { session: current } } = await supabase.auth.getSession()
@@ -103,7 +104,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
             if (!r.ok) return
             const { pipeline } = await r.json()
             if (!pipeline) return
-            setSummaryStatuses(prev => ({ ...prev, [u.uploadId]: { published: pipeline.published, completed: pipeline.completed, pending: pipeline.pending, invoices: pipeline.invoices, publicationStage: pipeline.publicationStage ?? '' } }))
+            setSummaryStatuses(prev => ({ ...prev, [u.uploadId]: { published: pipeline.published, completed: pipeline.completed, pending: pipeline.pending, invoices: pipeline.invoices, publicationStage: pipeline.publicationStage ?? '', fetchedAt: Date.now() } }))
           } catch { /* leave blank */ }
         })
       )
@@ -185,6 +186,24 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Pipeline action failed.')
     } finally { setReviewing(null) }
+  }
+
+  async function resumeReconciliation(uploadId: string) {
+    setResuming(uploadId)
+    try {
+      const headers = await authHeaders()
+      await fetch(`/api/admin/mis-uploads/${uploadId}/pipeline`, {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'retry' }),
+      })
+      // Re-fetch summary status after kicking off
+      await new Promise(r => setTimeout(r, 1500))
+      const r = await fetch(`/api/admin/mis-uploads/${uploadId}/pipeline`, { headers: await authHeaders(), cache: 'no-store' })
+      if (r.ok) {
+        const { pipeline } = await r.json()
+        if (pipeline) setSummaryStatuses(prev => ({ ...prev, [uploadId]: { published: pipeline.published, completed: pipeline.completed, pending: pipeline.pending, invoices: pipeline.invoices, publicationStage: pipeline.publicationStage ?? '', fetchedAt: Date.now() } }))
+      }
+    } catch { /* gateway queued; next upload or manual refresh will catch it */ }
+    finally { setResuming(null) }
   }
 
   async function compareCandidates(uploadId: string) {
@@ -339,10 +358,23 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                         const s = summaryStatuses[upload.uploadId]
                         if (s === undefined) return <span className="text-xs text-slate-400">Loading…</span>
                         if (s === null) return <span className="text-xs text-slate-400">—</span>
-                        if (s.published) return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Updated</span>
-                        if (s.invoices === 0) return <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Not queued</span>
-                        if (s.pending > 0) return <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{s.completed}/{s.invoices} done</span>
-                        return <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Reconciled</span>
+                        const timeLabel = s.fetchedAt ? new Date(s.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+                        let badge: ReactNode
+                        if (s.published) badge = <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Updated</span>
+                        else if (s.invoices === 0) badge = <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Not queued</span>
+                        else if (s.pending > 0) badge = <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{s.completed}/{s.invoices} done</span>
+                        else badge = <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">Reconciled</span>
+                        return (
+                          <div className="space-y-1">
+                            {badge}
+                            {timeLabel && <div className="text-[11px] text-slate-400">as of {timeLabel}</div>}
+                            {s.pending > 0 && (
+                              <button type="button" disabled={resuming === upload.uploadId} onClick={() => void resumeReconciliation(upload.uploadId)} className="text-[11px] font-semibold text-teal-700 underline disabled:opacity-50">
+                                {resuming === upload.uploadId ? 'Resuming…' : 'Continue →'}
+                              </button>
+                            )}
+                          </div>
+                        )
                       })()}
                     </td>
                     <td className="px-6 py-4">
