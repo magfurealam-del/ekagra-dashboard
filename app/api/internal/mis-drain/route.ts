@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker'
 
 export const runtime = 'nodejs'
@@ -19,12 +20,16 @@ export async function POST(request: Request) {
 
   const result = await runMisGateway()
 
-  // If the last tick was still advancing when the budget ran out, chain another invocation.
+  // If budget ran out with work remaining, chain the next invocation.
+  // waitUntil keeps the runtime alive until the fetch resolves so the
+  // request actually goes out before this function is frozen.
   if (ADVANCING.has(result.last?.status ?? '')) {
-    fetch(`${deploymentBase()}/api/internal/mis-drain`, {
-      method: 'POST',
-      headers: { 'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '' },
-    }).catch(() => {})
+    waitUntil(
+      fetch(`${deploymentBase()}/api/internal/mis-drain`, {
+        method: 'POST',
+        headers: { 'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '' },
+      }).catch(() => {})
+    )
   }
 
   return NextResponse.json({ ticks: result.ticks, elapsedMs: result.elapsedMs, last: result.last })
