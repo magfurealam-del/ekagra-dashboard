@@ -63,8 +63,7 @@ export default function MisUploadAdminPage() {
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [enabled, setEnabled] = useState(false)
-  const [referenceYear, setReferenceYear] = useState<number | null>(null)
-  const [expandedReview, setExpandedReview] = useState<string | null>(null)
+const [expandedReview, setExpandedReview] = useState<string | null>(null)
   const [reviewDetails, setReviewDetails] = useState<Record<string, UploadReview>>({})
   const [reviewing, setReviewing] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState('')
@@ -226,7 +225,7 @@ export default function MisUploadAdminPage() {
       const finalizeResponse = await fetch(`/api/admin/mis-uploads/${reservation.attemptId}/finalize`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referenceYear }),
+        body: JSON.stringify({}),
       })
       const result = await finalizeResponse.json()
       if (!finalizeResponse.ok) throw new Error(result.error ?? 'CSV could not be staged.')
@@ -278,22 +277,7 @@ export default function MisUploadAdminPage() {
               className="mt-2 block w-full rounded-lg border border-slate-300 p-3 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-teal-50 file:px-4 file:py-2 file:font-semibold file:text-teal-800"
             />
           </label>
-          <label className="w-full text-sm font-medium text-slate-700 sm:w-48" htmlFor="mis-upload-reference-year">
-            Age reference year
-            <input
-              id="mis-upload-reference-year"
-              type="number"
-              min={1890}
-              max={2200}
-              step={1}
-              required
-              value={referenceYear ?? ''}
-              disabled={busy}
-              onChange={(event) => setReferenceYear(event.target.value === '' ? null : Number(event.target.value))}
-              className="mt-2 block w-full rounded-lg border border-slate-300 p-3 text-sm"
-            />
-          </label>
-          <button
+<button
             type="button"
             onClick={submitUpload}
             disabled={
@@ -301,11 +285,7 @@ export default function MisUploadAdminPage() {
               !file ||
               busy ||
               file.size > 20 * 1024 * 1024 ||
-              !file.name.toLowerCase().endsWith('.csv') ||
-              referenceYear === null ||
-              !Number.isInteger(referenceYear) ||
-              referenceYear < 1890 ||
-              referenceYear > 2200
+              !file.name.toLowerCase().endsWith('.csv')
             }
             className="rounded-lg bg-teal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
