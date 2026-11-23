@@ -4,22 +4,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
-  "crons": [
-    {
-      "path": "/api/cron/populate-outgoing-calls",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/sync-invoice-corrections",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/refresh-dashboard-snapshot",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/reconcile-messenger",
-      "schedule": "0 20 * * *"
-    }
-  ]
+  "crons": []
 }
