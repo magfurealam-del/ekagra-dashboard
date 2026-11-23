@@ -2,6 +2,8 @@
 -- The pipeline now runs: finance → snapshots → complete.
 -- Removes: marketing, lifetime, contacts, ad_outcomes stages and all shadow attribution checks.
 -- Removes: rebuild_patient_marketing_attribution() calls from apply_gateway_invoice().
+-- Fixes mis_gateway_status() to not gate 'published' on rules_version/marketing_revision.
+-- Fixes check_mis_pipeline_health() to remove shadow attribution integrity checks.
 
 -- 1. Update the stage check constraint to remove marketing stage values.
 ALTER TABLE mis_internal.mis_gateway_publication
@@ -245,4 +247,93 @@ BEGIN
   RETURN jsonb_build_object('status','deferred','stage',pub.stage,'code',err);
  END;
 END
+$$;
+
+-- 5. Fix mis_gateway_status(): remove rules_version/marketing_revision from 'published' check,
+--    drop marketing-specific response fields (marketingRun, marketingFreshness, attributionCoverage).
+CREATE OR REPLACE FUNCTION mis_internal.mis_gateway_status(p_actor_id uuid, p_upload_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = mis_internal, public, extensions
+AS $$
+DECLARE r jsonb;
+BEGIN
+ PERFORM mis_internal.assert_mis_upload_admin(p_actor_id);
+ SELECT jsonb_build_object('batchId',b.id,'acceptedAt',b.accepted_at,'authority',b.authority,
+  'invoices',count(j.id),'completed',count(*) FILTER(WHERE j.status='completed'),
+  'superseded',count(*) FILTER(WHERE j.status='superseded'),'failed',count(*) FILTER(WHERE j.status='failed'),
+  'pending',count(*) FILTER(WHERE j.status='pending'),'attempts',COALESCE(sum(j.attempts),0),
+  'published',pub.stage='complete' AND pub.published_batch_id>=b.id,
+  'publicationStage',pub.stage,
+  'publicationResult',pub.last_result,
+  'errorCodes',COALESCE(jsonb_agg(DISTINCT j.error_code) FILTER(WHERE j.error_code IS NOT NULL),'[]'::jsonb))
+ INTO r FROM mis_internal.mis_gateway_batches b JOIN mis_internal.mis_upload_parses p ON p.id=b.parse_id
+ JOIN mis_internal.mis_gateway_jobs j ON j.batch_id=b.id CROSS JOIN mis_internal.mis_gateway_publication pub
+ WHERE p.upload_id=p_upload_id GROUP BY b.id,pub.published_batch_id,pub.stage,pub.last_result ORDER BY b.id DESC LIMIT 1;
+ RETURN r;
+END
+$$;
+
+-- 6. Fix check_mis_pipeline_health(): remove shadow_invoice_attribution integrity checks
+--    (shadow tables are no longer maintained by the pipeline).
+CREATE OR REPLACE FUNCTION mis_internal.check_mis_pipeline_health()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = mis_internal, public, extensions
+AS $$
+DECLARE v jsonb; v_latest_import bigint; v_date date; v_status text;
+BEGIN
+ IF NOT mis_internal.is_overnight() THEN
+   RETURN jsonb_build_object('status','outside_overnight_window');
+ END IF;
+ SELECT max(id) INTO v_latest_import FROM public.mis_report_imports WHERE status='completed';
+ SELECT max(invoice_date) INTO v_date FROM public.mis_reports;
+ SELECT jsonb_build_object(
+  'source_rows',(SELECT count(*) FROM public.mis_reports),
+  'downstream_lines',(SELECT count(*) FROM public.invoice_line_items),
+  'mis_invoice_keys',(SELECT count(DISTINCT lower(btrim(invoice_id_raw))) FROM public.mis_reports),
+  'downstream_invoices',(SELECT count(*) FROM public.invoices),
+  'unmatched_invoices',(SELECT count(*) FROM public.invoices WHERE reconciliation_status IS DISTINCT FROM 'matched'),
+  'repair_queue',(SELECT count(*) FROM mis_internal.downstream_repair_queue WHERE status IS DISTINCT FROM 'completed'),
+  'unprocessed_completed_source_imports',(
+    SELECT count(*) FROM public.mis_report_imports i
+    WHERE i.status='completed' AND NOT EXISTS (
+      SELECT 1 FROM public.mis_reconciliation_runs r
+      WHERE r.mis_import_id=i.id AND r.status='completed')),
+  'ready_imports_not_queued',(
+    SELECT count(*) FROM public.mis_report_imports i
+    WHERE i.status IN ('loaded','queued') AND NOT EXISTS (
+      SELECT 1 FROM public.mis_reconciliation_runs r WHERE r.mis_import_id=i.id)),
+  'incomplete_in_progress_imports',(
+    SELECT count(*) FROM public.mis_report_imports i WHERE i.status='loading'),
+  'latest_source_import_fingerprint_matches',(
+    SELECT r.source_snapshot_hash IS NOT DISTINCT FROM mis_internal.source_fingerprint(i.id)
+    FROM public.mis_report_imports i JOIN public.mis_reconciliation_runs r ON r.mis_import_id=i.id
+    WHERE i.id=v_latest_import),
+  'signed_mis_lines',(SELECT COALESCE(round(sum(round(net_sales,2)),2),0) FROM public.mis_reports),
+  'signed_canonical_lines',(SELECT COALESCE(round(sum(net_amount),2),0) FROM public.invoice_line_items),
+  'verified_appointments',(SELECT count(*) FROM public.crm_appointments WHERE visit_verified),
+  'attendance_evidence_reviews',(SELECT count(*) FROM mis_internal.crm_attendance_review_queue),
+  'lead_evidence_reviews',(SELECT count(*) FROM mis_internal.crm_lead_conversion_review_queue),
+  'source_lag_days',((now() AT TIME ZONE 'Asia/Dhaka')::date - v_date)
+ ) INTO v;
+ v_status:=CASE
+  WHEN (v->>'source_rows')::bigint<>(v->>'downstream_lines')::bigint
+    OR (v->>'mis_invoice_keys')::bigint<>(v->>'downstream_invoices')::bigint
+    OR (v->>'unmatched_invoices')::bigint>0
+    OR (v->>'repair_queue')::bigint>0
+    OR (v->>'unprocessed_completed_source_imports')::bigint>0
+    OR (v->>'ready_imports_not_queued')::bigint>0
+    OR (v->>'incomplete_in_progress_imports')::bigint>0
+    OR v->'latest_source_import_fingerprint_matches'='false'::jsonb
+    OR (v->>'signed_mis_lines')::numeric<>(v->>'signed_canonical_lines')::numeric
+    THEN 'needs_attention'
+  WHEN (v->>'source_lag_days')::int>2 THEN 'source_lag_warning'
+  ELSE 'passed' END;
+ INSERT INTO mis_internal.mis_pipeline_health_audit(latest_import_id,source_date,status,findings)
+ VALUES(v_latest_import,v_date,v_status,v);
+ RETURN jsonb_build_object('status',v_status,'checked_at',now(),'latest_import',v_latest_import,'source_through',v_date,'findings',v);
+END;
 $$;

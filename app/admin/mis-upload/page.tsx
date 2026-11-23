@@ -18,7 +18,7 @@ type UploadItem = {
 }
 
 type Reservation = { attemptId: string; objectKey: string; token: string }
-type Pipeline = { batchId: number; invoices: number; completed: number; superseded: number; failed: number; pending: number; attempts: number; published: boolean; publicationStage: string; errorCodes: string[]; publicationResult: { status?: string; code?: string }; marketingRun?: { status: string; patientsProcessed: number }; attributionCoverage?: Record<string, { invoices: number; patients: number; net_bill: number | string }>; marketingFreshness?: { latestStoredSpendDate: string | null; spendAccounts: Array<{ status: string; through: string | null; lastSuccess: string | null; errorCode: string | null }>; metaIdentityReviewsOpen: number } }
+type Pipeline = { batchId: number; invoices: number; completed: number; superseded: number; failed: number; pending: number; attempts: number; published: boolean; publicationStage: string; errorCodes: string[]; publicationResult: { status?: string; code?: string } }
 type UploadReview = {
   uploadId: string
   fileName: string
@@ -382,7 +382,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                         if (s === undefined) return <span className="text-xs text-slate-400">Loading…</span>
                         if (s === null || !s.publicationStage) return <span className="text-xs text-slate-400">—</span>
                         const stage = s.publicationStage
-                        if (stage === 'published') return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Published</span>
+                        if (stage === 'complete') return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Published</span>
                         if (stage === 'not_started' || stage === 'waiting') return <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Waiting</span>
                         if (stage === 'failed') return <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">Failed</span>
                         return <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{stage.replaceAll('_', ' ')}</span>
@@ -410,20 +410,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                                   <p className="font-semibold">{pipeline.published ? 'Reconciled and published' : 'Reconciliation in progress'}</p>
                                   <p>{pipeline.completed} completed · {pipeline.pending} pending · {pipeline.failed} failed · {pipeline.superseded} superseded · {pipeline.invoices} invoices</p>
                                   <p aria-live="polite">Downstream publication: {pipeline.publicationStage.replaceAll('_', ' ')}. Progress refreshes automatically.</p>
-                                  {pipeline.marketingRun && <p>Marketing reconciliation: {pipeline.marketingRun.status} · {pipeline.marketingRun.patientsProcessed} patient histories processed.</p>}
-                                  {pipeline.marketingFreshness && <div className="text-slate-600">
-                                    <p>Latest stored ad spend: {pipeline.marketingFreshness.latestStoredSpendDate ?? 'not available'}.</p>
-                                    {pipeline.marketingFreshness.spendAccounts.map((account, index) => <p key={index}>Ad account {index + 1}: {account.status} · coverage through {account.through ?? 'pending'}{account.errorCode ? ` · ${account.errorCode}` : ''}.</p>)}
-                                    <p>{pipeline.marketingFreshness.metaIdentityReviewsOpen} Meta identity matches need review before they can support verified attribution.</p>
-                                  </div>}
                                   <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'refresh')} className="rounded bg-teal-800 px-3 py-2 font-semibold text-white disabled:opacity-50">Refresh sources and reconciliation</button>
-                                  {pipeline.attributionCoverage && <details>
-                                    <summary className="cursor-pointer font-medium">Latest completed acquisition-source coverage</summary>
-                                    <p className="mt-2 text-slate-600">Unassigned amounts retain their reason. Later engagement does not claim earlier revenue; campaign attribution requires supporting evidence.</p>
-                                    <table className="mt-2 w-full text-left"><thead><tr><th className="py-1">Evidence status</th><th>Invoices</th><th>Net bill (BDT)</th></tr></thead>
-                                      <tbody>{Object.entries(pipeline.attributionCoverage).map(([name, values]) => <tr key={name}><td className="py-1">{name.replaceAll('_', ' ')}</td><td>{values.invoices}</td><td>{Number(values.net_bill).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>)}</tbody>
-                                    </table>
-                                  </details>}
                                   {pipeline.errorCodes?.length > 0 && <p role="alert">Processing checks: {pipeline.errorCodes.join(', ')}. {pipeline.errorCodes.includes('23503') ? 'Inventory-linked lines require review before replacement.' : 'An administrator should inspect the failed job before retrying.'}</p>}
                                   {pipeline.publicationResult?.status === 'failed' && <p role="alert">Downstream refresh failed ({pipeline.publicationResult.code}); the batch is not published.</p>}
                                   {pipeline.failed > 0 && <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'retry')} className="font-semibold text-teal-800 underline disabled:opacity-50">Retry failed invoices</button>}
