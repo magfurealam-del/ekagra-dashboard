@@ -166,7 +166,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       if (!refreshed.ok) throw new Error('Pipeline status is unavailable.')
       const body = await refreshed.json()
       setPipelines(current => ({ ...current, [uploadId]: body.pipeline }))
-      setStatus('Queued for reconciliation during the overnight processing window. Reopen Review to refresh progress.')
+      setStatus('Queued for reconciliation. Reopen Review to refresh progress.')
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Pipeline action failed.')
     } finally { setReviewing(null) }
@@ -334,7 +334,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                           const detail = reviewDetails[upload.uploadId]
                           return (
                             <div className="space-y-4 text-sm">
-                              <p className="text-slate-700">Original source and previous invoice versions are retained. Processing runs overnight (00:15–07:45 Asia/Dhaka); queued does not mean reconciled.</p>
+                              <p className="text-slate-700">Original source and previous invoice versions are retained. Reconciliation runs continuously after upload; queued does not mean reconciled.</p>
                               {pipelines[upload.uploadId] ? (() => {
                                 const pipeline = pipelines[upload.uploadId]!
                                 return <div className="space-y-2 rounded-lg border border-teal-200 bg-white p-4">
