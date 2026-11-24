@@ -4,5 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm install",
-  "crons": []
+  "crons": [
+    { "path": "/api/internal/mis-drain", "schedule": "*/10 * * * *" }
+  ]
 }

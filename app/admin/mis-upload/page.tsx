@@ -19,7 +19,20 @@ type UploadItem = {
 }
 
 type Reservation = { attemptId: string; objectKey: string; token: string }
-type Pipeline = { batchId: number; invoices: number; completed: number; superseded: number; failed: number; pending: number; attempts: number; published: boolean; publicationStage: string; errorCodes: string[]; publicationResult: { status?: string; code?: string } }
+type Pipeline = {
+  batchId: number
+  invoices: number
+  completed: number
+  superseded: number
+  failed: number
+  pending: number
+  attempts: number
+  published: boolean
+  publicationStage: string
+  errorCodes: string[]
+  errors?: Array<{ invoiceKey: string; status: string; attempts: number; code: string; detail: string | null; occurredAt: string | null }>
+  publicationResult: { status?: string; code?: string }
+}
 type UploadReview = {
   uploadId: string
   attemptId: string | null
@@ -552,10 +565,19 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                                       {pipeline.errorCodes.includes('23503')
                                         ? <p>Inventory-linked lines require review before replacement.</p>
                                         : pipeline.errorCodes.includes('22P02')
-                                          ? <p>An invoice contains a value that cannot be converted to its expected type, often a number or date. Review the source fields for that invoice, correct the source, then retry failed invoices.</p>
+                                          ? <p>A text value could not be converted to its expected type. Use the invoice and safe function/line detail below to inspect the source and existing invoice provenance, correct the specific value, then retry failed invoices.</p>
                                           : pipeline.errorCodes.includes('23514')
                                             ? <p>Invoice row counts or financial totals failed reconciliation. Compare the source invoice detail and totals before retrying.</p>
                                             : <p>Review the failed invoice and its MIS source values before retrying.</p>}
+                                      {pipeline.errors && pipeline.errors.length > 0 && (
+                                        <ul className="list-inside list-disc text-xs">
+                                          {pipeline.errors.map((item, index) => (
+                                            <li key={`${item.invoiceKey}-${item.code}-${index}`}>
+                                              Invoice {item.invoiceKey}: {item.code}, {item.status}, {item.attempts} attempt{item.attempts === 1 ? '' : 's'}{item.detail ? ` — ${item.detail}` : ' — database context not recorded for this attempt.'}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
                                     </div>
                                   )}
                                   {pipeline.publicationResult?.status === 'failed' && <p role="alert">Downstream refresh failed ({pipeline.publicationResult.code}); the batch is not published.</p>}

@@ -3,7 +3,7 @@
 export type TickResult = { status: string; stage?: string; code?: string }
 // A retry result means one invoice was deferred with backoff. Keep draining
 // other eligible invoices instead of letting one malformed row stall a batch.
-const CONTINUE_STATUSES = new Set(['completed', 'superseded', 'advanced', 'retry'])
+const CONTINUE_STATUSES = new Set(['completed', 'superseded', 'advanced', 'retry', 'failed'])
 // Spend/source ingestion stays overnight; an in-flight publication can recover later.
 export function isOvernightInDhaka(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now)
