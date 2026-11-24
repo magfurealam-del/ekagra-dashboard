@@ -5,7 +5,9 @@ import { ingestionEnabled, runMisGateway } from '@/lib/server/mis-gateway-worker
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-const ADVANCING = new Set(['completed', 'superseded', 'advanced'])
+// A retry has been recorded with a future next_attempt_at. Chain the drain so
+// that this one deferred invoice does not leave the rest of the batch queued.
+const ADVANCING = new Set(['completed', 'superseded', 'advanced', 'retry'])
 
 function deploymentBase() {
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`

@@ -224,7 +224,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
     }
   }
 
-  async function pipelineAction(uploadId: string, action: 'enqueue' | 'retry' | 'refresh') {
+  async function pipelineAction(uploadId: string, action: 'enqueue' | 'retry' | 'refresh' | 'force-sync') {
     setReviewing(uploadId)
     setReviewError('')
     try {
@@ -250,7 +250,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
           fetchedAt: Date.now(),
         } : null,
       }))
-      setStatus('Queued for reconciliation. Reopen Review to refresh progress.')
+      setStatus(result.message ?? 'Queued for reconciliation. Reopen Review to refresh progress.')
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Pipeline action failed.')
     } finally { setReviewing(null) }
@@ -260,9 +260,12 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
     setResuming(uploadId)
     try {
       const headers = await authHeaders()
-      await fetch(`/api/admin/mis-uploads/${uploadId}/pipeline`, {
-        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'retry' }),
+      const kick = await fetch(`/api/admin/mis-uploads/${uploadId}/pipeline`, {
+        method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'force-sync' }),
       })
+      const result = await kick.json()
+      if (!kick.ok) throw new Error(result.error ?? 'The sync could not be started.')
+      setStatus(result.message ?? 'Force sync requested. Existing queued work is preserved.')
       // Re-fetch summary status after kicking off
       await new Promise(r => setTimeout(r, 1500))
       const r = await fetch(`/api/admin/mis-uploads/${uploadId}/pipeline`, { headers: await authHeaders(), cache: 'no-store' })
@@ -270,7 +273,9 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
         const { pipeline } = await r.json()
         if (pipeline) setSummaryStatuses(prev => ({ ...prev, [uploadId]: { published: pipeline.published, completed: pipeline.completed, pending: pipeline.pending, invoices: pipeline.invoices, publicationStage: pipeline.publicationStage ?? '', fetchedAt: Date.now() } }))
       }
-    } catch { /* gateway queued; next upload or manual refresh will catch it */ }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'The force sync could not be started.')
+    }
     finally { setResuming(null) }
   }
 
@@ -466,7 +471,16 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                     <td className="px-6 py-4">
                       {(() => {
                         const s = summaryStatuses[upload.uploadId]
-                        if (s === undefined) return <span className="text-xs text-slate-400">Open Review for status</span>
+                        if (s === undefined) return (
+                          <div className="space-y-1">
+                            <span className="block text-xs text-slate-400">Open Review for status</span>
+                            {upload.state === 'validated' && (
+                              <button type="button" disabled={resuming === upload.uploadId} onClick={() => void resumeReconciliation(upload.uploadId)} className="text-[11px] font-semibold text-teal-700 underline disabled:opacity-50">
+                                {resuming === upload.uploadId ? 'Requesting…' : 'Force sync'}
+                              </button>
+                            )}
+                          </div>
+                        )
                         if (s === null) return <span className="text-xs text-slate-400">—</span>
                         const timeLabel = s.fetchedAt ? new Date(s.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
                         let badge: ReactNode
@@ -480,7 +494,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                             {timeLabel && <div className="text-[11px] text-slate-400">as of {timeLabel}</div>}
                             {s.pending > 0 && (
                               <button type="button" disabled={resuming === upload.uploadId} onClick={() => void resumeReconciliation(upload.uploadId)} className="text-[11px] font-semibold text-teal-700 underline disabled:opacity-50">
-                                {resuming === upload.uploadId ? 'Resuming…' : 'Continue →'}
+                                {resuming === upload.uploadId ? 'Requesting…' : 'Force sync →'}
                               </button>
                             )}
                           </div>
@@ -521,8 +535,29 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                                   <p className="font-semibold">{pipeline.published ? 'Reconciled and published' : 'Reconciliation in progress'}</p>
                                   <p>{pipeline.completed} completed · {pipeline.pending} pending · {pipeline.failed} failed · {pipeline.superseded} superseded · {pipeline.invoices} invoices</p>
                                   <p aria-live="polite">Downstream publication: {pipeline.publicationStage.replaceAll('_', ' ')}. Use Refresh sources and reconciliation to load the latest status.</p>
+                                  {(pipeline.pending > 0 || (!pipeline.published && pipeline.failed === 0)) && (
+                                    <button
+                                      type="button"
+                                      disabled={!ingestionEnabled || reviewing === upload.uploadId}
+                                      onClick={() => void pipelineAction(upload.uploadId, 'force-sync')}
+                                      className="rounded border border-teal-800 px-3 py-2 font-semibold text-teal-800 disabled:opacity-50"
+                                    >
+                                      {reviewing === upload.uploadId ? 'Requesting sync…' : 'Force sync now'}
+                                    </button>
+                                  )}
                                   <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'refresh')} className="rounded bg-teal-800 px-3 py-2 font-semibold text-white disabled:opacity-50">Refresh sources and reconciliation</button>
-                                  {pipeline.errorCodes?.length > 0 && <p role="alert">Processing checks: {pipeline.errorCodes.join(', ')}. {pipeline.errorCodes.includes('23503') ? 'Inventory-linked lines require review before replacement.' : 'An administrator should inspect the failed job before retrying.'}</p>}
+                                  {pipeline.errorCodes?.length > 0 && (
+                                    <div role="alert" className="space-y-1 text-rose-800">
+                                      <p>Processing checks: {pipeline.errorCodes.join(', ')}.</p>
+                                      {pipeline.errorCodes.includes('23503')
+                                        ? <p>Inventory-linked lines require review before replacement.</p>
+                                        : pipeline.errorCodes.includes('22P02')
+                                          ? <p>An invoice contains a value that cannot be converted to its expected type, often a number or date. Review the source fields for that invoice, correct the source, then retry failed invoices.</p>
+                                          : pipeline.errorCodes.includes('23514')
+                                            ? <p>Invoice row counts or financial totals failed reconciliation. Compare the source invoice detail and totals before retrying.</p>
+                                            : <p>Review the failed invoice and its MIS source values before retrying.</p>}
+                                    </div>
+                                  )}
                                   {pipeline.publicationResult?.status === 'failed' && <p role="alert">Downstream refresh failed ({pipeline.publicationResult.code}); the batch is not published.</p>}
                                   {pipeline.failed > 0 && <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'retry')} className="font-semibold text-teal-800 underline disabled:opacity-50">Retry failed invoices</button>}
                                 </div>

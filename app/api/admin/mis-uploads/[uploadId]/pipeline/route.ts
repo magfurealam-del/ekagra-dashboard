@@ -28,7 +28,20 @@ export async function POST(request: Request, context: Context) {
   if ('response' in access) return access.response
   let action: unknown
   try { ({ action } = await request.json()) } catch { return jsonError('Invalid action.') }
-  if (action !== 'enqueue' && action !== 'retry' && action !== 'refresh') return jsonError('Invalid action.')
+  if (action !== 'enqueue' && action !== 'retry' && action !== 'refresh' && action !== 'force-sync') return jsonError('Invalid action.')
+  if (action === 'force-sync') {
+    const { data: pipeline, error: statusError } = await access.admin.rpc('mis_gateway_status', {
+      p_actor_id: access.actorId, p_upload_id: access.uploadId,
+    })
+    if (statusError) return jsonError('The queue status could not be checked.', 503)
+    if (!pipeline || (pipeline.pending === 0 && pipeline.failed === 0 && pipeline.published)) {
+      return jsonError('There is no pending MIS work to force-sync.', 409)
+    }
+    // This action only wakes the existing idempotent worker. It does not reset
+    // attempts, rewrite source rows, or bypass per-invoice retry safeguards.
+    after(async () => { await kickDrain() })
+    return NextResponse.json({ accepted: true, message: 'Force sync requested.' }, { status: 202 })
+  }
   const rpc = action === 'enqueue' ? 'enqueue_mis_upload' : action === 'retry' ? 'retry_mis_gateway' : 'request_marketing_reconciliation'
   const { data, error } = await access.admin.rpc(rpc, {
     p_actor_id: access.actorId, p_upload_id: access.uploadId,
