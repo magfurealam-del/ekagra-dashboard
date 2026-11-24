@@ -108,11 +108,15 @@ export async function POST(request: Request, context: RouteContext) {
       rowSha256: row.rowSha256,
       issues: (issuesByRow.get(row.sourceRowNumber) ?? []).map(({ field, code }) => ({ field, code })),
     }))
-    const { error } = await access.admin.rpc('stage_mis_upload_rows', {
+    const expectedChunkSha256 = createHash('sha256')
+      .update(batch.map((row) => `${row.sourceRowNumber}:${row.rowSha256}\n`).join(''), 'utf8')
+      .digest('hex')
+    const { error } = await access.admin.rpc('stage_mis_upload_rows_checked', {
       p_actor_id: access.actorId,
       p_attempt_id: attemptId,
       p_parse_id: ingest.parseId,
       p_rows: batch,
+      p_expected_chunk_sha256: expectedChunkSha256,
     })
     if (error) return jsonError('Some source rows could not be staged. The upload is retained and can be retried.', 503)
   }
@@ -122,11 +126,49 @@ export async function POST(request: Request, context: RouteContext) {
     p_actor_id: access.actorId,
     p_attempt_id: attemptId,
     p_parse_id: ingest.parseId,
-    p_enqueue: enqueue,
+    p_enqueue: false,
   })
-  if (sealError) return jsonError('Staged rows did not pass the final integrity check. The upload is retained for review.', 422)
+  if (sealError) {
+    const timedOut = sealError.code === '57014' || /statement timeout|canceling statement/i.test(sealError.message)
+    return jsonError(
+      timedOut
+        ? 'The final integrity step timed out. Staged rows are retained; retry to resume.'
+        : 'Staged rows did not pass the final integrity check. The upload is retained for review.',
+      timedOut ? 503 : 422,
+    )
+  }
 
-  if (enqueue && sealed.pipeline) {
+  let pipeline: { batchId: number; invoiceCount: number; state: string } | null = null
+  if (enqueue && ['validated', 'staged'].includes(sealed.state)) {
+    let done = false
+    for (let chunk = 0; chunk < 512 && !done; chunk += 1) {
+      const { data: queued, error: queueError } = await access.admin.rpc('enqueue_mis_upload_chunk', {
+        p_actor_id: access.actorId,
+        p_upload_id: sealed.uploadId,
+        p_chunk_size: 500,
+      })
+      if (queueError) {
+        if (queueError.code === '22023') {
+          await access.admin.rpc('quarantine_mis_upload_enqueue', {
+            p_actor_id: access.actorId,
+            p_attempt_id: attemptId,
+            p_upload_id: sealed.uploadId,
+            p_error_code: 'invoice_group_validation_failed',
+          })
+          return jsonError('Invoice-level validation failed. The source is retained in quarantine for review.', 422)
+        }
+        const timedOut = queueError.code === '57014' || /statement timeout|canceling statement/i.test(queueError.message)
+        return jsonError(
+          timedOut
+            ? 'Invoice validation is taking longer than expected. Progress is saved; retry to continue.'
+            : 'Invoice validation could not be completed. Progress is saved; retry to continue.',
+          503,
+        )
+      }
+      done = queued?.done === true
+      if (done) pipeline = queued
+    }
+    if (!done) return jsonError('Invoice validation is continuing in saved chunks. Retry to continue.', 503)
     after(async () => { await kickDrain() })
   }
 
@@ -139,6 +181,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   return NextResponse.json({
     ...sealed,
+    pipeline,
     duplicate: ingest.duplicate,
     validRowCount: parsed.sourceRowCount - new Set(parsed.issues.map((issue) => issue.sourceRowNumber)).size,
     rejectedRowCount: new Set(parsed.issues.map((issue) => issue.sourceRowNumber)).size,
