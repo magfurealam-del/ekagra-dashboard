@@ -1,26 +1,27 @@
 'use client'
 
 export default function SummaryBar({ metrics }: { metrics: any | null }) {
+  const unavailable = '—'
   const topCards = [
-    { label: 'Pending', value: metrics?.pending_calls ?? '—', tone: 'text-amber-600' },
-    { label: 'Completed Today', value: metrics?.completed_today ?? '—', tone: 'text-emerald-600' },
-    { label: 'Overdue Callbacks', value: metrics?.overdue_callbacks ?? '—', tone: 'text-rose-600' },
+    { label: 'Pending', value: metrics?.pending_calls ?? unavailable, tone: 'text-amber-600' },
+    { label: 'Completed Today', value: metrics?.completed_today ?? unavailable, tone: 'text-emerald-600' },
+    { label: 'Overdue Callbacks', value: metrics?.overdue_callbacks ?? unavailable, tone: 'text-rose-600' },
   ]
 
   // Live count for every one-click outcome option, in the same order and
   // color scheme as the Call Outcome panel — so agents can see at a glance
   // how today's calls are breaking down without leaving this page.
   const outcomeCards = [
-    { label: 'Reached', value: metrics?.reached ?? 0, tone: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
-    { label: 'Not Reached', value: metrics?.not_reached ?? 0, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
-    { label: 'Busy', value: metrics?.busy ?? 0, tone: 'border-amber-300 bg-amber-50 text-amber-700' },
-    { label: 'Switched Off', value: metrics?.switched_off ?? 0, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
-    { label: 'Wrong Number', value: metrics?.wrong_number ?? 0, tone: 'border-rose-300 bg-rose-50 text-rose-700' },
-    { label: 'Booked Appointment', value: metrics?.booked ?? 0, tone: 'border-teal-400 bg-teal-50 text-teal-700' },
-    { label: 'Already Visited', value: metrics?.already_visited ?? 0, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
-    { label: 'Not Interested', value: metrics?.not_interested ?? 0, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
-    { label: 'Call Later', value: metrics?.call_later ?? 0, tone: 'border-sky-300 bg-sky-50 text-sky-700' },
-    { label: 'Do Not Call', value: metrics?.do_not_call ?? 0, tone: 'border-rose-300 bg-rose-50 text-rose-700' },
+    { label: 'Reached', value: metrics?.reached ?? unavailable, tone: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
+    { label: 'Not Reached', value: metrics?.not_reached ?? unavailable, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
+    { label: 'Busy', value: metrics?.busy ?? unavailable, tone: 'border-amber-300 bg-amber-50 text-amber-700' },
+    { label: 'Switched Off', value: metrics?.switched_off ?? unavailable, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
+    { label: 'Wrong Number', value: metrics?.wrong_number ?? unavailable, tone: 'border-rose-300 bg-rose-50 text-rose-700' },
+    { label: 'Booked Appointment', value: metrics?.booked ?? unavailable, tone: 'border-teal-400 bg-teal-50 text-teal-700' },
+    { label: 'Already Visited', value: metrics?.already_visited ?? unavailable, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
+    { label: 'Not Interested', value: metrics?.not_interested ?? unavailable, tone: 'border-slate-300 bg-slate-50 text-slate-600' },
+    { label: 'Call Later', value: metrics?.call_later ?? unavailable, tone: 'border-sky-300 bg-sky-50 text-sky-700' },
+    { label: 'Do Not Call', value: metrics?.do_not_call ?? unavailable, tone: 'border-rose-300 bg-rose-50 text-rose-700' },
   ]
 
   return (

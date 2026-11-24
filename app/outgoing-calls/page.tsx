@@ -86,23 +86,40 @@ export default function OutgoingCallsPage() {
   const [callTypeFilter, setCallTypeFilter] = useState('all')
   const [agentFilter, setAgentFilter] = useState('all')
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const realtimeRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadInFlight = useRef(false)
+  const refreshQueued = useRef(false)
+  const rowSnapshot = useRef<any[]>([])
+  const metricsSnapshot = useRef<any | null>(null)
+  const agentSnapshot = useRef('')
   // Version the cache whenever queue-selection rules change so agents do not
   // remain stuck on a stale daily sheet until the next 6 AM refresh.
   const cacheKey = `ekagra-outbound-sheet:v6:${outboundWindowKey()}`
 
   async function load(force = false) {
-    setLoading(true)
+    if (loadInFlight.current) {
+      if (force) refreshQueued.current = true
+      return
+    }
+    loadInFlight.current = true
+    setLoading(rowSnapshot.current.length === 0)
     setLoadError('')
 
+    try {
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
-        if (cached && cached.windowKey === outboundWindowKey() && Date.now() - (cached.fetchedAt || 0) < QUEUE_CACHE_TTL_MS) {
+        if (cached && cached.windowKey === outboundWindowKey() && Array.isArray(cached.rows)) {
+          rowSnapshot.current = cached.rows || []
+          metricsSnapshot.current = cached.metrics || null
+          agentSnapshot.current = cached.agent || ''
           setRows(cached.rows || [])
           setMetrics(cached.metrics || null)
           setAgent(cached.agent || '')
           setLoading(false)
-          return
+          if (Date.now() - (cached.fetchedAt || 0) < QUEUE_CACHE_TTL_MS) {
+            return
+          }
         }
       } catch {
         localStorage.removeItem(cacheKey)
@@ -117,7 +134,7 @@ export default function OutgoingCallsPage() {
         work: () =>
           supabase
             .from('outgoing_call_sheet_view')
-            .select('*')
+            .select('attempt_id,queue_id,followup_number,scheduled_date,assigned_agent,attempt_status,outcome,outcome_code,attempt_notes,called_at,callback_at,patient_id,patient_name,phone,final_location,lead_type,category,category_rank,reason,relevant_date,queue_created_at,max_followups,followups_done,queue_status,pinned_to_top,confidence_score,confidence_label,is_overdue,doctor_service,booking_main_problem,booking_preferred_visit_date,booking_lead_status,booking_urgency,booking_notes')
             .lte('relevant_date', date)
             .eq('attempt_status', 'pending')
             // Match the view's canonical ordering and add stable tie-breakers
@@ -131,8 +148,11 @@ export default function OutgoingCallsPage() {
             .order('queue_created_at', { ascending: true })
             .order('attempt_id', { ascending: true })
             .limit(1000),
-        timeoutMs: 15000,
-        retries: 2,
+        // PostgREST already enforces a shorter statement timeout. Do not
+        // multiply load with retries when this view is slow; keep the last
+        // successful sheet visible and let the agent retry explicitly.
+        timeoutMs: 9000,
+        retries: 0,
       },
       {
         work: () => supabase.from('outgoing_call_today_metrics').select('*').single(),
@@ -148,19 +168,57 @@ export default function OutgoingCallsPage() {
 
     if (!queueRes || queueRes.error) {
       console.error('[outgoing-calls] queue load failed', queueRes?.error)
-      setRows([])
-      setLoadError('Could not load the outbound queue — please refresh or contact admin.')
+      let cachedRows: any[] = []
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
+        if (cached && cached.windowKey === outboundWindowKey() && Array.isArray(cached.rows)) {
+          cachedRows = cached.rows
+          if (!rowSnapshot.current.length) {
+            rowSnapshot.current = cachedRows
+            metricsSnapshot.current = cached.metrics || null
+            agentSnapshot.current = cached.agent || ''
+            setRows(cachedRows)
+            setMetrics(cached.metrics || null)
+            setAgent(cached.agent || '')
+          }
+        }
+      } catch {
+        // Keep the in-memory sheet if the browser cache cannot be read.
+      }
+      const visibleCount = Math.max(rowSnapshot.current.length, cachedRows.length)
+      setLoadError(visibleCount
+        ? `Live queue refresh failed. Showing the last saved ${visibleCount} calls; retry when the connection is stable.`
+        : 'Could not load the outbound queue. Retry in a moment; no calls were removed.')
     } else {
       const nextRows = selectBalancedQueue(queueRes.data || [])
-      const nextMetrics = metricsRes && !metricsRes.error ? metricsRes.data : null
-      const nextAgent = agentRes && !agentRes.error ? (agentRes.data as unknown as string) || '' : ''
+      const nextMetrics = metricsRes && !metricsRes.error ? metricsRes.data : metricsSnapshot.current
+      const nextAgent = agentRes && !agentRes.error ? (agentRes.data as unknown as string) || '' : agentSnapshot.current
+      rowSnapshot.current = nextRows
+      metricsSnapshot.current = nextMetrics
+      agentSnapshot.current = nextAgent
       setRows(nextRows)
-      setMetrics(nextMetrics)
-      setAgent(nextAgent)
-      localStorage.setItem(cacheKey, JSON.stringify({ windowKey: outboundWindowKey(), fetchedAt: Date.now(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
+      if (nextMetrics) setMetrics(nextMetrics)
+      if (agentRes && !agentRes.error) setAgent(nextAgent)
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ windowKey: outboundWindowKey(), fetchedAt: Date.now(), rows: nextRows, metrics: nextMetrics, agent: nextAgent }))
+      } catch {
+        // The live queue remains usable when storage is unavailable or full.
+      }
     }
 
-    setLoading(false)
+    } finally {
+      setLoading(false)
+      loadInFlight.current = false
+      if (refreshQueued.current) {
+        refreshQueued.current = false
+        scheduleRealtimeRefresh()
+      }
+    }
+  }
+
+  function scheduleRealtimeRefresh() {
+    if (realtimeRefreshTimer.current) clearTimeout(realtimeRefreshTimer.current)
+    realtimeRefreshTimer.current = setTimeout(() => { void load(true) }, 1500)
   }
 
   useEffect(() => {
@@ -180,10 +238,13 @@ export default function OutgoingCallsPage() {
   useEffect(() => {
     const channel = supabase
       .channel('outgoing-call-sheet-events')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, () => load(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, () => load(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_queue' }, scheduleRealtimeRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_call_attempts' }, scheduleRealtimeRefresh)
       .subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    return () => {
+      if (realtimeRefreshTimer.current) clearTimeout(realtimeRefreshTimer.current)
+      void supabase.removeChannel(channel)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const agentOptions = useMemo(() => {
@@ -217,6 +278,7 @@ export default function OutgoingCallsPage() {
     // it from the in-memory daily sheet immediately so the visible count drops
     // immediately without waiting for the next 6 AM refresh.
     const nextRows = rows.filter((row) => row.attempt_id !== completedAttemptId)
+    rowSnapshot.current = nextRows
     setRows(nextRows)
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null')
@@ -244,8 +306,11 @@ export default function OutgoingCallsPage() {
         <SummaryBar metrics={metrics} />
 
         {loadError && (
-          <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {loadError} Please contact an administrator if this continues.
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-center justify-between gap-3">
+            <span>{loadError}</span>
+            <button type="button" disabled={loading} onClick={() => void load(true)} className="shrink-0 rounded border border-amber-300 bg-white px-2.5 py-1 font-medium disabled:opacity-50">
+              {loading ? 'Retrying…' : 'Retry queue'}
+            </button>
           </div>
         )}
 
