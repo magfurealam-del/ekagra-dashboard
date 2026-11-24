@@ -20,7 +20,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'skip' })
   }
 
-  const result = await runMisGateway()
+  const forceDaytime = request.headers.get('x-mis-force-daytime') === 'true'
+  const result = await runMisGateway(forceDaytime)
 
   // If budget ran out with work remaining, chain the next invocation.
   // waitUntil keeps the runtime alive until the fetch resolves so the
@@ -29,7 +30,10 @@ export async function POST(request: Request) {
     waitUntil(
       fetch(`${deploymentBase()}/api/internal/mis-drain`, {
         method: 'POST',
-        headers: { 'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '' },
+        headers: {
+          'x-mis-drain-token': process.env.MIS_DRAIN_TOKEN ?? '',
+          ...(forceDaytime ? { 'x-mis-force-daytime': 'true' } : {}),
+        },
       }).catch(() => {})
     )
   }

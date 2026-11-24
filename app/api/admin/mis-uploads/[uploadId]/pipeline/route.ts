@@ -39,7 +39,7 @@ export async function POST(request: Request, context: Context) {
     }
     // This action only wakes the existing idempotent worker. It does not reset
     // attempts, rewrite source rows, or bypass per-invoice retry safeguards.
-    after(async () => { await kickDrain() })
+    after(async () => { await kickDrain(true) })
     return NextResponse.json({ accepted: true, message: 'Force sync requested.' }, { status: 202 })
   }
   if (action === 'retry') {
