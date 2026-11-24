@@ -82,7 +82,9 @@ function uploadCsvResumably(
   onProgress: (bytesUploaded: number, bytesTotal: number) => void,
 ): Promise<void> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!supabaseUrl) return Promise.reject(new Error('Supabase Storage is not configured in this environment.'))
+  if (!supabaseKey) return Promise.reject(new Error('Supabase Storage credentials are not configured in this environment.'))
 
   let endpoint: string
   try {
@@ -90,7 +92,7 @@ function uploadCsvResumably(
     if (storageUrl.hostname.endsWith('.supabase.co') && !storageUrl.hostname.endsWith('.storage.supabase.co')) {
       storageUrl.hostname = storageUrl.hostname.replace(/\.supabase\.co$/, '.storage.supabase.co')
     }
-    storageUrl.pathname = '/storage/v1/upload/resumable'
+    storageUrl.pathname = '/storage/v1/upload/resumable/sign'
     storageUrl.search = ''
     endpoint = storageUrl.toString()
   } catch {
@@ -100,7 +102,10 @@ function uploadCsvResumably(
   return new Promise((resolve, reject) => {
     const upload = new TusUpload(file, {
       endpoint,
-      headers: { 'x-signature': reservation.token },
+      headers: {
+        apikey: supabaseKey,
+        'x-signature': reservation.token,
+      },
       metadata: {
         bucketName: MIS_UPLOAD_BUCKET,
         objectName: reservation.objectKey,
