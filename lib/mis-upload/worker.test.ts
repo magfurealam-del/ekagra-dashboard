@@ -13,8 +13,14 @@ test('drains separate transactions until idle', async () => {
  assert.equal(result.ticks,4)
  assert.equal(result.last.status,'idle')
 })
-test('stops on retries, deferrals, closed window, busy and pending work', async () => {
- for (const status of ['retry','deferred','outside_overnight_window','busy','awaiting_jobs']) {
+test('continues after one deferred invoice so other queue rows can progress', async () => {
+ const statuses = ['retry','completed','idle']
+ const result = await drainMisQueue(async () => ({ status: statuses.shift()! }))
+ assert.equal(result.ticks,3)
+ assert.equal(result.last.status,'idle')
+})
+test('stops on deferrals, closed window, busy and pending work', async () => {
+ for (const status of ['deferred','outside_overnight_window','busy','awaiting_jobs']) {
   const result = await drainMisQueue(async () => ({ status }))
   assert.equal(result.ticks,1)
  }

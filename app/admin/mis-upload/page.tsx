@@ -263,7 +263,9 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
           fetchedAt: Date.now(),
         } : null,
       }))
-      setStatus(result.message ?? 'Queued for reconciliation. Reopen Review to refresh progress.')
+      setStatus(action === 'retry'
+        ? `Requeued ${Number(result.requeued ?? 0).toLocaleString()} failed invoices in chunks of up to 100${result.more ? '; run retry again for the remaining invoices' : ''}.`
+        : result.message ?? 'Queued for reconciliation. Reopen Review to refresh progress.')
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Pipeline action failed.')
     } finally { setReviewing(null) }

@@ -42,7 +42,36 @@ export async function POST(request: Request, context: Context) {
     after(async () => { await kickDrain() })
     return NextResponse.json({ accepted: true, message: 'Force sync requested.' }, { status: 202 })
   }
-  const rpc = action === 'enqueue' ? 'enqueue_mis_upload' : action === 'retry' ? 'retry_mis_gateway' : 'request_marketing_reconciliation'
+  if (action === 'retry') {
+    // Keep every retry update bounded. A request can requeue at most 2,500 jobs
+    // in 25 sequential chunks; larger queues can be resumed with another call.
+    let requeued = 0
+    let reachedLimit = false
+    for (let chunk = 0; chunk < 25; chunk += 1) {
+      const { data, error } = await access.admin.rpc('retry_mis_gateway_chunk', {
+        p_actor_id: access.actorId,
+        p_upload_id: access.uploadId,
+        p_chunk_size: 100,
+      })
+      if (error) return jsonError('The retry batch could not be recorded.', 503)
+      const count = Number(data?.requeued ?? 0)
+      requeued += count
+      if (count < 100) break
+      reachedLimit = chunk === 24
+    }
+    let more = false
+    if (reachedLimit) {
+      const { data: pipeline, error } = await access.admin.rpc('mis_gateway_status', {
+        p_actor_id: access.actorId,
+        p_upload_id: access.uploadId,
+      })
+      if (error) return jsonError('The remaining retry queue could not be checked.', 503)
+      more = Number(pipeline?.failed ?? 0) > 0
+    }
+    after(async () => { await kickDrain() })
+    return NextResponse.json({ requeued, more, chunkSize: 100 }, { status: 202 })
+  }
+  const rpc = action === 'enqueue' ? 'enqueue_mis_upload' : 'request_marketing_reconciliation'
   const { data, error } = await access.admin.rpc(rpc, {
     p_actor_id: access.actorId, p_upload_id: access.uploadId,
   })
