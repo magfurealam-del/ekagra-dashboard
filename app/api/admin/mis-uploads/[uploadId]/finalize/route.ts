@@ -54,7 +54,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   let parsed
   try {
-    parsed = parseMisCsv(bytes)
+    parsed = parseMisCsv(bytes, { referenceYear: new Date().getFullYear() })
   } catch (error) {
     const parseCode = error instanceof MisCsvParseError ? error.code : 'invalid_csv'
     const { data: receipt, error: receiptError } = await access.admin.rpc('ingest_mis_upload', {

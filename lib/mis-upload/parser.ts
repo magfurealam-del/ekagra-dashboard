@@ -177,11 +177,11 @@ export function parseMisCsv(
   input: Uint8Array,
   options: { referenceYear?: number } = {},
 ): ParsedMisCsv {
-  const candidateReferenceYear = options.referenceYear ?? new Date().getFullYear()
+  const candidateReferenceYear = options.referenceYear
   if (input.byteLength > MAX_MIS_CSV_BYTES) {
     throw new MisCsvParseError('CSV exceeds the 20 MiB intake limit.', 'file_too_large')
   }
-  if (!Number.isInteger(candidateReferenceYear) ||
+  if (typeof candidateReferenceYear !== 'number' || !Number.isInteger(candidateReferenceYear) ||
     candidateReferenceYear < 1890 ||
     candidateReferenceYear > 2200) {
     throw new MisCsvParseError('Reference year is outside the supported range.', 'invalid_reference_year')

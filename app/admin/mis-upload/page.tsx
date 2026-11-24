@@ -22,12 +22,14 @@ type Reservation = { attemptId: string; objectKey: string; token: string }
 type Pipeline = { batchId: number; invoices: number; completed: number; superseded: number; failed: number; pending: number; attempts: number; published: boolean; publicationStage: string; errorCodes: string[]; publicationResult: { status?: string; code?: string } }
 type UploadReview = {
   uploadId: string
+  attemptId: string | null
   fileName: string
   sha256: string
   byteCount: number
   receivedAt: string
   state: string
   parse: null | {
+    id: string
     status: string
     parserVersion: string
     schemaVersion: string
@@ -165,19 +167,6 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       const uploadList = body.uploads as UploadItem[]
       setUploads(uploadList)
       setEnabled(true)
-      // Fetch pipeline summary for each upload in parallel (fire-and-forget; failures just leave column blank)
-      const headers2 = await authHeaders()
-      void Promise.all(
-        uploadList.map(async (u) => {
-          try {
-            const r = await fetch(`/api/admin/mis-uploads/${u.uploadId}/pipeline`, { headers: headers2, cache: 'no-store' })
-            if (!r.ok) return
-            const { pipeline } = await r.json()
-            if (!pipeline) return
-            setSummaryStatuses(prev => ({ ...prev, [u.uploadId]: { published: pipeline.published, completed: pipeline.completed, pending: pipeline.pending, invoices: pipeline.invoices, publicationStage: pipeline.publicationStage ?? '', fetchedAt: Date.now() } }))
-          } catch { /* leave blank */ }
-        })
-      )
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Upload history could not be loaded.')
     }
@@ -188,21 +177,6 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
     const timer = window.setTimeout(() => { void loadUploads() }, 0)
     return () => window.clearTimeout(timer)
   }, [session, profile?.id, profile?.role, profile?.is_active, loadUploads])
-
-  useEffect(() => {
-    if (!expandedReview) return
-    let cancelled = false
-    const timer = window.setInterval(async () => {
-      if (document.visibilityState !== 'visible') return
-      try {
-        const response = await fetch(`/api/admin/mis-uploads/${expandedReview}/pipeline`, { headers: await authHeaders(), cache: 'no-store' })
-        if (!response.ok) return
-        const body = await response.json()
-        if (!cancelled) setPipelines(current => ({ ...current, [expandedReview]: body.pipeline }))
-      } catch { /* The durable pipeline continues; the next poll retries. */ }
-    }, 5000)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [expandedReview, authHeaders])
 
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null
@@ -230,6 +204,18 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       if (!pipelineResponse.ok) throw new Error('Pipeline status is unavailable.')
       const pipelineBody = await pipelineResponse.json()
       setPipelines((current) => ({ ...current, [uploadId]: pipelineBody.pipeline }))
+      const pipeline = pipelineBody.pipeline as Pipeline | null
+      setSummaryStatuses((current) => ({
+        ...current,
+        [uploadId]: pipeline ? {
+          published: pipeline.published,
+          completed: pipeline.completed,
+          pending: pipeline.pending,
+          invoices: pipeline.invoices,
+          publicationStage: pipeline.publicationStage ?? '',
+          fetchedAt: Date.now(),
+        } : null,
+      }))
       setIngestionEnabled(pipelineBody.ingestionEnabled)
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Review details could not be loaded.')
@@ -252,6 +238,18 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       if (!refreshed.ok) throw new Error('Pipeline status is unavailable.')
       const body = await refreshed.json()
       setPipelines(current => ({ ...current, [uploadId]: body.pipeline }))
+      const pipeline = body.pipeline as Pipeline | null
+      setSummaryStatuses(current => ({
+        ...current,
+        [uploadId]: pipeline ? {
+          published: pipeline.published,
+          completed: pipeline.completed,
+          pending: pipeline.pending,
+          invoices: pipeline.invoices,
+          publicationStage: pipeline.publicationStage ?? '',
+          fetchedAt: Date.now(),
+        } : null,
+      }))
       setStatus('Queued for reconciliation. Reopen Review to refresh progress.')
     } catch (error) {
       setReviewError(error instanceof Error ? error.message : 'Pipeline action failed.')
@@ -293,6 +291,50 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
       setPreviewError(error instanceof Error ? error.message : 'Candidate comparison could not be generated.')
     } finally {
       setPreviewing(null)
+    }
+  }
+
+  async function resumeFinalization(uploadId: string) {
+    setReviewing(uploadId)
+    setReviewError('')
+    try {
+      const headers = await authHeaders()
+      const response = await fetch(`/api/admin/mis-uploads/${uploadId}/finalize-staged`, {
+        method: 'POST', headers, cache: 'no-store',
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error ?? 'The staged upload could not be finalized.')
+
+      setStatus(`Upload finalized: ${result.sourceRowCount ?? 0} source rows. ${result.pipeline ? 'Reconciliation queued in chunks.' : 'No reconciliation jobs were queued.'}`)
+      await loadUploads()
+
+      const detailResponse = await fetch(`/api/admin/mis-uploads/${uploadId}`, { headers, cache: 'no-store' })
+      if (detailResponse.ok) {
+        const detailBody = await detailResponse.json()
+        setReviewDetails(current => ({ ...current, [uploadId]: detailBody.review as UploadReview }))
+      }
+
+      const pipelineResponse = await fetch(`/api/admin/mis-uploads/${uploadId}/pipeline`, { headers, cache: 'no-store' })
+      if (pipelineResponse.ok) {
+        const body = await pipelineResponse.json()
+        const pipeline = body.pipeline as Pipeline | null
+        setPipelines(current => ({ ...current, [uploadId]: pipeline }))
+        setSummaryStatuses(current => ({
+          ...current,
+          [uploadId]: pipeline ? {
+            published: pipeline.published,
+            completed: pipeline.completed,
+            pending: pipeline.pending,
+            invoices: pipeline.invoices,
+            publicationStage: pipeline.publicationStage ?? '',
+            fetchedAt: Date.now(),
+          } : null,
+        }))
+      }
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'The staged upload could not be finalized.')
+    } finally {
+      setReviewing(null)
     }
   }
 
@@ -424,7 +466,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                     <td className="px-6 py-4">
                       {(() => {
                         const s = summaryStatuses[upload.uploadId]
-                        if (s === undefined) return <span className="text-xs text-slate-400">Loading…</span>
+                        if (s === undefined) return <span className="text-xs text-slate-400">Open Review for status</span>
                         if (s === null) return <span className="text-xs text-slate-400">—</span>
                         const timeLabel = s.fetchedAt ? new Date(s.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
                         let badge: ReactNode
@@ -448,7 +490,7 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                     <td className="px-6 py-4">
                       {(() => {
                         const s = summaryStatuses[upload.uploadId]
-                        if (s === undefined) return <span className="text-xs text-slate-400">Loading…</span>
+                        if (s === undefined) return <span className="text-xs text-slate-400">Open Review for status</span>
                         if (s === null || !s.publicationStage) return <span className="text-xs text-slate-400">—</span>
                         const stage = s.publicationStage
                         if (stage === 'complete') return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Published</span>
@@ -478,13 +520,23 @@ const [expandedReview, setExpandedReview] = useState<string | null>(null)
                                 return <div className="space-y-2 rounded-lg border border-teal-200 bg-white p-4">
                                   <p className="font-semibold">{pipeline.published ? 'Reconciled and published' : 'Reconciliation in progress'}</p>
                                   <p>{pipeline.completed} completed · {pipeline.pending} pending · {pipeline.failed} failed · {pipeline.superseded} superseded · {pipeline.invoices} invoices</p>
-                                  <p aria-live="polite">Downstream publication: {pipeline.publicationStage.replaceAll('_', ' ')}. Progress refreshes automatically.</p>
+                                  <p aria-live="polite">Downstream publication: {pipeline.publicationStage.replaceAll('_', ' ')}. Use Refresh sources and reconciliation to load the latest status.</p>
                                   <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'refresh')} className="rounded bg-teal-800 px-3 py-2 font-semibold text-white disabled:opacity-50">Refresh sources and reconciliation</button>
                                   {pipeline.errorCodes?.length > 0 && <p role="alert">Processing checks: {pipeline.errorCodes.join(', ')}. {pipeline.errorCodes.includes('23503') ? 'Inventory-linked lines require review before replacement.' : 'An administrator should inspect the failed job before retrying.'}</p>}
                                   {pipeline.publicationResult?.status === 'failed' && <p role="alert">Downstream refresh failed ({pipeline.publicationResult.code}); the batch is not published.</p>}
                                   {pipeline.failed > 0 && <button disabled={!ingestionEnabled || reviewing === upload.uploadId} onClick={() => void pipelineAction(upload.uploadId, 'retry')} className="font-semibold text-teal-800 underline disabled:opacity-50">Retry failed invoices</button>}
                                 </div>
                               })() : <button disabled={!ingestionEnabled || reviewing === upload.uploadId || detail.state !== 'validated'} onClick={() => void pipelineAction(upload.uploadId, 'enqueue')} className="font-semibold text-teal-800 underline disabled:opacity-50">{ingestionEnabled ? 'Queue validated invoices' : 'Ingestion activation pending'}</button>}
+                              {detail.state === 'parsing' && detail.parse?.status === 'parsing' && detail.attemptId && (
+                                <button
+                                  type="button"
+                                  disabled={reviewing === upload.uploadId}
+                                  onClick={() => void resumeFinalization(upload.uploadId)}
+                                  className="rounded-md border border-teal-700 px-3 py-2 font-semibold text-teal-800 disabled:opacity-50"
+                                >
+                                  {reviewing === upload.uploadId ? 'Resuming staged upload…' : 'Resume final integrity check'}
+                                </button>
+                              )}
                               {detail.parse ? (
                                 <>
                                   <div>
